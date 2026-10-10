@@ -2,6 +2,7 @@
 #include "../UI/PanelTheme.h"
 #include <commctrl.h>
 #include <shobjidl.h>
+#include <shellapi.h>
 #include <wrl.h>
 #include <algorithm>
 #include <atomic>
@@ -30,6 +31,7 @@ struct Tree {
     std::atomic<HWND> window{nullptr};
     std::atomic<unsigned long long> generation{0};
     HWND parent = nullptr, tree = nullptr, choose = nullptr, refresh = nullptr;
+    HIMAGELIST images = nullptr;
     std::wstring root, loading, limit;
     UINT_PTR cookie = 0;
     std::mutex mutex;
@@ -43,6 +45,19 @@ std::shared_ptr<Tree> State(HWND window) {
     return holder ? *holder : nullptr;
 }
 HWND Find(HWND parent) { return FindWindowExW(parent, nullptr, ClassName, nullptr); }
+void Icons(const std::shared_ptr<Tree>& state, HWND window) {
+    UINT dpi=GetDpiForWindow(window);
+    int width=GetSystemMetricsForDpi(SM_CXSMICON,dpi),height=GetSystemMetricsForDpi(SM_CYSMICON,dpi);
+    HIMAGELIST images=ImageList_Create(width,height,ILC_COLOR32|ILC_MASK,2,0);
+    if(!images) return;
+    for(SHSTOCKICONID id:{SIID_FOLDER,SIID_DOCNOASSOC}) {
+        SHSTOCKICONINFO icon={}; icon.cbSize=sizeof(icon);
+        if(FAILED(SHGetStockIconInfo(id,SHGSI_ICON|SHGSI_SMALLICON,&icon))) { ImageList_Destroy(images); return; }
+        int index=ImageList_AddIcon(images,icon.hIcon); DestroyIcon(icon.hIcon);
+        if(index<0) { ImageList_Destroy(images); return; }
+    }
+    state->images=images; TreeView_SetImageList(state->tree,images,TVSIL_NORMAL);
+}
 std::wstring Native(const std::wstring& path) {
     if (path.rfind(L"\\\\?\\", 0) == 0) return path;
     return path.rfind(L"\\\\", 0) == 0 ? L"\\\\?\\UNC\\" + path.substr(2) : L"\\\\?\\" + path;
@@ -54,7 +69,8 @@ Node* Data(HWND tree, HTREEITEM item) {
 }
 HTREEITEM Insert(const std::shared_ptr<Tree>& state, HTREEITEM parent, const std::wstring& label, Node* node) {
     TVINSERTSTRUCTW value = {}; value.hParent = parent; value.hInsertAfter = TVI_LAST;
-    value.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_CHILDREN; value.item.pszText = const_cast<wchar_t*>(label.c_str());
+    value.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_CHILDREN | TVIF_IMAGE | TVIF_SELECTEDIMAGE;
+    value.item.iImage=value.item.iSelectedImage=state->images && node && !node->more ? (node->directory ? 0 : 1) : I_IMAGENONE; value.item.pszText = const_cast<wchar_t*>(label.c_str());
     value.item.lParam = reinterpret_cast<LPARAM>(node); value.item.cChildren = node && node->directory && !node->reparse ? 1 : 0;
     return TreeView_InsertItem(state->tree, &value);
 }
@@ -219,6 +235,10 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         }
         return 0;
     }
+    if (message == WM_DESTROY && state && state->images) {
+        if(IsWindow(state->tree)) TreeView_SetImageList(state->tree,nullptr,TVSIL_NORMAL);
+        ImageList_Destroy(state->images); state->images=nullptr;
+    }
     if (message == WM_NCDESTROY && state) {
         state->window = nullptr; ++state->generation; state->queued.clear();
         auto* holder = reinterpret_cast<std::shared_ptr<Tree>*>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -251,6 +271,7 @@ extern "C" void FileTree_Toggle(HWND parent, const wchar_t* directory, const FIL
         state->refresh = CreateWindowExW(0, L"BUTTON", labels->refresh, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 160, 0, 80, 30, window, nullptr, cls.hInstance, nullptr);
         state->tree = CreateWindowExW(0, WC_TREEVIEWW, L"", WS_CHILD | WS_VISIBLE | TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS, 0, 30, 240, 270, window, nullptr, cls.hInstance, nullptr);
         for (HWND control : {state->choose, state->refresh, state->tree}) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+        Icons(state,window);
         Root(state, directory);
         state->theme.Update(window,parent);
     }

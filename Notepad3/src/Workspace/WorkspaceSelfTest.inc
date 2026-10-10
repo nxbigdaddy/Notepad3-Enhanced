@@ -353,6 +353,13 @@ static void _WorkspaceSelfTest()
     HWND panel = FindWindowExW(Globals.hwndMain, NULL, L"NP3WorkspaceFileTree", NULL);
     HWND tree = FindWindowExW(panel, NULL, WC_TREEVIEWW, NULL);
     HTREEITEM root = TreeView_GetRoot(tree);
+    HIMAGELIST treeIcons=TreeView_GetImageList(tree,TVSIL_NORMAL); int treeIconWidth=0,treeIconHeight=0;
+    if(treeIcons) ImageList_GetIconSize(treeIcons,&treeIconWidth,&treeIconHeight);
+    _WorkspaceTestCheck(&result,treeIcons && ImageList_GetImageCount(treeIcons)==2 && treeIconWidth==GetSystemMetricsForDpi(SM_CXSMICON,GetDpiForWindow(panel)) && treeIconHeight==GetSystemMetricsForDpi(SM_CYSMICON,GetDpiForWindow(panel)),"file tree owns folder and document icons at current DPI size");
+    TVITEMW rootIcon={0}; rootIcon.mask=TVIF_IMAGE|TVIF_SELECTEDIMAGE; rootIcon.hItem=root; TreeView_GetItem(tree,&rootIcon);
+    HTREEITEM treeFile=_WorkspaceTestTreeChild(tree,root,L"a.txt"); TVITEMW fileIcon={0}; fileIcon.mask=TVIF_IMAGE|TVIF_SELECTEDIMAGE; fileIcon.hItem=treeFile; TreeView_GetItem(tree,&fileIcon);
+    _WorkspaceTestCheck(&result,root && treeFile && rootIcon.iImage==0 && rootIcon.iSelectedImage==0 && fileIcon.iImage==1 && fileIcon.iSelectedImage==1,"file tree distinguishes folder and file nodes with stable icons");
+
     HTREEITEM folderItem = _WorkspaceTestTreeChild(tree, root, L"nested");
     _WorkspaceTestCheck(&result, folderItem && !TreeView_GetChild(tree, folderItem), "directory children remain lazy before expansion");
     TreeView_Expand(tree, folderItem, TVE_EXPAND);
