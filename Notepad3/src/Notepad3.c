@@ -48,6 +48,7 @@
 #include "DarkMode/DarkMode.h"
 #include "Notepad3Util.h"
 #include "Markdown/MarkdownPreview.h"
+#include "Markdown/MarkdownPdf.h"
 #include "TextTools/JsonFormat.h"
 #include "StyleLexers/EditLexer.h"
 
@@ -380,7 +381,9 @@ static bool _WorkspaceSwitch(int index);
 static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
 static void _WorkspaceDispose();
-static void _MarkdownExportCommand();
+static void _MarkdownExportCommand(bool pdf);
+static void _MarkdownPdfSelfTest();
+static bool _MarkdownPdfSelfTestDone(uint32_t error);
 static void _WorkspaceRecoveryStart();
 static void _WorkspaceRecoveryClose();
 static void _WorkspaceRecoveryTest();
@@ -396,6 +399,7 @@ static bool _WorkspaceSessionWriteAllowed(const HPATHL destination);
 static void _WorkspaceSessionWriteDone(const HPATHL destination);
 #define NP3_WM_WORKSPACE_SELFTEST (WM_APP + 0x352)
 #define NP3_WM_WORKSPACE_RECOVERY (WM_APP + 0x353)
+#define NP3_WM_MARKDOWN_PDF_SELFTEST (WM_APP + 0x355)
 
 // ----------------------------------------------------------------------------
 
@@ -2550,6 +2554,7 @@ HWND InitInstance(const HINSTANCE hInstance, int nCmdShow)
 
     s_bInitAppDone = true;
     if (GetEnvironmentVariableW(L"NP3_WORKSPACE_SELFTEST_DIR", NULL, 0)) PostMessage(Globals.hwndMain, NP3_WM_WORKSPACE_SELFTEST, 0, 0);
+    else if (GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_DIR", NULL, 0)) PostMessage(Globals.hwndMain, NP3_WM_MARKDOWN_PDF_SELFTEST, 0, 0);
     else PostMessage(Globals.hwndMain, NP3_WM_WORKSPACE_RECOVERY, 0, 0);
 
     return Globals.hwndMain;
@@ -2585,6 +2590,15 @@ static void _UpdateMarkdownPreview(HWND hwnd)
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
     switch(umsg) {
+    case NP3_WM_MARKDOWN_PDF_SELFTEST:
+        _MarkdownPdfSelfTest();
+        return 0;
+    case NP3_WM_MARKDOWN_PDF_DONE:
+        if (!_MarkdownPdfSelfTestDone((uint32_t)wParam)) {
+            if (wParam) InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_MARKDOWN_PDF_ERROR, (uint32_t)wParam);
+            else InfoBoxLng(MB_ICONINFORMATION, NULL, IDS_MUI_MARKDOWN_PDF_DONE);
+        }
+        return 0;
     case NP3_WM_WORKSPACE_RECOVERY:
         _WorkspaceRecoveryStart();
         _WorkspaceRecoveryTest();
@@ -5528,8 +5542,11 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
     } break;
 
 
+    case IDM_FILE_EXPORT_MARKDOWN_PDF:
+        _MarkdownExportCommand(true);
+        break;
     case IDM_FILE_EXPORT_MARKDOWN_HTML:
-        _MarkdownExportCommand();
+        _MarkdownExportCommand(false);
         break;
     case IDM_FILE_SAVE_SESSION:
         _WorkspaceSessionCommand(true);
@@ -12364,6 +12381,7 @@ static inline void _ResetFileWatchingMode() {
 #include "Markdown/MarkdownExportCommand.inc"
 #include "Workspace/WorkspaceSelfTest.inc"
 #include "Workspace/WorkspaceRecoveryTest.inc"
+#include "Markdown/MarkdownPdfSelfTest.inc"
 
 static bool _FileLoadSingle(const HPATHL hfile_pth, const FileLoadFlags fLoadFlags, const DocPos curPos, const DocLn visLn)
 {

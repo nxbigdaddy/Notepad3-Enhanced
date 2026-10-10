@@ -63,6 +63,7 @@ BEGIN
         MENUITEM "保存会话...", IDM_FILE_SAVE_SESSION
         MENUITEM "恢复会话...", IDM_FILE_RESTORE_SESSION
         MENUITEM "Export Markdown HTML...", IDM_FILE_EXPORT_MARKDOWN_HTML
+        MENUITEM "Export Markdown PDF...", IDM_FILE_EXPORT_MARKDOWN_PDF
         MENUITEM "保存(&S)\tCtrl+S",                                IDM_FILE_SAVE
         MENUITEM "另存为(&A)...\tF6",                               IDM_FILE_SAVEAS
         MENUITEM "保存副本(&C)...\tCtrl+F6",                        IDM_FILE_SAVECOPY

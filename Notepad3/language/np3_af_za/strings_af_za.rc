@@ -137,6 +137,8 @@ BEGIN
     IDS_MUI_SESSION_ERROR "Unable to save or restore the session (error %u). Existing tabs were retained."
     IDS_MUI_RECOVERY_ERROR "Automatic workspace recovery failed (error %u). Existing documents and earlier recovery files are retained. Save important changes and use File > Save Session for a separate backup."
     IDS_MUI_MARKDOWN_EXPORT_ERROR "Unable to export Markdown HTML (error %u). Use a separate destination from open documents. Export supports up to 8 MiB of UTF-8 input and 32 MiB of HTML output."
+    IDS_MUI_MARKDOWN_PDF_ERROR "Markdown PDF export failed (error %u). Install WebView2 Runtime and use a writable destination. Any existing output is retained."
+    IDS_MUI_MARKDOWN_PDF_DONE "Markdown PDF export completed."
     IDS_MUI_SESSION_OVERWRITE "This buffer was recovered from a session. The disk file may have changed. Save the recovered buffer to the original file?"
     IDS_MUI_ERR_DLG_FORMAT  "Fout '%s', oorsaak:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Geen lêerblaaier plugin is gevind nie\nDie MiniPath-lêerblaaier plugin kan afgelaai word vanaf https://rizonesoft.com"

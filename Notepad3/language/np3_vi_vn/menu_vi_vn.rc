@@ -63,6 +63,7 @@ BEGIN
         MENUITEM "Save Session...", IDM_FILE_SAVE_SESSION
         MENUITEM "Restore Session...", IDM_FILE_RESTORE_SESSION
         MENUITEM "Export Markdown HTML...", IDM_FILE_EXPORT_MARKDOWN_HTML
+        MENUITEM "Export Markdown PDF...", IDM_FILE_EXPORT_MARKDOWN_PDF
         MENUITEM "Lưu(&S)\tCtrl+S",                                      IDM_FILE_SAVE
         MENUITEM "Lưu dưới tên khác(&A)...\tF6",                                 IDM_FILE_SAVEAS
         MENUITEM "Lưu bản sao(&C)...\tCtrl+F6",                           IDM_FILE_SAVECOPY

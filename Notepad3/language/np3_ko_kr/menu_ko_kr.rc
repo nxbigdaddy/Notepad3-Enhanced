@@ -63,6 +63,7 @@ BEGIN
         MENUITEM "Save Session...", IDM_FILE_SAVE_SESSION
         MENUITEM "Restore Session...", IDM_FILE_RESTORE_SESSION
         MENUITEM "Export Markdown HTML...", IDM_FILE_EXPORT_MARKDOWN_HTML
+        MENUITEM "Export Markdown PDF...", IDM_FILE_EXPORT_MARKDOWN_PDF
         MENUITEM "저장(&S)\tCtrl+S",                                   IDM_FILE_SAVE
         MENUITEM "다른 이름으로 저장(&A)...\tF6",                        IDM_FILE_SAVEAS
         MENUITEM "복사본 저장(&C)...\tCtrl+F6",                          IDM_FILE_SAVECOPY

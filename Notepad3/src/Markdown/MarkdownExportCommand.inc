@@ -1,5 +1,6 @@
 #include "MarkdownExport.h"
-static bool _MarkdownExportSave(const HPATHL destination, uint32_t* error)
+#include "MarkdownPdf.h"
+static bool _MarkdownExportSnapshot(const HPATHL destination, uint32_t* error, bool pdf)
 {
     _WorkspaceCapture();
     HPATHL normalized = Path_Copy(destination);
@@ -31,19 +32,20 @@ static bool _MarkdownExportSave(const HPATHL destination, uint32_t* error)
     HPATHL directory = Path_IsNotEmpty(Paths.CurrentFile) ? Path_Copy(Paths.CurrentFile) : Path_Copy(Paths.WorkingDirectory);
     if (directory && Path_IsNotEmpty(Paths.CurrentFile)) Path_RemoveFileSpec(directory);
     if (!directory) { success = false; *error = ERROR_NOT_ENOUGH_MEMORY; }
-    if (success) success = Markdown_ExportHtml(utf8, utf8Length, Path_Get(directory), Path_Get(normalized), error) != 0;
+    if (success) success = pdf ? MarkdownPdf_Start(Globals.hwndMain, utf8, utf8Length, Path_Get(directory), Path_Get(normalized), error) != 0 : Markdown_ExportHtml(utf8, utf8Length, Path_Get(directory), Path_Get(normalized), error) != 0;
     if (utf8 != text) FreeMem(utf8);
     FreeMem(text); Path_Release(directory); Path_Release(normalized); return success;
 }
-static void _MarkdownExportCommand()
+static bool _MarkdownExportSave(const HPATHL destination, uint32_t* error) { return _MarkdownExportSnapshot(destination, error, false); }
+static void _MarkdownExportCommand(bool pdf)
 {
     HPATHL destination = Path_IsNotEmpty(Paths.CurrentFile) ? Path_Copy(Paths.CurrentFile) : Path_Copy(Paths.WorkingDirectory);
     if (!destination) return;
-    if (Path_IsNotEmpty(Paths.CurrentFile)) Path_RenameExtension(destination, L".html");
-    else Path_Append(destination, L"preview.html");
+    if (Path_IsNotEmpty(Paths.CurrentFile)) Path_RenameExtension(destination, pdf ? L".pdf" : L".html");
+    else Path_Append(destination, pdf ? L"preview.pdf" : L"preview.html");
     if (SaveFileDlg(Globals.hwndMain, destination, Paths.WorkingDirectory)) {
         uint32_t error = 0;
-        if (!_MarkdownExportSave(destination, &error)) InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_MARKDOWN_EXPORT_ERROR, error);
+        if (!_MarkdownExportSnapshot(destination, &error, pdf)) InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_MARKDOWN_EXPORT_ERROR, error);
     }
     Path_Release(destination);
 }

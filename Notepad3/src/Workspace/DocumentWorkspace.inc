@@ -29,6 +29,7 @@ typedef struct DOCUMENT_WORKSPACE {
     unsigned long long nextId;
     bool transitioning;
     void* recovery;
+    void* pdfTest;
     WORKSPACE_DOCUMENT documents[WORKSPACE_DOCUMENT_LIMIT];
 } DOCUMENT_WORKSPACE;
 
