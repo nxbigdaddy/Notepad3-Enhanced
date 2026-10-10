@@ -30,7 +30,8 @@ struct Tree {
     np3::PanelTheme theme;
     std::atomic<HWND> window{nullptr};
     std::atomic<unsigned long long> generation{0};
-    HWND parent = nullptr, tree = nullptr, choose = nullptr, refresh = nullptr;
+    HWND parent = nullptr, tree = nullptr, choose = nullptr, refresh = nullptr, grip = nullptr;
+    int widthDip = 240, startWidthDip = 240; bool dragging = false; RECT area{};
     HIMAGELIST images = nullptr;
     std::wstring root, loading, limit;
     UINT_PTR cookie = 0;
@@ -57,6 +58,42 @@ void Icons(const std::shared_ptr<Tree>& state, HWND window) {
         if(index<0) { ImageList_Destroy(images); return; }
     }
     state->images=images; TreeView_SetImageList(state->tree,images,TVSIL_NORMAL);
+}
+void Relayout(const std::shared_ptr<Tree>& state) {
+    RECT bounds; GetClientRect(state->parent,&bounds);
+    SendMessageW(state->parent,WM_SIZE,0,MAKELPARAM(bounds.right,bounds.bottom));
+}
+int TreeWidth(const std::shared_ptr<Tree>& state,int available) {
+    UINT dpi=GetDpiForWindow(state->parent);
+    int minimum=MulDiv(120,dpi,96),maximum=(std::min)(available/2,(std::max)(0,available-MulDiv(240,dpi,96)));
+    return maximum>=minimum ? (std::clamp)(MulDiv(state->widthDip,dpi,96),minimum,maximum) : (std::max)(0,available/3);
+}
+LRESULT CALLBACK GripProc(HWND window,UINT message,WPARAM wParam,LPARAM lParam,UINT_PTR,DWORD_PTR) {
+    auto state=State(GetParent(window));
+    if(!state) return DefSubclassProc(window,message,wParam,lParam);
+    switch(message) {
+    case WM_SETCURSOR: SetCursor(LoadCursorW(nullptr,IDC_SIZEWE)); return TRUE;
+    case WM_LBUTTONDOWN: state->dragging=true; state->startWidthDip=state->widthDip; SetCapture(window); return 0;
+    case WM_MOUSEMOVE:
+        if(state->dragging && GetCapture()==window) {
+            POINT point{static_cast<short>(LOWORD(lParam)),static_cast<short>(HIWORD(lParam))}; MapWindowPoints(window,state->parent,&point,1);
+            UINT dpi=GetDpiForWindow(state->parent); int available=state->area.right-state->area.left;
+            int minimum=MulDiv(120,dpi,96),maximum=(std::min)(available/2,(std::max)(0,available-MulDiv(240,dpi,96)));
+            if(maximum>=minimum) { state->widthDip=MulDiv((std::clamp)(static_cast<int>(point.x-state->area.left),minimum,maximum),96,dpi); Relayout(state); }
+        } return 0;
+    case WM_LBUTTONUP: state->dragging=false; if(GetCapture()==window) ReleaseCapture(); return 0;
+    case WM_CANCELMODE:
+        if(state->dragging) { state->widthDip=state->startWidthDip; state->dragging=false; if(GetCapture()==window) ReleaseCapture(); Relayout(state); } return 0;
+    case WM_CAPTURECHANGED: state->dragging=false; return 0;
+    case WM_PAINT: {
+        PAINTSTRUCT paint; HDC dc=BeginPaint(window,&paint); RECT bounds; GetClientRect(window,&bounds);
+        const auto& colors=state->theme.Colors(); HBRUSH brush=(HBRUSH)GetStockObject(DC_BRUSH);
+        COLORREF previous=SetDCBrushColor(dc,colors.panel); FillRect(dc,&bounds,brush);
+        bounds.left=bounds.right/2; bounds.right=(std::min)(bounds.right,bounds.left+(std::max)(1,MulDiv(1,GetDpiForWindow(window),96)));
+        SetDCBrushColor(dc,colors.disabled); FillRect(dc,&bounds,brush); SetDCBrushColor(dc,previous); EndPaint(window,&paint); return 0;
+    }
+    }
+    return DefSubclassProc(window,message,wParam,lParam);
 }
 std::wstring Native(const std::wstring& path) {
     if (path.rfind(L"\\\\?\\", 0) == 0) return path;
@@ -220,6 +257,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     }
     if (message == WM_SIZE && state) {
         int width = LOWORD(lParam), height = HIWORD(lParam); int top = MulDiv(30, GetDpiForWindow(window), 96);
+        int gap=(std::min)(width,MulDiv(6,GetDpiForWindow(window),96));
+        MoveWindow(state->grip,width-gap,0,gap,height,TRUE); width-=gap;
         MoveWindow(state->choose, 0, 0, width * 2 / 3, top, TRUE); MoveWindow(state->refresh, width * 2 / 3, 0, width - width * 2 / 3, top, TRUE);
         MoveWindow(state->tree, 0, top, width, (std::max)(0, height - top), TRUE); return 0;
     }
@@ -253,7 +292,9 @@ extern "C" BOOL FileTree_IsLoading(HWND parent) { auto state = State(Find(parent
 extern "C" BOOL FileTree_SetRoot(HWND parent, const wchar_t* directory) { try { auto state = State(Find(parent)); return state && Root(state, directory); } catch (...) { PostMessageW(parent, NP3_WM_FILETREE_ERROR, ERROR_NOT_ENOUGH_MEMORY, 0); return FALSE; } }
 extern "C" int FileTree_Layout(HWND parent, int x, int y, int width, int height) {
     HWND window = Find(parent); if (!window) return 0;
-    int reserved = (std::min)((std::max)(0, width / 3), MulDiv(240, GetDpiForWindow(parent), 96));
+    auto state=State(window); if(!state) return 0;
+    state->area={x,y,x+(std::max)(0,width),y+(std::max)(0,height)};
+    int reserved=TreeWidth(state,(std::max)(0,width));
     MoveWindow(window, x, y, reserved, height, TRUE); return reserved;
 }
 extern "C" void FileTree_Toggle(HWND parent, const wchar_t* directory, const FILETREE_LABELS* labels) {
@@ -271,6 +312,8 @@ extern "C" void FileTree_Toggle(HWND parent, const wchar_t* directory, const FIL
         state->refresh = CreateWindowExW(0, L"BUTTON", labels->refresh, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 160, 0, 80, 30, window, nullptr, cls.hInstance, nullptr);
         state->tree = CreateWindowExW(0, WC_TREEVIEWW, L"", WS_CHILD | WS_VISIBLE | TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS, 0, 30, 240, 270, window, nullptr, cls.hInstance, nullptr);
         for (HWND control : {state->choose, state->refresh, state->tree}) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+        state->grip=CreateWindowExW(0,L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_NOTIFY,0,0,0,0,window,nullptr,cls.hInstance,nullptr);
+        if(!state->grip || !SetWindowSubclass(state->grip,GripProc,0,0)) throw std::bad_alloc();
         Icons(state,window);
         Root(state, directory);
         state->theme.Update(window,parent);

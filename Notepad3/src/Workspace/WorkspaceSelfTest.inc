@@ -352,6 +352,15 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result, FileTree_IsOpen(Globals.hwndMain) && _WorkspaceTestTreeReady(), "native file tree loads asynchronously");
     HWND panel = FindWindowExW(Globals.hwndMain, NULL, L"NP3WorkspaceFileTree", NULL);
     HWND tree = FindWindowExW(panel, NULL, WC_TREEVIEWW, NULL);
+    HWND treeGrip=FindWindowExW(panel,NULL,L"STATIC",NULL); RECT treeBefore,treeAfter; GetWindowRect(panel,&treeBefore);
+    if(treeGrip) { SendMessageW(treeGrip,WM_LBUTTONDOWN,MK_LBUTTON,0); SendMessageW(treeGrip,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(80,0)); }
+    GetWindowRect(panel,&treeAfter);
+    _WorkspaceTestCheck(&result,treeGrip && GetCapture()==treeGrip && treeAfter.right-treeAfter.left>treeBefore.right-treeBefore.left,"file tree grip drag widens directory panel");
+    if(treeGrip) SendMessageW(treeGrip,WM_CANCELMODE,0,0); GetWindowRect(panel,&treeAfter);
+    _WorkspaceTestCheck(&result,treeGrip && GetCapture()!=treeGrip && treeAfter.right-treeAfter.left==treeBefore.right-treeBefore.left,"canceling tree width drag restores width and releases capture");
+    int treeNarrow=FileTree_Layout(Globals.hwndMain,0,0,1,1),treeZero=FileTree_Layout(Globals.hwndMain,0,0,0,0);
+    _WorkspaceTestCheck(&result,treeNarrow>=0 && treeNarrow<=1 && treeZero==0,"file tree width safely clamps zero and narrow layout");
+    _SplitRelayout();
     HTREEITEM root = TreeView_GetRoot(tree);
     HIMAGELIST treeIcons=TreeView_GetImageList(tree,TVSIL_NORMAL); int treeIconWidth=0,treeIconHeight=0;
     if(treeIcons) ImageList_GetIconSize(treeIcons,&treeIconWidth,&treeIconHeight);
