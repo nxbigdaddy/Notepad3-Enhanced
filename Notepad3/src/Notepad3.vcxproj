@@ -1293,6 +1293,7 @@
     <ClCompile Include="TextTools\ConfigValidate.cpp" />
     <ClCompile Include="TextTools\LogFilter.cpp" />
     <ClCompile Include="TextTools\LogFilterPanel.cpp" />
+    <ClCompile Include="AI\AiCore.cpp" />
     <ClCompile Include="Workspace\FileTree.cpp" />
     <ClCompile Include="Markdown\MarkdownRender.cpp" />
     <ClCompile Include="Markdown\MarkdownExport.cpp" />
@@ -1312,6 +1313,7 @@
     <ClInclude Include="TextTools\ConfigValidate.h" />
     <ClInclude Include="TextTools\LogFilter.h" />
     <ClInclude Include="TextTools\LogFilterPanel.h" />
+    <ClInclude Include="AI\AiCore.h" />
     <ClInclude Include="TextTools\ConfigCheck.inc" />
     <ClInclude Include="Markdown\MarkdownRender.h" />
     <ClInclude Include="Markdown\MarkdownExport.h" />
