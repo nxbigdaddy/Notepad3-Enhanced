@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/editor-split-state-x64-v21/Notepad3.exe')
+param([string]$Executable = 'artifacts/editor-split-folds-x64-v22/Notepad3.exe')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))

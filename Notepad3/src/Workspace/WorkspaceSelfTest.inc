@@ -233,6 +233,18 @@ static void _WorkspaceSelfTest()
     _SplitToggle();
     _WorkspaceTestCheck(&result, Sci_ViewCall(workspace->splitView, SCI_GETANCHOR, 0, 0) == 4 && Sci_ViewCall(workspace->splitView, SCI_GETCURRENTPOS, 0, 0) == 6, "reopening split retains right view selection");
     _SplitToggle();
+    _SplitToggle();
+    HPATHL splitFoldFile = Path_Allocate(folder); Path_Append(splitFoldFile, L"fold.json");
+    bool splitFoldLoaded = FileLoad(splitFoldFile, FLF_DontSave, 0, 0); Path_Release(splitFoldFile);
+    Sci_ColouriseAll();
+    SciCall_FoldLine(1, SC_FOLDACTION_CONTRACT);
+    Sci_ViewCall(workspace->splitView, SCI_FOLDLINE, 1, SC_FOLDACTION_EXPAND);
+    _WorkspaceTestCheck(&result, splitFoldLoaded && !SciCall_GetFoldExpanded(1) && Sci_ViewCall(workspace->splitView, SCI_GETFOLDEXPANDED, 1, 0), "split views permit opposite fold states in shared document");
+    _WorkspaceSwitch(0); _WorkspaceSwitch(1);
+    _WorkspaceTestCheck(&result, !SciCall_GetFoldExpanded(1) && Sci_ViewCall(workspace->splitView, SCI_GETFOLDEXPANDED, 1, 0), "tab return restores independent left and right folds");
+    _SplitToggle(); _SplitToggle();
+    _WorkspaceTestCheck(&result, !SciCall_GetFoldExpanded(1) && Sci_ViewCall(workspace->splitView, SCI_GETFOLDEXPANDED, 1, 0), "reopening split restores its expanded state beside folded primary");
+    _SplitToggle(); _WorkspaceCloseActive();
     _FileTreeToggle();
     _WorkspaceTestCheck(&result, FileTree_IsOpen(Globals.hwndMain) && _WorkspaceTestTreeReady(), "native file tree loads asynchronously");
     HWND panel = FindWindowExW(Globals.hwndMain, NULL, L"NP3WorkspaceFileTree", NULL);

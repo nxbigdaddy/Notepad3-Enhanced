@@ -3,6 +3,8 @@
 #define WORKSPACE_DOCUMENT_LIMIT 64
 typedef struct SPLIT_VIEW_STATE {
     char* selection;
+    DocLn* folds;
+    size_t foldCount;
     DocPos anchor, caret;
     DocLn firstLine;
     int xOffset, zoom, wrapMode;
@@ -69,11 +71,27 @@ static void _SplitCaptureView(HWND view, SPLIT_VIEW_STATE* state)
     state->xOffset = (int)Sci_ViewCall(view, SCI_GETXOFFSET, 0, 0);
     state->zoom = (int)Sci_ViewCall(view, SCI_GETZOOM, 0, 0);
     state->wrapMode = (int)Sci_ViewCall(view, SCI_GETWRAPMODE, 0, 0);
+    size_t foldCount = 0;
+    for (DocLn line = Sci_ViewCall(view, SCI_CONTRACTEDFOLDNEXT, 0, 0); line >= 0; line = Sci_ViewCall(view, SCI_CONTRACTEDFOLDNEXT, line + 1, 0)) ++foldCount;
+    DocLn* folds = foldCount ? AllocMem(foldCount * sizeof(DocLn), HEAP_ZERO_MEMORY) : NULL;
+    if (!foldCount || folds) {
+        size_t index = 0;
+        for (DocLn line = Sci_ViewCall(view, SCI_CONTRACTEDFOLDNEXT, 0, 0); line >= 0; line = Sci_ViewCall(view, SCI_CONTRACTEDFOLDNEXT, line + 1, 0)) folds[index++] = line;
+        FreeMem(state->folds); state->folds = folds; state->foldCount = foldCount;
+    }
     state->valid = true;
 }
 static void _SplitRestoreView(HWND view, const SPLIT_VIEW_STATE* state, const WORKSPACE_DOCUMENT* doc)
 {
     const char* selection = state->valid ? state->selection : doc->selection;
+    Sci_ViewCall(view, SCI_FOLDALL, SC_FOLDACTION_EXPAND, 0);
+    const DocLn* folds = state->valid ? state->folds : doc->folds;
+    size_t foldCount = state->valid ? state->foldCount : doc->foldCount;
+    for (size_t i = 0; i < foldCount; ++i) {
+        DocLn line = folds[i];
+        if (line < Sci_ViewCall(view, SCI_GETLINECOUNT, 0, 0) && (Sci_ViewCall(view, SCI_GETFOLDLEVEL, line, 0) & SC_FOLDLEVELHEADERFLAG))
+            Sci_ViewCall(view, SCI_FOLDLINE, line, SC_FOLDACTION_CONTRACT);
+    }
     Sci_ViewCall(view, SCI_SETWRAPMODE, state->valid ? state->wrapMode : doc->wrapMode, 0);
     Sci_ViewCall(view, SCI_SETZOOM, state->valid ? state->zoom : doc->zoom, 0);
     if (selection) Sci_ViewCall(view, SCI_SETSELECTIONSERIALIZED, 0, (LPARAM)selection);
@@ -378,7 +396,7 @@ static bool _WorkspaceSwitch(int index)
 static void _WorkspaceReleaseDocument(WORKSPACE_DOCUMENT* doc)
 {
     SciCall_ReleaseDocument(doc->handle); Path_Release(doc->path);
-    Encryption_FreeContext(doc->encryption); FreeMem(doc->selection); FreeMem(doc->views[0].selection); FreeMem(doc->views[1].selection); FreeMem(doc->folds); SecureZeroMemory(doc, sizeof(*doc));
+    Encryption_FreeContext(doc->encryption); FreeMem(doc->selection); FreeMem(doc->views[0].selection); FreeMem(doc->views[1].selection); FreeMem(doc->views[0].folds); FreeMem(doc->views[1].folds); FreeMem(doc->folds); SecureZeroMemory(doc, sizeof(*doc));
 }
 static bool _WorkspaceCloseActive()
 {
