@@ -423,4 +423,3 @@ with this switch to start an independent window rather than reusing another inst
 ```text
 Notepad3.exe /n /mdpreview document.md
 ```
-
