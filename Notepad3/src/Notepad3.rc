@@ -388,7 +388,7 @@ BEGIN
     VK_F3,          IDM_EDIT_FINDPREV,                VIRTKEY, SHIFT, NOINVERT
     VK_F3,          CMD_FINDPREVSEL,                  VIRTKEY, SHIFT, CONTROL, NOINVERT
     VK_F4,          IDM_EDIT_REPLACENEXT,             VIRTKEY, NOINVERT
-    VK_F4,          IDM_FILE_NEW,                     VIRTKEY, CONTROL, NOINVERT
+    VK_F4,          IDM_FILE_CLOSE_TAB,               VIRTKEY, CONTROL, NOINVERT
     VK_F5,          IDM_FILE_REVERT,                  VIRTKEY, NOINVERT
     VK_F5,          IDM_EDIT_INSERT_SHORTDATE,        VIRTKEY, CONTROL, NOINVERT
     VK_F5,          IDM_SET_CHANGENOTIFY,             VIRTKEY, ALT, NOINVERT
@@ -450,7 +450,8 @@ BEGIN
     VK_SUBTRACT,    CMD_DECREASENUM,                  VIRTKEY, CONTROL, ALT, NOINVERT
     VK_TAB,         CMD_TAB,                          VIRTKEY, NOINVERT
     VK_TAB,         CMD_BACKTAB,                      VIRTKEY, SHIFT, NOINVERT
-    VK_TAB,         CMD_CTRLTAB,                      VIRTKEY, CONTROL, NOINVERT
+    VK_TAB,         IDM_FILE_NEXT_TAB,               VIRTKEY, CONTROL, NOINVERT
+    VK_TAB,         IDM_FILE_PREVIOUS_TAB,           VIRTKEY, CONTROL, SHIFT, NOINVERT
     VK_INSERT,      CMD_VK_INSERT,                    VIRTKEY, NOINVERT
 END
 

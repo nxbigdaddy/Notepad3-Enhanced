@@ -59,6 +59,7 @@ BEGIN
     BEGIN
         MENUITEM "&Uusi\tCtrl+N",                                    IDM_FILE_NEW
         MENUITEM "&Avaa...\tCtrl+O",                                IDM_FILE_OPEN
+        MENUITEM "Close Tab\tCtrl+F4", IDM_FILE_CLOSE_TAB
         MENUITEM "&Tallenna\tCtrl+S",                                   IDM_FILE_SAVE
         MENUITEM "T&allenna nimellä...\tF6",                                 IDM_FILE_SAVEAS
         MENUITEM "Tallenna &kopio...\tCtrl+F6",                          IDM_FILE_SAVECOPY

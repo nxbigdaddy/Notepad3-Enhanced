@@ -374,6 +374,20 @@ typedef struct _topmost_wnd_t {
 } TOPMOST_WND_T;
 static BOOL CALLBACK _EnumTopmostWndProc(HWND hwnd, LPARAM lParam);
 static HPATHL _ResolveSelectionForOpen(int* lineNum, bool* isDir);
+static void _WorkspaceRefresh();
+static int _WorkspaceLayout(int x, int y, int width);
+static bool _WorkspaceSwitch(int index);
+static bool _WorkspaceCloseActive();
+static bool _WorkspaceCanClose(FileSaveFlags flags);
+static void _WorkspaceDispose();
+static void _WorkspaceCycle(int direction);
+static void _WorkspaceEdited();
+static void _WorkspaceDocumentKey(WCHAR* key, size_t capacity);
+static void _WorkspaceSelfTest();
+static bool _WorkspaceOwnsPath(const HPATHL path);
+static void _WorkspaceAutoSaveAll(FileSaveFlags flags);
+static UINT_PTR _WorkspaceActiveId();
+#define NP3_WM_WORKSPACE_SELFTEST (WM_APP + 0x352)
 
 // ----------------------------------------------------------------------------
 
@@ -2527,6 +2541,7 @@ HWND InitInstance(const HINSTANCE hInstance, int nCmdShow)
     }
 
     s_bInitAppDone = true;
+    if (GetEnvironmentVariableW(L"NP3_WORKSPACE_SELFTEST_DIR", NULL, 0)) PostMessage(Globals.hwndMain, NP3_WM_WORKSPACE_SELFTEST, 0, 0);
 
     return Globals.hwndMain;
 }
@@ -2540,10 +2555,12 @@ HWND InitInstance(const HINSTANCE hInstance, int nCmdShow)
 //
 static void _UpdateMarkdownPreview(HWND hwnd)
 {
+    WCHAR documentKey[MAX_PATH_EXPLICIT];
+    _WorkspaceDocumentKey(documentKey, COUNTOF(documentKey));
     if (!MarkdownPreview_IsOpen(hwnd)) { return; }
     DocPos const length = SciCall_GetLength();
     if (length > 2 * 1024 * 1024) {
-        MarkdownPreview_Update(hwnd, "", (size_t)length, NULL, Path_Get(Paths.CurrentFile));
+        MarkdownPreview_Update(hwnd, "", (size_t)length, NULL, documentKey);
         return;
     }
     char* const text = AllocMem((size_t)length + 1, HEAP_ZERO_MEMORY);
@@ -2551,7 +2568,7 @@ static void _UpdateMarkdownPreview(HWND hwnd)
     SciCall_GetText(length + 1, text);
     HPATHL directory = Path_Copy(Paths.CurrentFile);
     if (directory) { Path_RemoveFileSpec(directory); }
-    MarkdownPreview_Update(hwnd, text, (size_t)length, directory ? Path_Get(directory) : NULL, Path_Get(Paths.CurrentFile));
+    MarkdownPreview_Update(hwnd, text, (size_t)length, directory ? Path_Get(directory) : NULL, documentKey);
     Path_Release(directory);
     FreeMem(text);
 }
@@ -2559,6 +2576,9 @@ static void _UpdateMarkdownPreview(HWND hwnd)
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
     switch(umsg) {
+    case NP3_WM_WORKSPACE_SELFTEST:
+        _WorkspaceSelfTest();
+        return 0;
     case NP3_WM_MARKDOWN_REFRESH:
         _UpdateMarkdownPreview(hwnd);
         return 0;
@@ -2576,7 +2596,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
         if (IsIconic(hwnd)) {
             ShowWindowAsync(hwnd, SW_RESTORE);
         }
-        if (FileSave(FSF_Ask)) {
+        if (_WorkspaceCanClose(FSF_Ask)) {
+            _WorkspaceDispose();
             DestroyWindow(Globals.hwndMain);
         }
         else {
@@ -2586,10 +2607,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_QUERYENDSESSION:
-        if (Settings.AutoSaveOptions & ASB_Shutdown) {
-            AutoSaveDoWork(FSF_EndSession);
-        }
-        else if (FileSave(FSF_Ask | FSF_EndSession)) {
+        if (Settings.AutoSaveOptions & ASB_Shutdown) _WorkspaceAutoSaveAll(FSF_EndSession);
+        if (_WorkspaceCanClose(FSF_Ask | FSF_EndSession)) {
             return TRUE;
         }
         break;
@@ -2598,7 +2617,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
         if (wParam == PBT_APMSUSPEND) {
             // we only have 2 seconds to save current file
             if (Settings.AutoSaveOptions & ASB_Suspend) {
-                AutoSaveDoWork(FSF_None);
+                _WorkspaceAutoSaveAll(FSF_None);
             }
         }
         break;
@@ -2665,6 +2684,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     //~    return MsgKeyDown(hwnd, wParam, lParam);
 
     case WM_FILECHANGEDNOTIFY:
+        if (wParam && wParam != _WorkspaceActiveId()) return 0;
         return MsgFileChangeNotify(hwnd, wParam, lParam);
 
     //case WM_PARENTNOTIFY:
@@ -3734,6 +3754,7 @@ LRESULT MsgEndSession(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 
         // call SaveAllSettings() when Globals.hwndToolbar is still valid
         SaveAllSettings(false);
+        _WorkspaceDispose();
         CloseIniFileSaveMutex();
 
         // Remove tray icon in any case
@@ -3896,6 +3917,8 @@ LRESULT MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam)
     }
 
 
+    int const tabHeight = _WorkspaceLayout(x, y, max_i(0, cx));
+    y += tabHeight; cy = max_i(0, cy - tabHeight);
     cx -= MarkdownPreview_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
 
     HDWP const hdwp = BeginDeferWindowPos(2);
@@ -4169,7 +4192,7 @@ static void _PruneOldDropSnapshots(DWORD maxAgeSecs)
         HPATHL hFile = Path_Copy(hDir);
         Path_Append(hFile, fd.cFileName);
         // Never delete our own currently-loaded snapshot.
-        if (Path_StrgComparePath(hFile, Paths.CurrentFile, Paths.ModuleDirectory, true) != 0) {
+        if (!_WorkspaceOwnsPath(hFile) && Path_StrgComparePath(hFile, Paths.CurrentFile, Paths.ModuleDirectory, true) != 0) {
             Path_DeleteFile(hFile);
         }
         Path_Release(hFile);
@@ -4242,10 +4265,7 @@ static void _CleanupDropSnapshots(bool dropAll)
     DropSnapshotEntry** pp = &s_dropSnapshots;
     while (*pp) {
         DropSnapshotEntry* e = *pp;
-        bool const keep = !dropAll &&
-                          Path_IsNotEmpty(Paths.CurrentFile) &&
-                          (Path_StrgComparePath(e->hpth, Paths.CurrentFile,
-                                                Paths.ModuleDirectory, true) == 0);
+        bool const keep = !dropAll && _WorkspaceOwnsPath(e->hpth);
         if (keep) {
             pp = &e->next;
             continue;
@@ -4297,9 +4317,9 @@ static LRESULT _OnDropOneFile(HWND hwnd, HPATHL hFilePath, WININFO* wi)
 //
 //  MsgDropFiles() - Handles WM_DROPFILES
 //
-//  Dirty current doc OR Ctrl held -> every file spawns a new NP3 instance
-//  (capped by Settings2.MaxFileDropInstances). Clean current doc -> first
-//  file loads in this window, remaining spawn. Sources under a Windows temp
+//  Files open as tabs without discarding dirty documents. Ctrl held -> every
+//  file spawns a new NP3 instance (capped by Settings2.MaxFileDropInstances).
+//  Sources under a Windows temp
 //  root are snapshotted synchronously before DragFinish so 7-Zip / Outlook /
 //  archiver temp-file deletion can't race the load.
 //
@@ -4314,7 +4334,7 @@ LRESULT MsgDropFiles(HWND hwnd, WPARAM wParam, LPARAM lParam)
 
     bool const vkCtrlDown = IsKeyDown(VK_CONTROL);
     bool const bDirty     = IsSaveNeeded();
-    bool const bForceNew  = vkCtrlDown || bDirty;
+    bool const bForceNew  = vkCtrlDown;
     UINT const cnt        = DragQueryFileW(hDrop, UINT_MAX, NULL, 0);
     if (cnt == 0) {
         DragFinish(hDrop);
@@ -4409,7 +4429,7 @@ LRESULT MsgDropFiles(HWND hwnd, WPARAM wParam, LPARAM lParam)
             } else {
                 bool const sameFile = (Path_StrgComparePath(e->eff, Paths.CurrentFile,
                                                              Paths.ModuleDirectory, true) == 0);
-                bool const spawnThis = bForceNew || (i > 0);
+                bool const spawnThis = bForceNew;
                 if (spawnThis) {
                     if (spawned >= cap) {
                         if (!warned) {
@@ -5492,6 +5512,16 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
         }
     } break;
 
+
+    case IDM_FILE_CLOSE_TAB:
+        _WorkspaceCloseActive();
+        break;
+    case IDM_FILE_NEXT_TAB:
+        _WorkspaceCycle(1);
+        break;
+    case IDM_FILE_PREVIOUS_TAB:
+        _WorkspaceCycle(-1);
+        break;
 
     case IDM_FILE_OPEN: {
         HPATHL hfile_pth = Path_Allocate(L"");
@@ -9964,6 +9994,7 @@ inline static LRESULT _MsgNotifyLean(const SCNotification* const scn, bool* bMod
             *bModified = true;
         }
         if (*bModified) {
+            _WorkspaceEdited();
             MarkdownPreview_Changed(Globals.hwndMain);
             LONG64 const timeout = Settings2.UndoTransactionTimeout;
             if (timeout != 0LL) {
@@ -10360,6 +10391,9 @@ LRESULT MsgNotify(HWND hwnd, WPARAM wParam, LPARAM lParam)
 
     const LPNMHDR pnmh = (LPNMHDR)scn;
     switch (pnmh->idFrom) {
+    case IDC_WORKSPACE_TABS:
+        if (pnmh->code == TCN_SELCHANGE) _WorkspaceSwitch(TabCtrl_GetCurSel(pnmh->hwndFrom));
+        break;
 
     case IDC_EDIT: {
         bool bModified = false;
@@ -11285,6 +11319,7 @@ static void  _UpdateToolbarDelayed()
     EnableTool(Globals.hwndToolbar, IDT_VIEW_TOGGLE_VIEW, b2 && IsFocusedViewAllowed());
     CheckTool(Globals.hwndToolbar, IDT_VIEW_TOGGLE_VIEW, tv);
     CheckTool(Globals.hwndToolbar, IDT_VIEW_MARKDOWN_PREVIEW, MarkdownPreview_IsOpen(Globals.hwndMain));
+    _WorkspaceRefresh();
 
     int const zoom = NP3_GetZoomPercent();
     CheckTool(Globals.hwndToolbar, IDT_VIEW_ZOOMIN,    (zoom > NP3_DEFAULT_ZOOM));
@@ -12296,7 +12331,10 @@ static inline void _ResetFileWatchingMode() {
     ResetFileObservationData(true);
 }
 
-bool FileLoad(const HPATHL hfile_pth, const FileLoadFlags fLoadFlags, const DocPos curPos, const DocLn visLn)
+#include "Workspace/DocumentWorkspace.inc"
+#include "Workspace/WorkspaceSelfTest.inc"
+
+static bool _FileLoadSingle(const HPATHL hfile_pth, const FileLoadFlags fLoadFlags, const DocPos curPos, const DocLn visLn)
 {
     bool fSuccess = false;
     bool const bReloadFile = (fLoadFlags & FLF_Reload);
@@ -13868,7 +13906,7 @@ static inline void NotifyIfFileHasChanged()
         notify = true; // don't reset deleted flag here — handler needs it
     }
     if (notify || RaiseFlagIfCurrentFileChanged()) {
-        PostMessage(Globals.hwndMain, WM_FILECHANGEDNOTIFY, 0, 0);
+        PostMessage(Globals.hwndMain, WM_FILECHANGEDNOTIFY, _WorkspaceActiveId(), 0);
     }
     // reset Timeout interval
     InterlockedExchange64(&(s_FileChgObsvrData.iFileChangeNotifyTime), GetTicks_ms());
@@ -13906,7 +13944,7 @@ static void CALLBACK LogRotateTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, 
         KillTimer(Globals.hwndMain, ID_LOGROTATETIMER);
         FileWatching.LogRotateRetryCount = 0;
         ResetFileObservationData(true);
-        PostMessage(Globals.hwndMain, WM_FILECHANGEDNOTIFY, 0, 0);
+        PostMessage(Globals.hwndMain, WM_FILECHANGEDNOTIFY, _WorkspaceActiveId(), 0);
         InstallFileWatching(true);
     }
     else if (++FileWatching.LogRotateRetryCount >= LOG_ROTATE_MAX_RETRIES) {
@@ -13930,7 +13968,7 @@ static void CALLBACK AtomicSaveTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent,
     if (Path_IsExistingFile(Paths.CurrentFile)) {
         // File was restored (atomic save) — re-process as modification
         ResetFileObservationData(true);
-        PostMessage(Globals.hwndMain, WM_FILECHANGEDNOTIFY, 0, 0);
+        PostMessage(Globals.hwndMain, WM_FILECHANGEDNOTIFY, _WorkspaceActiveId(), 0);
     }
     else {
         InstallFileWatching(false); // truly deleted — terminate

@@ -52,6 +52,55 @@ static bool  hasMasterFileKey = false;
 static bool  masterKeyAvailable = false;		// information for the passphrase dialog box
 
 
+typedef struct ENCRYPTION_CONTEXT {
+    bool useFileKey, useMasterKey, hasBinFileKey, hasMasterFileKey, masterKeyAvailable;
+    char fileKey[KEY_LEN], masterKey[KEY_LEN];
+    WCHAR unicodeFileKey[WKEY_LEN], unicodeMasterKey[WKEY_LEN];
+    BYTE binFileKey[KEY_BYTES], masterFileKey[KEY_BYTES], masterFileIV[AES_MAX_IV_SIZE];
+} ENCRYPTION_CONTEXT;
+
+void* Encryption_CreateContext() { return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ENCRYPTION_CONTEXT)); }
+void Encryption_CaptureContext(void* context)
+{
+    ENCRYPTION_CONTEXT* state = (ENCRYPTION_CONTEXT*)context;
+    if (!state) return;
+    state->useFileKey = useFileKey;
+    state->useMasterKey = useMasterKey;
+    state->hasBinFileKey = hasBinFileKey;
+    state->hasMasterFileKey = hasMasterFileKey;
+    state->masterKeyAvailable = masterKeyAvailable;
+    memcpy(state->fileKey, fileKey, sizeof(fileKey));
+    memcpy(state->masterKey, masterKey, sizeof(masterKey));
+    memcpy(state->unicodeFileKey, unicodeFileKey, sizeof(unicodeFileKey));
+    memcpy(state->unicodeMasterKey, unicodeMasterKey, sizeof(unicodeMasterKey));
+    memcpy(state->binFileKey, binFileKey, sizeof(binFileKey));
+    memcpy(state->masterFileKey, masterFileKey, sizeof(masterFileKey));
+    memcpy(state->masterFileIV, masterFileIV, sizeof(masterFileIV));
+}
+void Encryption_RestoreContext(const void* context)
+{
+    const ENCRYPTION_CONTEXT* state = (const ENCRYPTION_CONTEXT*)context;
+    if (!state) { ResetEncryption(); return; }
+    useFileKey = state->useFileKey;
+    useMasterKey = state->useMasterKey;
+    hasBinFileKey = state->hasBinFileKey;
+    hasMasterFileKey = state->hasMasterFileKey;
+    masterKeyAvailable = state->masterKeyAvailable;
+    memcpy(fileKey, state->fileKey, sizeof(fileKey));
+    memcpy(masterKey, state->masterKey, sizeof(masterKey));
+    memcpy(unicodeFileKey, state->unicodeFileKey, sizeof(unicodeFileKey));
+    memcpy(unicodeMasterKey, state->unicodeMasterKey, sizeof(unicodeMasterKey));
+    memcpy(binFileKey, state->binFileKey, sizeof(binFileKey));
+    memcpy(masterFileKey, state->masterFileKey, sizeof(masterFileKey));
+    memcpy(masterFileIV, state->masterFileIV, sizeof(masterFileIV));
+}
+void Encryption_FreeContext(void* context)
+{
+    if (!context) return;
+    SecureZeroMemory(context, sizeof(ENCRYPTION_CONTEXT));
+    HeapFree(GetProcessHeap(), 0, context);
+}
+
 bool IsEncryptionRequired()
 {
     return (useFileKey || hasMasterFileKey);

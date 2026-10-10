@@ -37,4 +37,10 @@ bool EncryptAndWriteFile(HWND hwnd, HANDLE hFile, BYTE *data, size_t size, size_
 bool GetFileKey(HWND hwnd);
 void ResetEncryption();
 
+// Per-document encryption context. Never persist this buffer to a session file.
+void* Encryption_CreateContext();
+void Encryption_CaptureContext(void* context);
+void Encryption_RestoreContext(const void* context);
+void Encryption_FreeContext(void* context);
+
 #endif

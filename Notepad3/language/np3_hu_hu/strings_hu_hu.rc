@@ -133,6 +133,7 @@ BEGIN
     IDS_MUI_ERR_PATHNOTFOUND "Az útvonal ehhez: ""%s"" már nem létezik.\nLétrehozzam újra az útvonalat és mentsem a fájlt?"
     IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
     IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
+    IDS_MUI_WORKSPACE_LIMIT "Cannot add a document: maximum 64 tabs, or insufficient memory. Existing documents remain open."
     IDS_MUI_ERR_DLG_FORMAT  "Hiba '%s', oka:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Fájlböngésző plugin nem található\nA MiniPath fájlböngésző plugin letölthető a https://rizonesoft.com címről"
     IDS_MUI_ERR_GREPWIN     "Fájlkereső plugin nem található\nA grepWin Portable fájlkereső plugin letölthető a https://github.com/stefankueng/grepWin/releases címről"

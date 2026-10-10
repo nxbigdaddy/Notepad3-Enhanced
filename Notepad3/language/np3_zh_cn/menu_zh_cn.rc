@@ -59,6 +59,7 @@ BEGIN
     BEGIN
         MENUITEM "新建(&N)\tCtrl+N",                                IDM_FILE_NEW
         MENUITEM "打开(&O)...\tCtrl+O",                             IDM_FILE_OPEN
+        MENUITEM "关闭标签\tCtrl+F4", IDM_FILE_CLOSE_TAB
         MENUITEM "保存(&S)\tCtrl+S",                                IDM_FILE_SAVE
         MENUITEM "另存为(&A)...\tF6",                               IDM_FILE_SAVEAS
         MENUITEM "保存副本(&C)...\tCtrl+F6",                        IDM_FILE_SAVECOPY

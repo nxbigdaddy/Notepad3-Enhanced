@@ -176,6 +176,7 @@
 #define IDS_MUI_ERR_PATHNOTFOUND        13027
 #define IDS_MUI_JSON_SYNTAX             13028
 #define IDS_MUI_JSON_LIMIT              13029
+#define IDS_MUI_WORKSPACE_LIMIT         13030
 
 
 #define IDS_MUI_SELRECT                 14000
@@ -637,6 +638,10 @@
 #define IDM_FILE_EXIT                   40025
 #define IDM_FILE_PRESERVE_FILEMODTIME   40026
 #define IDM_FILE_LOCK_SHARE_READ        40027
+#define IDM_FILE_CLOSE_TAB              40028
+#define IDM_FILE_NEXT_TAB               40029
+#define IDM_FILE_PREVIOUS_TAB           40030
+#define IDC_WORKSPACE_TABS              18190
 
 #define IDM_ENCODING_ANSI               40100
 #define IDM_ENCODING_UNICODE            40101

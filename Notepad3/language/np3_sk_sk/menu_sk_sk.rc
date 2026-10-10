@@ -59,6 +59,7 @@ BEGIN
     BEGIN
         MENUITEM "&Nový\tCtrl+N",                                   IDM_FILE_NEW
         MENUITEM "&Otvoriť...\tCtrl+O",                             IDM_FILE_OPEN
+        MENUITEM "Close Tab\tCtrl+F4", IDM_FILE_CLOSE_TAB
         MENUITEM "&Uložiť\tCtrl+S",                                 IDM_FILE_SAVE
         MENUITEM "Uložiť &ako...\tF6",                              IDM_FILE_SAVEAS
         MENUITEM "Uložiť &kópiu...\tCtrl+F6",                       IDM_FILE_SAVECOPY

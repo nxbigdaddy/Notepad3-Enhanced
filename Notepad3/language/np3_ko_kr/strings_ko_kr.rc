@@ -133,6 +133,7 @@ BEGIN
     IDS_MUI_ERR_PATHNOTFOUND """%s""의 경로는 더 이상 존재하지 않습니다.\n경로를 다시 생성하고 파일을 저장하시겠습니까?"
     IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
     IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
+    IDS_MUI_WORKSPACE_LIMIT "Cannot add a document: maximum 64 tabs, or insufficient memory. Existing documents remain open."
     IDS_MUI_ERR_DLG_FORMAT  "오류 '%s', 원인:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "파일 탐색 플러그인을 찾을 수 없습니다\nMiniPath 파일 탐색 플러그인은 https://rizonesoft.com에서 다운로드할 수 있습니다"
     IDS_MUI_ERR_GREPWIN     "파일 검색 플러그인을 찾을 수 없습니다\ngrepWin Portable 파일 검색 플러그인은 https://github.com/stefankueng/grepWin/releases 다운로드할 수 있습니다"

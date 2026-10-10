@@ -530,6 +530,7 @@ typedef struct GLOBALS_T {
     HINSTANCE hLngResContainer;
     bool      bCanSaveIniFile;
     HWND      hwndMain;
+    void*     workspace; // Owned native document workspace, released before editor teardown.
     HANDLE    hndlProcessHeap;
     HWND      hwndEdit;
     HANDLE    hwndToolbar;

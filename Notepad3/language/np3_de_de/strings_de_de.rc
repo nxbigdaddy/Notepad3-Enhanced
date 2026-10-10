@@ -133,6 +133,7 @@ BEGIN
     IDS_MUI_ERR_PATHNOTFOUND "Der Dateipfad ""%s"" existiert nicht mehr.\nPfad neu anlegen und Datei speichern?"
     IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
     IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
+    IDS_MUI_WORKSPACE_LIMIT "Cannot add a document: maximum 64 tabs, or insufficient memory. Existing documents remain open."
     IDS_MUI_ERR_DLG_FORMAT  "Fehler '%s', weil:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Es wurde kein Datei-Browser Plugin gefunden\nDas MiniPath Datei-Browser Plugin kann hier herunter geladen werden: https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Es wurde kein Datei-Inhaltsuche Tool gefunden\nDas grepWin Portable Datei-Inhaltsuche Tool kann hier herunter geladen werden: https://github.com/stefankueng/grepWin/releases"

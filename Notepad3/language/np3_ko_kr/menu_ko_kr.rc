@@ -59,6 +59,7 @@ BEGIN
     BEGIN
         MENUITEM "새로 만들기(&N)\tCtrl+N",                                    IDM_FILE_NEW
         MENUITEM "열기(&O)...\tCtrl+O",                                IDM_FILE_OPEN
+        MENUITEM "Close Tab\tCtrl+F4", IDM_FILE_CLOSE_TAB
         MENUITEM "저장(&S)\tCtrl+S",                                   IDM_FILE_SAVE
         MENUITEM "다른 이름으로 저장(&A)...\tF6",                        IDM_FILE_SAVEAS
         MENUITEM "복사본 저장(&C)...\tCtrl+F6",                          IDM_FILE_SAVECOPY

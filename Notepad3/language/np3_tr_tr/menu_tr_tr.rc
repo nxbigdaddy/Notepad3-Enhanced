@@ -59,6 +59,7 @@ BEGIN
     BEGIN
         MENUITEM "&Yeni\tCtrl+N",                                     IDM_FILE_NEW
         MENUITEM "&Aç...\tCtrl+O",                                    IDM_FILE_OPEN
+        MENUITEM "Close Tab\tCtrl+F4", IDM_FILE_CLOSE_TAB
         MENUITEM "&Kaydet\tCtrl+S",                                   IDM_FILE_SAVE
         MENUITEM "&Farklı kaydet...\tF6",                             IDM_FILE_SAVEAS
         MENUITEM "K&opyasını kaydet...\tCtrl+F6",                     IDM_FILE_SAVECOPY

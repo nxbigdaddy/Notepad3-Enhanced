@@ -59,6 +59,7 @@ BEGIN
     BEGIN
         MENUITEM "&Nuwe\tCtrl+N",                                   IDM_FILE_NEW
         MENUITEM "Maak &Oop...\tCtrl+O",                            IDM_FILE_OPEN
+        MENUITEM "Close Tab\tCtrl+F4", IDM_FILE_CLOSE_TAB
         MENUITEM "S&toor\tCtrl+S",                                  IDM_FILE_SAVE
         MENUITEM "Stoor &As...\tF6",                                IDM_FILE_SAVEAS
         MENUITEM "Stoor &Kopie...\tCtrl+F6",                        IDM_FILE_SAVECOPY

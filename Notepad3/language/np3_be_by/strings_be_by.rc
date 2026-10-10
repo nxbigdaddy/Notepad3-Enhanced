@@ -133,6 +133,7 @@ BEGIN
     IDS_MUI_ERR_PATHNOTFOUND "Шлях да «%s» больш не існуе.\nАднавіць шлях і захаваць файл?"
     IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
     IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
+    IDS_MUI_WORKSPACE_LIMIT "Cannot add a document: maximum 64 tabs, or insufficient memory. Existing documents remain open."
     IDS_MUI_ERR_DLG_FORMAT  "Памылка '%s', прычына:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Не знойдзены плагін аглядніка файлаў\nПлагін MiniPath можна спампаваць з сайта https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Не знойдзены плагін для пошука ў файлах\nПлагін grepWin Portable можна спампаваць з сайта https://github.com/stefankueng/grepWin/releases"
