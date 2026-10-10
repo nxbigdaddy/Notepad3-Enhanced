@@ -1,6 +1,11 @@
 # Markdown preview
 
 Native host integration: View > Markdown Preview, Ctrl+Shift+F12.
+Startup demonstration: `Notepad3.exe /n /mdpreview document.md`.
+Runtime initialization and generated-page navigation succeeded in a real launch after
+allowing host-issued `data:text/html` navigations. Screenshot-based layout acceptance
+and editing/image interaction checks remain pending. Set `NP3_MARKDOWN_DIAGNOSTICS`
+to a development log path to record status events without document contents.
 The preview is created on demand and destroyed when toggled off. Editing notifications
 are debounced for 350 ms. The first version uses an equal-width split and limits live
 rendering to 2 MiB. The limit does not affect normal text editing.

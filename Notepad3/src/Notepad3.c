@@ -2488,6 +2488,10 @@ HWND InitInstance(const HINSTANCE hInstance, int nCmdShow)
 
     ResetMouseDWellTime();
 
+    if (Flags.bStartMarkdownPreview) {
+        PostMessage(hwndMain, WM_COMMAND, IDM_VIEW_MARKDOWN_PREVIEW, 0);
+    }
+
     // print file immediately and quit
     if (Globals.CmdLnFlag_PrintFileAndLeave) {
         WCHAR tchPageFmt[32] = { L'\0' };
@@ -10605,7 +10609,10 @@ static void ParseCmdLnOption(LPWSTR lp1, LPWSTR lp2, const size_t len)
     // Encoding
     cpi_enc_t const encoding = Encoding_MatchW(lp1);
 
-    if (StringCchCompareXI(lp1, L"ANSI") == 0 || StringCchCompareXI(lp1, L"A") == 0 || StringCchCompareXI(lp1, L"MBCS") == 0) {
+    if (StringCchCompareXI(lp1, L"MDPREVIEW") == 0) {
+        Flags.bStartMarkdownPreview = true;
+    }
+    else if (StringCchCompareXI(lp1, L"ANSI") == 0 || StringCchCompareXI(lp1, L"A") == 0 || StringCchCompareXI(lp1, L"MBCS") == 0) {
         s_flagSetEncoding = CPI_ANSI_DEFAULT;
     }
     else if (StringCchCompareXI(lp1, L"UNICODE") == 0 || StringCchCompareXI(lp1, L"W") == 0) {

@@ -415,3 +415,12 @@ Every switch documented in the original [Notepad2 4.2.25 readme](../../Build/Doc
 > **MiniPath** ships its own (much smaller) command-line surface and is documented separately. See `minipath/metapath.txt` for the historical metapath options that MiniPath inherits.
 
 ---
+# Markdown preview extension
+
+Use `/mdpreview` to open the preview panel after loading the document. Use `/n`
+with this switch to start an independent window rather than reusing another instance.
+
+```text
+Notepad3.exe /n /mdpreview document.md
+```
+

@@ -1,7 +1,8 @@
+param([ValidatePattern('^[a-zA-Z0-9_-]+$')][string]$PackageName = 'markdown-x64')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskOutput = Join-Path $taskRoot 'Notepad3\Bin\Release_x64_v143'
-$taskPackage = Join-Path $taskRoot 'artifacts\markdown-x64'
+$taskPackage = Join-Path $taskRoot "artifacts\$PackageName"
 if (-not (Test-Path "$taskOutput\Notepad3.exe")) { throw 'Build x64 Release first.' }
 New-Item -ItemType Directory -Force $taskPackage, "$taskPackage\licenses", "$taskPackage\lng" | Out-Null
 Get-ChildItem -LiteralPath $taskOutput -File | Where-Object { $_.Extension -in @('.exe', '.dll', '.manifest') } | Copy-Item -Destination $taskPackage

@@ -1,4 +1,5 @@
 #include "../Notepad3/src/Markdown/MarkdownRender.h"
+#include "../Notepad3/src/Markdown/NavigationPolicy.h"
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -29,6 +30,11 @@ int main()
         require(np3::RenderMarkdown("").find("</body></html>") != std::string::npos, "empty document");
         const auto bom = np3::RenderMarkdown("\xEF\xBB\xBF# BOM\n");
         require(bom.find("<h1>BOM</h1>") != std::string::npos, "UTF-8 BOM");
+        require(np3::IsHostRenderNavigation(L"data:text/html;charset=utf-8,<h1>test</h1>", false, 1), "Runtime host data navigation");
+        require(!np3::IsHostRenderNavigation(L"data:text/html,<script>x</script>", true, 1), "user data navigation blocked");
+        require(!np3::IsHostRenderNavigation(L"data:text/html,external", false, 0), "unsolicited data navigation blocked");
+        require(!np3::IsHostRenderNavigation(L"https://example.com", false, 1), "external navigation blocked");
+        require(!np3::IsHostRenderNavigation(L"javascript:alert(1)", true, 1), "script navigation blocked");
         std::cout << checks << " Markdown regression checks passed\n";
         return 0;
     } catch (const std::exception& error) {

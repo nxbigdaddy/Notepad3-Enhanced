@@ -1,22 +1,39 @@
 #include "MarkdownPreview.h"
 #include "MarkdownRender.h"
+#include "NavigationPolicy.h"
 #include "vendor/webview2/WebView2.h"
 #include <wrl.h>
 #include <memory>
 #include <string>
 #include <vector>
+#include <cstdio>
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 namespace {
 constexpr wchar_t HostClass[] = L"NP3MarkdownPreview";
 constexpr UINT_PTR RefreshTimer = 1;
+void Trace(const char* event, HRESULT status = S_OK)
+{
+    wchar_t path[32768];
+    const DWORD length = GetEnvironmentVariableW(L"NP3_MARKDOWN_DIAGNOSTICS", path, 32768);
+    if (!length || length >= 32768) return;
+    HANDLE file = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return;
+    char line[160];
+    const int count = sprintf_s(line, "%s HRESULT=0x%08lX\r\n", event, static_cast<unsigned long>(status));
+    DWORD written;
+    if (count > 0) WriteFile(file, line, static_cast<DWORD>(count), &written, nullptr);
+    CloseHandle(file);
+}
 struct Preview {
     HWND window = nullptr;
     HWND parent = nullptr;
     HMODULE loader = nullptr;
     ComPtr<ICoreWebView2Controller> controller;
     ComPtr<ICoreWebView2> web;
+    unsigned pendingRenderNavigations = 0;
     std::wstring message = L"Starting Markdown preview...";
     ~Preview() { if (loader) FreeLibrary(loader); }
 };
@@ -40,6 +57,7 @@ void Failed(const std::shared_ptr<Preview>& state, const wchar_t* message)
 {
     if (!state->window) return;
     state->message = message;
+    Trace("preview-error", E_FAIL);
     InvalidateRect(state->window, nullptr, TRUE);
 }
 void Resize(const std::shared_ptr<Preview>& state)
@@ -75,6 +93,7 @@ void Start(const std::shared_ptr<Preview>& state)
     const HRESULT result = create(nullptr, data.c_str(), nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [state](HRESULT status, ICoreWebView2Environment* environment) -> HRESULT {
+                Trace("environment-ready", status);
                 if (!state->window) return S_OK;
                 if (FAILED(status) || !environment) {
                     Failed(state, L"Install the Microsoft Edge WebView2 Runtime to enable preview.");
@@ -83,6 +102,7 @@ void Start(const std::shared_ptr<Preview>& state)
                 const HRESULT creation = environment->CreateCoreWebView2Controller(state->window,
                     Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
                         [state](HRESULT status, ICoreWebView2Controller* controller) -> HRESULT {
+                            Trace("controller-ready", status);
                             if (!state->window) { if (controller) controller->Close(); return S_OK; }
                             if (FAILED(status) || !controller) { Failed(state, L"Cannot start preview."); return S_OK; }
                             state->controller = controller;
@@ -97,11 +117,30 @@ void Start(const std::shared_ptr<Preview>& state)
                                 settings->put_IsWebMessageEnabled(FALSE);
                             }
                             EventRegistrationToken token;
+                            state->web->add_NavigationCompleted(Callback<ICoreWebView2NavigationCompletedEventHandler>(
+                                [](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
+                                    BOOL success = FALSE;
+                                    args->get_IsSuccess(&success);
+                                    Trace("navigation-completed", success ? S_OK : E_FAIL);
+                                    COREWEBVIEW2_WEB_ERROR_STATUS error;
+                                    if (!success && SUCCEEDED(args->get_WebErrorStatus(&error))) Trace("navigation-error-status", static_cast<HRESULT>(error));
+                                    return S_OK;
+                                }).Get(), &token);
+                            const std::weak_ptr<Preview> weakState = state;
                             state->web->add_NavigationStarting(Callback<ICoreWebView2NavigationStartingEventHandler>(
-                                [](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
+                                [weakState](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
                                     LPWSTR uri = nullptr;
                                     args->get_Uri(&uri);
-                                    if (!uri || std::wstring(uri) != L"about:blank") args->put_Cancel(TRUE);
+                                    Trace(!uri ? "navigation-uri-null" : std::wstring(uri) == L"about:blank" ? "navigation-uri-blank" : std::wstring(uri).find(L"data:") == 0 ? "navigation-uri-data" : "navigation-uri-other");
+                                    BOOL userInitiated = TRUE;
+                                    args->get_IsUserInitiated(&userInitiated);
+                                    auto live = weakState.lock();
+                                    // NavigateToString reports a data:text/html URI in this Runtime.
+                                    // Only host-issued renders can consume a pending navigation.
+                                    const bool render = live && uri && np3::IsHostRenderNavigation(
+                                        uri, userInitiated != FALSE, live->pendingRenderNavigations);
+                                    if (render) --live->pendingRenderNavigations;
+                                    if (!render && (!uri || std::wstring(uri) != L"about:blank")) args->put_Cancel(TRUE);
                                     CoTaskMemFree(uri);
                                     return S_OK;
                                 }).Get(), &token);
@@ -118,6 +157,7 @@ void Start(const std::shared_ptr<Preview>& state)
                 if (FAILED(creation)) Failed(state, L"Cannot create preview controller.");
                 return S_OK;
             }).Get());
+    Trace("environment-start", result);
     if (FAILED(result)) Failed(state, L"WebView2 Runtime is unavailable. Editing remains available.");
 }
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
@@ -167,6 +207,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
 extern "C" BOOL MarkdownPreview_IsOpen(HWND parent) { return Find(parent) != nullptr; }
 extern "C" void MarkdownPreview_Toggle(HWND parent)
 {
+    Trace("preview-toggle");
     if (HWND window = Find(parent)) DestroyWindow(window);
     else {
         WNDCLASSW cls = {};
@@ -209,7 +250,9 @@ extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t len
         std::string html = length <= 2 * 1024 * 1024 ? np3::RenderMarkdown(std::string_view(text, length))
             : np3::RenderMarkdown("# Preview paused\n\nThis document exceeds the 2 MiB live preview limit.");
         const std::wstring wide = Wide(html);
+        if (!wide.empty()) ++state->pendingRenderNavigations;
         if (wide.empty() || FAILED(state->web->NavigateToString(wide.c_str()))) {
+            if (!wide.empty()) --state->pendingRenderNavigations;
             Failed(state, L"Cannot display Markdown preview.");
         }
     } catch (...) { Failed(state, L"Cannot render Markdown preview."); }

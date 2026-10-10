@@ -798,6 +798,7 @@ typedef struct FLAGS_T {
     bool bSearchPathIfRelative;
 
     bool bSettingsFileSoftLocked;
+    bool bStartMarkdownPreview;
 
 } FLAGS_T, *PFLAGS_T;
 
