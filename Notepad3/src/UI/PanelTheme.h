@@ -2,6 +2,7 @@
 #include <windows.h>
 #define NP3_WM_PANEL_COLORS (WM_APP + 0x360)
 #define NP3_WM_PANEL_REFRESH (WM_APP + 0x361)
+#define NP3_WM_EDITOR_STYLE_CHANGED (WM_APP + 0x362)
 typedef struct PANEL_COLORS {
     BOOL dark;
     COLORREF panel, field, text, disabled, added, removed, highlightText;

@@ -37,6 +37,7 @@
 #include "MuiLanguage.h"
 #include "Notepad3.h"
 #include "Config/Config.h"
+#include "UI/PanelTheme.h"
 #include "DarkMode/DarkMode.h"
 #include "tinyexprcpp/tinyexpr_cif.h"
 
@@ -2170,6 +2171,7 @@ void Style_SetLexer(HWND hwnd, PEDITLEXER pLexNew)
     Sci_ScrollSelectionToView();
 
     EndWaitCursor();
+    if (hwnd == Globals.hwndEdit) SendMessageW(Globals.hwndMain, NP3_WM_EDITOR_STYLE_CHANGED, (WPARAM)hwnd, 0);
 }
 
 

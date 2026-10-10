@@ -101,6 +101,50 @@ static void _SplitRestoreView(HWND view, const SPLIT_VIEW_STATE* state, const WO
     Sci_ViewCall(view, SCI_SETFIRSTVISIBLELINE, state->valid ? state->firstLine : doc->firstLine, 0);
     Sci_ViewCall(view, SCI_SETXOFFSET, state->valid ? state->xOffset : doc->xOffset, 0);
 }
+static void _SplitSyncStyles(void)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace || !workspace->splitView) return;
+    HWND other = Globals.hwndEdit == workspace->primaryView ? workspace->splitView : workspace->primaryView;
+    const UINT styles[][2] = {
+        {SCI_STYLEGETFORE,SCI_STYLESETFORE},{SCI_STYLEGETBACK,SCI_STYLESETBACK},
+        {SCI_STYLEGETSIZEFRACTIONAL,SCI_STYLESETSIZEFRACTIONAL},{SCI_STYLEGETWEIGHT,SCI_STYLESETWEIGHT},
+        {SCI_STYLEGETITALIC,SCI_STYLESETITALIC},{SCI_STYLEGETUNDERLINE,SCI_STYLESETUNDERLINE},
+        {SCI_STYLEGETSTRIKE,SCI_STYLESETSTRIKE},{SCI_STYLEGETEOLFILLED,SCI_STYLESETEOLFILLED},
+        {SCI_STYLEGETCASE,SCI_STYLESETCASE},{SCI_STYLEGETCHARACTERSET,SCI_STYLESETCHARACTERSET},
+        {SCI_STYLEGETVISIBLE,SCI_STYLESETVISIBLE},{SCI_STYLEGETCHANGEABLE,SCI_STYLESETCHANGEABLE},
+        {SCI_STYLEGETHOTSPOT,SCI_STYLESETHOTSPOT},{SCI_STYLEGETCHECKMONOSPACED,SCI_STYLESETCHECKMONOSPACED},
+        {SCI_STYLEGETSTRETCH,SCI_STYLESETSTRETCH}
+    };
+    for (int style = 0; style < 256; ++style) {
+        DocPos const length = SciCall(SCI_STYLEGETFONT,style,0);
+        if (length>=0 && length<=4096) {
+            char* font=AllocMem((size_t)length+1,HEAP_ZERO_MEMORY);
+            if (font) { SciCall(SCI_STYLEGETFONT,style,(LPARAM)font); Sci_ViewCall(other,SCI_STYLESETFONT,style,(LPARAM)font); FreeMem(font); }
+        }
+        for (size_t i=0;i<COUNTOF(styles);++i) Sci_ViewCall(other,styles[i][1],style,SciCall(styles[i][0],style,0));
+    }
+    const int elements[]={SC_ELEMENT_LIST,SC_ELEMENT_LIST_BACK,SC_ELEMENT_LIST_SELECTED,SC_ELEMENT_LIST_SELECTED_BACK,
+        SC_ELEMENT_SELECTION_TEXT,SC_ELEMENT_SELECTION_BACK,SC_ELEMENT_SELECTION_ADDITIONAL_TEXT,SC_ELEMENT_SELECTION_ADDITIONAL_BACK,
+        SC_ELEMENT_SELECTION_SECONDARY_TEXT,SC_ELEMENT_SELECTION_SECONDARY_BACK,SC_ELEMENT_SELECTION_INACTIVE_TEXT,SC_ELEMENT_SELECTION_INACTIVE_BACK,
+        SC_ELEMENT_SELECTION_INACTIVE_ADDITIONAL_TEXT,SC_ELEMENT_SELECTION_INACTIVE_ADDITIONAL_BACK,SC_ELEMENT_CARET,SC_ELEMENT_CARET_ADDITIONAL,
+        SC_ELEMENT_CARET_LINE_BACK,SC_ELEMENT_WHITE_SPACE,SC_ELEMENT_WHITE_SPACE_BACK,SC_ELEMENT_HOT_SPOT_ACTIVE,SC_ELEMENT_HOT_SPOT_ACTIVE_BACK,
+        SC_ELEMENT_FOLD_LINE,SC_ELEMENT_HIDDEN_LINE};
+    for (size_t i=0;i<COUNTOF(elements);++i) {
+        if (SciCall(SCI_GETELEMENTISSET,elements[i],0)) Sci_ViewCall(other,SCI_SETELEMENTCOLOUR,elements[i],SciCall(SCI_GETELEMENTCOLOUR,elements[i],0));
+        else Sci_ViewCall(other,SCI_RESETELEMENTCOLOUR,elements[i],0);
+    }
+    const UINT properties[][2]={{SCI_GETSELECTIONLAYER,SCI_SETSELECTIONLAYER},{SCI_GETCARETLINELAYER,SCI_SETCARETLINELAYER},
+        {SCI_GETCARETLINEFRAME,SCI_SETCARETLINEFRAME},{SCI_GETCARETLINEVISIBLE,SCI_SETCARETLINEVISIBLE},
+        {SCI_GETCARETLINEVISIBLEALWAYS,SCI_SETCARETLINEVISIBLEALWAYS},{SCI_GETCARETLINEHIGHLIGHTSUBLINE,SCI_SETCARETLINEHIGHLIGHTSUBLINE}};
+    for (size_t i=0;i<COUNTOF(properties);++i) Sci_ViewCall(other,properties[i][1],SciCall(properties[i][0],0,0),0);
+}
+static void _SplitStylesChanged(HWND view)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (view == Globals.hwndEdit && workspace && !workspace->transitioning && workspace->splitView &&
+        Sci_ViewCall(workspace->primaryView, SCI_GETDOCPOINTER, 0, 0) == Sci_ViewCall(workspace->splitView, SCI_GETDOCPOINTER, 0, 0)) _SplitSyncStyles();
+}
 static void _SplitSync(void)
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
@@ -117,16 +161,7 @@ static void _SplitSync(void)
     if (!changed) return;
     WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
     _SplitRestoreView(other, &doc->views[other == workspace->primaryView ? 0 : 1], doc);
-    for (int style = 0; style < 256; ++style) {
-        char font[256] = {0};
-        SciCall(SCI_STYLEGETFONT, style, (LPARAM)font);
-        Sci_ViewCall(other, SCI_STYLESETFONT, style, (LPARAM)font);
-        Sci_ViewCall(other, SCI_STYLESETFORE, style, SciCall(SCI_STYLEGETFORE, style, 0));
-        Sci_ViewCall(other, SCI_STYLESETBACK, style, SciCall(SCI_STYLEGETBACK, style, 0));
-        Sci_ViewCall(other, SCI_STYLESETSIZEFRACTIONAL, style, SciCall(SCI_STYLEGETSIZEFRACTIONAL, style, 0));
-        Sci_ViewCall(other, SCI_STYLESETBOLD, style, SciCall(SCI_STYLEGETBOLD, style, 0));
-        Sci_ViewCall(other, SCI_STYLESETITALIC, style, SciCall(SCI_STYLEGETITALIC, style, 0));
-    }
+    _SplitSyncStyles();
 }
 static void _SplitRelayout(void)
 {

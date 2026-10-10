@@ -388,6 +388,8 @@ static bool _SplitIsOpen(void);
 static HWND _SplitPrimary(void);
 static int _SplitLayout(int x, int y, int width, int height);
 static void _SplitSync(void);
+static void _SplitSyncStyles(void);
+static void _SplitStylesChanged(HWND view);
 static bool _WorkspaceSwitch(int index);
 static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
@@ -2648,6 +2650,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     case NP3_WM_BATCH_CAPTURE: return _BatchRun();
     case NP3_WM_BATCH_APPLY: return _BatchApply((const BATCH_APPLY*)lParam);
     case NP3_WM_BATCH_OPEN: return _BatchOpenFiles((const BATCH_FILES*)lParam);
+    case NP3_WM_EDITOR_STYLE_CHANGED:
+        _SplitStylesChanged((HWND)wParam); return 0;
     case NP3_WM_PANEL_COLORS:
         if (!lParam) return FALSE;
         _PanelColors((PANEL_COLORS*)lParam); return TRUE;
@@ -3949,6 +3953,7 @@ LRESULT MsgThemeChanged(HWND hwnd, WPARAM wParam,LPARAM lParam)
         PanelTheme_RefreshChildren(hwnd);
 
         UpdateUI(hwnd);
+        _SplitSyncStyles();
 
         // re-enable drawing and force a single
         SendMessage(hwnd, WM_SETREDRAW, TRUE, 0);
