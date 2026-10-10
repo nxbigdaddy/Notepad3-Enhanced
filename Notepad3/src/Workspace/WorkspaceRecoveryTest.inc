@@ -19,7 +19,8 @@ static void _WorkspaceRecoveryTest()
     bool const verified = wcscmp(mode, L"verify") == 0;
     bool const live = wcscmp(mode, L"live") == 0;
     bool const clean = wcscmp(mode, L"clean") == 0;
-    _WorkspaceTestCheck(&result, seeded || verified || live || clean, "recognized recovery test mode");
+    bool const failure = wcscmp(mode, L"failure") == 0;
+    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure, "recognized recovery test mode");
     if (seeded) {
         _WorkspaceTestCheck(&result, workspace->count == 1 && SciCall_GetLength() == 0, "seed starts isolated");
         SciCall_AppendText(15, "unsaved alpha\r\n"); Encoding_Current(CPI_UTF8SIGN);
@@ -37,6 +38,22 @@ static void _WorkspaceRecoveryTest()
         _WorkspaceTestCheck(&result, _WorkspaceSwitch(1) && _WorkspaceTestText("unsaved beta\r\n"), "beta content restored");
         _WorkspaceTestCheck(&result, Encoding_GetCurrent() == CPI_UNICODE && IsSaveNeeded(), "beta encoding and unsaved status restored");
         _WorkspaceTestCheck(&result, _WorkspaceRecoveryHarvest(recovery, 10000) && Path_IsExistingFile(recovery->file), "recovery transferred to current owner");
+    } else if (failure) {
+        _WorkspaceTestCheck(&result, recovery->errorReports > 0, "corrupt orphan recovery reported");
+        _WorkspaceTestCheck(&result, _WorkspaceRecoveryHarvest(recovery, 10000), "initial backup completed");
+        HANDLE locked = Path_CreateFile(recovery->file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        _WorkspaceTestCheck(&result, IS_VALID_HANDLE(locked), "lock backup against replacement");
+        unsigned int const before = recovery->errorReports;
+        _WorkspaceRecoveryTimer(NULL, 0, 0, 0);
+        _WorkspaceTestCheck(&result, _WorkspaceRecoveryHarvest(recovery, 10000) && recovery->lastError != 0 && recovery->errorReports == before + 1, "background write error reported once");
+        _WorkspaceRecoveryTimer(NULL, 0, 0, 0);
+        _WorkspaceTestCheck(&result, _WorkspaceRecoveryHarvest(recovery, 10000) && recovery->errorReports == before + 1, "repeated write error does not repeat warning");
+        if (IS_VALID_HANDLE(locked)) CloseHandle(locked);
+        NP3_SESSION prior = NULL; uint32_t error = 0;
+        _WorkspaceTestCheck(&result, Session_Load(Path_Get(recovery->file), &prior, &error) != 0, "failed write retains valid earlier snapshot");
+        Session_Free(prior);
+        _WorkspaceRecoveryTimer(NULL, 0, 0, 0);
+        _WorkspaceTestCheck(&result, _WorkspaceRecoveryHarvest(recovery, 10000) && recovery->lastError == 0, "successful retry clears failure state");
     } else if (live || clean) {
         _WorkspaceTestCheck(&result, workspace->count == 1 && SciCall_GetLength() == 0, live ? "live owner backup not imported" : "normal discard not resurrected");
     }

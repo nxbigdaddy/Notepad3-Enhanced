@@ -135,6 +135,7 @@ BEGIN
     IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_WORKSPACE_LIMIT "Cannot add a document: maximum 64 tabs, or insufficient memory. Existing documents remain open."
     IDS_MUI_SESSION_ERROR "Unable to save or restore the session (error %u). Existing tabs were retained."
+    IDS_MUI_RECOVERY_ERROR "Automatic workspace recovery failed (error %u). Existing documents and earlier recovery files are retained. Save important changes and use File > Save Session for a separate backup."
     IDS_MUI_SESSION_OVERWRITE "This buffer was recovered from a session. The disk file may have changed. Save the recovered buffer to the original file?"
     IDS_MUI_ERR_DLG_FORMAT  "Error '%s', causa:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "No se encontró plug-in para el navegador de archivos\nEl plug-in de navegador de archivos MiniPath se puede descargar desde https://rizonesoft.com"

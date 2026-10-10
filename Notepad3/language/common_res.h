@@ -179,6 +179,7 @@
 #define IDS_MUI_WORKSPACE_LIMIT         13030
 #define IDS_MUI_SESSION_ERROR           13031
 #define IDS_MUI_SESSION_OVERWRITE       13032
+#define IDS_MUI_RECOVERY_ERROR          13033
 
 
 #define IDS_MUI_SELRECT                 14000

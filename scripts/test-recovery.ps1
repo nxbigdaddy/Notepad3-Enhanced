@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/workspace-recovery-x64-v10/Notepad3.exe')
+param([string]$Executable = 'artifacts/workspace-recovery-x64-v11/Notepad3.exe')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -52,5 +52,8 @@ if (Test-Path -LiteralPath $taskBackup[0].FullName) { throw 'Transferred orphan 
 $taskClean = Start-RecoveryTest 'clean'
 if (!$taskClean.WaitForExit(30000)) { throw "Normal discard test still running: PID $($taskClean.Id)" }
 Read-RecoveryResult 'clean'
+$taskFailure = Start-RecoveryTest 'failure'
+if (!$taskFailure.WaitForExit(30000)) { throw "Write failure test still running: PID $($taskFailure.Id)" }
+Read-RecoveryResult 'failure'
 if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($taskCorrupt)) -ne 'AQIDBA==') { throw 'Invalid recovery source was changed' }
 Write-Output "Live isolation, protected bytes, crash recovery, normal discard and corrupt-source preservation verified. Evidence: $taskFolder"

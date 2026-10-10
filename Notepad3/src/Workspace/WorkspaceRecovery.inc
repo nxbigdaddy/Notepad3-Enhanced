@@ -12,7 +12,19 @@ typedef struct WORKSPACE_RECOVERY {
     HPATHL directory, file, lockPath, closedPath;
     HANDLE lock;
     WORKSPACE_RECOVERY_JOB* job;
+    uint32_t lastError;
+    unsigned int errorReports;
+    bool isolatedTest, closing, ticking;
 } WORKSPACE_RECOVERY;
+static void _WorkspaceRecoveryReport(WORKSPACE_RECOVERY* recovery, uint32_t error)
+{
+    if (!error) error = ERROR_GEN_FAILURE;
+    if (recovery->lastError == error) return;
+    recovery->lastError = error;
+    ++recovery->errorReports;
+    if (!recovery->isolatedTest && !recovery->closing)
+        InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_RECOVERY_ERROR, error);
+}
 static unsigned __stdcall _WorkspaceRecoveryWorker(void* argument)
 {
     WORKSPACE_RECOVERY_JOB* job = argument;
@@ -24,13 +36,18 @@ static bool _WorkspaceRecoveryHarvest(WORKSPACE_RECOVERY* recovery, DWORD timeou
     WORKSPACE_RECOVERY_JOB* job = recovery->job;
     if (!job) return true;
     if (WaitForSingleObject(job->thread, timeout) != WAIT_OBJECT_0) return false;
-    if (!job->success) {
-        WCHAR message[128];
-        StringCchPrintfW(message, COUNTOF(message), L"Notepad3 recovery backup failed: %lu\n", (unsigned long)job->error);
-        OutputDebugStringW(message);
-    }
+    bool const success = job->success;
+    uint32_t const error = job->error;
     CloseHandle(job->thread); Session_Free(job->session); Path_Release(job->path);
     FreeMem(job); recovery->job = NULL;
+    if (!success) {
+        WCHAR message[128];
+        StringCchPrintfW(message, COUNTOF(message), L"Notepad3 recovery backup failed: %lu\n", (unsigned long)error);
+        OutputDebugStringW(message);
+        _WorkspaceRecoveryReport(recovery, error);
+    } else {
+        recovery->lastError = 0;
+    }
     return true;
 }
 static VOID CALLBACK _WorkspaceRecoveryTimer(HWND hwnd, UINT message, UINT_PTR timer, DWORD time)
@@ -40,22 +57,26 @@ static VOID CALLBACK _WorkspaceRecoveryTimer(HWND hwnd, UINT message, UINT_PTR t
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace || !workspace->recovery || workspace->transitioning) return;
     WORKSPACE_RECOVERY* recovery = workspace->recovery;
-    if (!_WorkspaceRecoveryHarvest(recovery, 0)) return;
+    if (recovery->ticking || recovery->closing) return;
+    recovery->ticking = true;
+    if (!_WorkspaceRecoveryHarvest(recovery, 0)) { recovery->ticking = false; return; }
     uint32_t error = 0;
     NP3_SESSION session = _WorkspaceSessionCapture(&error);
-    if (!session) return;
+    if (!session) { _WorkspaceRecoveryReport(recovery, error); recovery->ticking = false; return; }
     WORKSPACE_RECOVERY_JOB* job = AllocMem(sizeof(*job), HEAP_ZERO_MEMORY);
-    if (!job) { Session_Free(session); return; }
+    if (!job) { Session_Free(session); _WorkspaceRecoveryReport(recovery, ERROR_NOT_ENOUGH_MEMORY); recovery->ticking = false; return; }
     job->session = session; job->path = Path_Copy(recovery->file);
     if (job->path) job->thread = (HANDLE)_beginthreadex(NULL, 0, _WorkspaceRecoveryWorker, job, 0, NULL);
-    if (!job->thread) { Session_Free(session); Path_Release(job->path); FreeMem(job); return; }
+    if (!job->thread) { Session_Free(session); Path_Release(job->path); FreeMem(job); _WorkspaceRecoveryReport(recovery, ERROR_NOT_ENOUGH_MEMORY); recovery->ticking = false; return; }
     recovery->job = job;
+    recovery->ticking = false;
 }
 static void _WorkspaceRecoveryClose()
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace || !workspace->recovery) return;
     WORKSPACE_RECOVERY* recovery = workspace->recovery;
+    recovery->closing = true;
     KillTimer(Globals.hwndMain, WORKSPACE_RECOVERY_TIMER);
     // The marker is created before releasing ownership. An unfinished worker
     // cannot resurrect documents the user explicitly discarded on normal exit.
@@ -105,6 +126,7 @@ static void _WorkspaceRecoveryStart()
     WCHAR leaf[128];
     StringCchPrintfW(leaf, COUNTOF(leaf), L"np3-%lu-%08lx%08lx.np3recovery", GetCurrentProcessId(), stamp.dwHighDateTime, stamp.dwLowDateTime);
     recovery->directory = directory; recovery->file = Path_Copy(directory); Path_Append(recovery->file, leaf);
+    recovery->isolatedTest = length != 0;
     recovery->lockPath = Path_Copy(recovery->file); Path_RenameExtension(recovery->lockPath, L".lock");
     recovery->closedPath = Path_Copy(recovery->file); Path_RenameExtension(recovery->closedPath, L".closed");
     recovery->lock = Path_CreateFile(recovery->lockPath, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -125,6 +147,7 @@ static void _WorkspaceRecoveryStart()
                 uint32_t error = 0;
                 bool const discarded = Path_IsExistingFile(closed);
                 bool const transferred = !discarded && _WorkspaceSessionLoad(source, &error) && _WorkspaceSessionSave(recovery->file, &error);
+                if (!discarded && !transferred) _WorkspaceRecoveryReport(recovery, error);
                 bool const removed = (discarded || transferred) && Path_DeleteFile(source);
                 CloseHandle(claim);
                 if (removed) { Path_DeleteFile(lockPath); Path_DeleteFile(closed); }
