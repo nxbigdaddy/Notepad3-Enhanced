@@ -7,6 +7,8 @@ typedef struct WORKSPACE_DOCUMENT {
     HPATHL path;
     void* encryption;
     char* selection;
+    DocLn* folds;
+    size_t foldCount;
     FILEVARS vars;
     PEDITLEXER lexer;
     cpi_enc_t encoding;
@@ -46,6 +48,14 @@ static void _WorkspaceCapture()
     char* selection = selectionLength > 0 ? AllocMem((size_t)selectionLength + 1, HEAP_ZERO_MEMORY) : NULL;
     if (selection) SciCall_GetSelectionSerialized(selection);
     FreeMem(doc->selection); doc->selection = selection;
+    size_t foldCount = 0;
+    for (DocLn line = SciCall_ContractedFoldNext(0); line >= 0; line = SciCall_ContractedFoldNext(line + 1)) ++foldCount;
+    DocLn* folds = foldCount ? AllocMem(foldCount * sizeof(DocLn), HEAP_ZERO_MEMORY) : NULL;
+    if (!foldCount || folds) {
+        size_t index = 0;
+        for (DocLn line = SciCall_ContractedFoldNext(0); line >= 0; line = SciCall_ContractedFoldNext(line + 1)) folds[index++] = line;
+        FreeMem(doc->folds); doc->folds = folds; doc->foldCount = foldCount;
+    }
     doc->firstLine = SciCall_GetFirstVisibleLine(); doc->xOffset = SciCall_GetXOffset();
     doc->zoom = SciCall_GetZoom(); doc->eol = SciCall_GetEOLMode(); doc->codePage = SciCall_GetCodePage();
     doc->tabWidth = SciCall_GetTabWidth(); doc->indent = SciCall_GetIndent(); doc->wrapMode = SciCall_GetWrapMode();
@@ -144,6 +154,13 @@ static void _WorkspaceRestore(int index)
     SciCall_SetCodePage(doc->codePage); SciCall_SetEOLMode(doc->eol);
     SciCall_SetTabWidth(doc->tabWidth); SciCall_SetIndent(doc->indent); SciCall_SetWrapMode(doc->wrapMode);
     SciCall_SetZoom(doc->zoom); SciCall_SetReadOnly(doc->readOnly);
+    if (doc->foldCount) {
+        Sci_ColouriseAll();
+        for (size_t i = 0; i < doc->foldCount; ++i) {
+            DocLn const line = doc->folds[i];
+            if (line < SciCall_GetLineCount() && (SciCall_GetFoldLevel(line) & SC_FOLDLEVELHEADERFLAG)) SciCall_FoldLine(line, SC_FOLDACTION_CONTRACT);
+        }
+    }
     if (doc->focused.HideNonMatchedLines) EditToggleView(Globals.hwndEdit);
     if (doc->selection) SciCall_SetSelectionSerialized(doc->selection);
     else SciCall_SetSel(doc->anchor, doc->caret);
@@ -185,7 +202,7 @@ static bool _WorkspaceSwitch(int index)
 static void _WorkspaceReleaseDocument(WORKSPACE_DOCUMENT* doc)
 {
     SciCall_ReleaseDocument(doc->handle); Path_Release(doc->path);
-    Encryption_FreeContext(doc->encryption); FreeMem(doc->selection); SecureZeroMemory(doc, sizeof(*doc));
+    Encryption_FreeContext(doc->encryption); FreeMem(doc->selection); FreeMem(doc->folds); SecureZeroMemory(doc, sizeof(*doc));
 }
 static bool _WorkspaceCloseActive()
 {

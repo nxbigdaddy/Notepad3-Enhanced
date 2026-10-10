@@ -97,6 +97,18 @@ static void _WorkspaceSelfTest()
     SendWMCommand(Globals.hwndMain, IDM_FILE_CLOSE_TAB);
     _WorkspaceTestCheck(&result, workspace->count == 1, "close-tab command routed");
     _WorkspaceTestCheck(&result, workspace->count == 1 && _WorkspaceTestText("alpha\r\nA"), "closing B preserves A");
+    HPATHL folded = Path_Allocate(folder); Path_Append(folded, L"fold.json");
+    _WorkspaceTestCheck(&result, FileLoad(folded, FLF_None, 0, 0), "load folding fixture");
+    SciCall_SetProperty("fold", "1"); Sci_ColouriseAll();
+    _WorkspaceTestCheck(&result, (SciCall_GetFoldLevel(0) & SC_FOLDLEVELHEADERFLAG) != 0, "lexer produces folding header");
+    SciCall_FoldLine(0, SC_FOLDACTION_CONTRACT);
+    _WorkspaceTestCheck(&result, !SciCall_GetFoldExpanded(0) && !SciCall_GetLineVisible(1), "collapse fixture");
+    _WorkspaceSwitch(0); _WorkspaceSwitch(1);
+    _WorkspaceTestCheck(&result, !SciCall_GetFoldExpanded(0) && !SciCall_GetLineVisible(1), "fold state restored after tab switch");
+    SciCall_FoldLine(0, SC_FOLDACTION_EXPAND);
+    _WorkspaceSwitch(0); _WorkspaceSwitch(1);
+    _WorkspaceTestCheck(&result, SciCall_GetFoldExpanded(0) && SciCall_GetLineVisible(1), "expanded state remains expanded");
+    _WorkspaceCloseActive(); Path_Release(folded);
     _WorkspaceTestCheck(&result, _WorkspaceCanClose(FSF_Ask), "all saved tabs can close");
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;

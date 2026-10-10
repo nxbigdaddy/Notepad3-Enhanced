@@ -9,6 +9,7 @@ New-Item -ItemType Directory -Path $taskFolder | Out-Null
 [IO.File]::WriteAllText((Join-Path $taskFolder 'a.txt'), "alpha`r`n", [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $taskFolder 'b.txt'), "beta`r`n", [Text.UnicodeEncoding]::new($false, $true))
 [IO.File]::WriteAllText((Join-Path $taskFolder 'c.txt'), "gamma`r`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $taskFolder 'fold.json'), "{`r`n  `"nested`": {`r`n    `"value`": 1`r`n  }`r`n}`r`n", [Text.UTF8Encoding]::new($false))
 $taskPreviousEnvironment = $env:NP3_WORKSPACE_SELFTEST_DIR
 try {
     $env:NP3_WORKSPACE_SELFTEST_DIR = $taskFolder
