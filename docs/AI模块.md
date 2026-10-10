@@ -2,7 +2,7 @@
 
 ## 第二十五轮：协议与凭据基础
 
-当前已接入 AiCore 构建和原生模块测试，**尚无 AI 界面及 HTTP 请求执行**。没有连接真实服务或生成假模型结果；后续继续接入可配置服务、后台执行、取消、差异确认及版本安全应用。
+AiCore 协议、凭据和第二十六轮 AiHttp 异步传输已接入构建与原生测试。**AI 配置、四操作执行界面与差异应用尚未接入**。没有连接真实供应商；本地模拟服务用于验证真实 HTTP/HTTPS 路径。后续继续接入界面及版本安全应用。
 
 ### 协议
 
@@ -16,10 +16,26 @@
 
 密钥通过 Windows Credential Manager 的 Generic Credential 保存到 Notepad3/AI/<profile>，不写应用 INI。profile 限制长度和字符；密钥限制 2048 字节及可打印非空白 ASCII，拒绝换行头注入。读取结果由调用方拥有，AiCredential_Free 清零并释放。保存、读取、更新及删除返回实际 Windows 状态。
 
-服务完整 URL 接受 HTTPS；本地 HTTP 只接受 localhost、127.0.0.1 或 IPv6 回环，不允许远程明文 HTTP、URL 用户名/密码、片段或控制字符。TLS 连接、重定向规则及具体取消机制尚待 HTTP 层实现。
+服务完整 URL 接受 HTTPS；本地 HTTP 只接受 localhost、127.0.0.1 或 IPv6 回环，不允许远程明文 HTTP、URL 用户名/密码、片段或控制字符。第二十六轮 HTTP 层已接入默认系统 TLS 校验、重定向拒绝和等待期间取消。合法远程服务、代理环境与用户凭据仍待实际验证。
 
 ## 验证
 
 scripts/test-ai-core.cmd 的 47 项检查通过：地址边界、四操作合法 JSON、中文字节与转义、输入限额、首个候选、代理对解码、截断/空/工具调用拒绝、重复字段、非法 JSON/Unicode、Windows 凭据不存在/保存/独立读取/更新/非法写入保持原键/删除及再次读取确认。凭据测试只创建独立 PID/时间戳 profile 的临时假密钥，结束时删除，不读取已有用户服务配置。
 
 完整 Release x64 构建及新版 99 项工作区检查通过。两种编码保存字节及 HTML 内容独立核对继续通过。证据 artifacts/workspace-test-04cff0f26d3b411b8e6673dfc8050206；包 artifacts/ai-core-x64-v25/Notepad3.exe，模块测试 artifacts/ai_core_test.exe。
+
+## 第二十六轮：HTTP 传输
+
+每个服务 origin（scheme/host/port）保留一个异步 WinHTTP 客户端，防止连续请求反复创建会话导致运行时资源持续增加；同一客户端一次执行一个请求，冲突返回 Busy。客户端不能复用到另一 origin，由调用方持有直到工作返回。远程采用系统自动代理，回环不走代理。自动 Cookie 和认证、重定向关闭，显式 Bearer 头按可打印 ASCII 验证。
+
+AiHttp_Run 在后台工作线程调用，网络发送、接收头和读取均异步，由独立状态事件等待，每 50 ms 检查取消和全程截止时间（100 至 120000 ms）。取消/超时通过关闭异步请求中止等待；请求体、读取缓冲及状态由 shared_ptr 保留直到 HANDLE_CLOSING 最后通知，避免取消后回调访问已经释放的数据。授权头在状态销毁时清零。协议解析前后再检查取消及期限，非成功情况不产生可应用内容。
+
+实现依据微软[关闭异步请求与最后回调的说明](https://learn.microsoft.com/en-us/windows/win32/api/winhttp/nf-winhttp-winhttpclosehandle)；不对同步请求做跨线程强制关闭。HTTP 状态、WinHTTP 错误与协议状态分别保留，200 响应仍须通过完整文本协议解析。总下载 2 MiB 超限停止，不自动重发业务操作。
+
+### HTTP 验证
+
+scripts/test-ai-http.cmd 使用 Python 本地 HTTP 与自签名 HTTPS 服务，测试依赖 cryptography（仅开发测试，不打包进应用）。19 项原生传输检查通过：实际请求 model/messages/中文/Bearer 校验、响应中文及代理对解码、401、302 未跟随、非法 JSON、不完整生成、下载上限、截止时间、等待响应期间取消、逐字节读取期间取消、预取消、头注入拒绝、取消后新请求正常、客户端 origin 隔离和不受信任证书拒绝。模拟服务独立记录无协议错误、无重定向目标请求、无自签名 TLS 服务 POST。
+
+连续 20/40/60 次成功请求后进程句柄数均为 333。此前临时诊断确认应用请求状态全部销毁，发现每请求新建会话时进程句柄仍增长；改为服务客户端复用后稳定，临时诊断代码已移除。正式回归继续检查资源增长，不将缓存预热当作资源泄漏或用扩大容差掩盖线性增长。
+
+HTTP 证据 artifacts/ai-http-test-1791664138221706300（native-test.log、server-verification.json）；完整 x64 Release 构建及新版 99 项工作区检查通过，编码保存字节与 HTML 导出独立核对通过。工作区证据 artifacts/workspace-test-417b8a9e579946389d819a79edef4de1；包 artifacts/ai-http-x64-v26。
