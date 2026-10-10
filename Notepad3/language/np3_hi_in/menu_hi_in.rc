@@ -366,6 +366,7 @@ BEGIN
         MENUITEM "File Tree", IDM_VIEW_FILETREE
         MENUITEM "Split Editor", IDM_VIEW_EDITOR_SPLIT
         MENUITEM "Log Filter", IDM_VIEW_LOG_FILTER
+        MENUITEM "AI Assistant", IDM_VIEW_AI_PANEL
         MENUITEM "दीर्घ रेखा चिन्हक (&L)\tCtrl+Alt+L",       IDM_VIEW_LONGLINEMARKER
         MENUITEM "इंडेंटेशन निर्देशिका (&G)\tCtrl+Shift+G",    IDM_VIEW_SHOWINDENTGUIDES
         MENUITEM SEPARATOR

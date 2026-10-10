@@ -50,6 +50,7 @@
 #include "Markdown/MarkdownPreview.h"
 #include "Workspace/FileTree.h"
 #include "TextTools/LogFilterPanel.h"
+#include "AI/AiPanel.h"
 #include "Markdown/MarkdownPdf.h"
 #include "TextTools/JsonFormat.h"
 #include "StyleLexers/EditLexer.h"
@@ -391,6 +392,12 @@ static bool _WorkspaceCanClose(FileSaveFlags flags);
 static void _WorkspaceDispose();
 static void _FileTreeToggle();
 static void _LogFilterToggle(void);
+static void _AiToggle(void);
+static bool _AiRun(const AI_PANEL_CAPTURE* request);
+static bool _AiApply(const AI_PANEL_APPLY* request);
+static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey);
+static int _AiLayout(int x, int y, int width, int height);
+static void* _WorkspaceAi(void);
 static bool _LogFilterRun(void);
 static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location);
 static int _ConfigCheck(int kind, bool showMessage);
@@ -2612,6 +2619,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
             else InfoBoxLng(MB_ICONINFORMATION, NULL, IDS_MUI_MARKDOWN_PDF_DONE);
         }
         return 0;
+    case NP3_WM_AI_CAPTURE: return _AiRun((const AI_PANEL_CAPTURE*)lParam);
+    case NP3_WM_AI_APPLY: return _AiApply((const AI_PANEL_APPLY*)lParam);
+    case NP3_WM_AI_SAVE: return _AiSave((const AI_PANEL_SAVE*)lParam, wParam != 0);
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
     case NP3_WM_LOGFILTER_LOCATE: return _LogFilterLocate((const LOG_PANEL_LOCATION*)lParam);
     case NP3_WM_FILETREE_OPEN: {
@@ -3975,6 +3985,7 @@ LRESULT MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam)
     int const treeWidth = FileTree_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
     x += treeWidth; cx -= treeWidth;
     cy -= LogPanel_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
+    cy -= _AiLayout(x, y, max_i(0, cx), max_i(0, cy));
     cx -= MarkdownPreview_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
 
     cx -= _SplitLayout(x, y, max_i(0, cx), max_i(0, cy));
@@ -5250,6 +5261,7 @@ LRESULT MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam)
     CheckCmd(hmenu, IDM_VIEW_WORDWRAP, Globals.fvCurFile.bWordWrap);
     CheckCmd(hmenu, IDM_VIEW_FILETREE, FileTree_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_LOG_FILTER, LogPanel_IsOpen(hwnd));
+    CheckCmd(hmenu, IDM_VIEW_AI_PANEL, AiPanel_IsOpen(_WorkspaceAi()));
     CheckCmd(hmenu, IDM_VIEW_EDITOR_SPLIT, _SplitIsOpen());
     CheckCmd(hmenu, IDM_VIEW_MARKDOWN_PREVIEW, MarkdownPreview_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_LONGLINEMARKER, Settings.MarkLongLines);
@@ -7245,6 +7257,9 @@ static bool _HandleViewAndSettingsCommands(HWND hwnd, UINT umsg, WPARAM wParam, 
 
     case IDM_VIEW_EDITOR_SPLIT:
         _SplitToggle();
+        break;
+    case IDM_VIEW_AI_PANEL:
+        _AiToggle();
         break;
     case IDM_VIEW_LOG_FILTER:
         _LogFilterToggle();
@@ -12473,6 +12488,85 @@ static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location)
         SciCall_SetSel((DocPos)start, (DocPos)(start + length)); SciCall_ScrollCaret(); SetFocus(Globals.hwndEdit); return true;
     }
     return false;
+}
+
+static void* _WorkspaceAi(void) { DOCUMENT_WORKSPACE* workspace = _Workspace(); return workspace ? workspace->ai : NULL; }
+static AI_PANEL_SETTINGS _AiSettings(void)
+{
+    AI_PANEL_SETTINGS result = {0};
+    StringCchCopyW(result.endpoint, COUNTOF(result.endpoint), Settings2.AIEndpoint);
+    StringCchCopyW(result.model, COUNTOF(result.model), Settings2.AIModel);
+    result.timeoutMs = Settings2.AITimeoutMs; return result;
+}
+static int _AiLayout(int x, int y, int width, int height) { return AiPanel_Layout(_WorkspaceAi(), x, y, width, height); }
+static void _AiToggle(void)
+{
+    if (!_WorkspaceEnsure()) return;
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace->ai) workspace->ai = AiPanel_Create();
+    WCHAR strings[AP_COUNT][256]; const WCHAR* labels[AP_COUNT];
+    for (int i = 0; i < AP_COUNT; ++i) { GetLngString(IDS_MUI_AI_ENDPOINT + i, strings[i], COUNTOF(strings[i])); labels[i] = strings[i]; }
+    AI_PANEL_SETTINGS settings = _AiSettings(); AiPanel_Toggle(workspace->ai, Globals.hwndMain, &settings, labels);
+}
+static bool _AiRun(const AI_PANEL_CAPTURE* request)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace || !request || Sci_IsMultiOrRectangleSelection()) return false;
+    DocPos anchor = SciCall_GetAnchor(), caret = SciCall_GetCurrentPos();
+    DocPos start = min_p(anchor, caret), end = max_p(anchor, caret);
+    if (request->action != AI_GENERATE && start == end) { start = 0; end = SciCall_GetLength(); }
+    if (end - start > 256 * 1024) return false;
+    WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
+    AI_PANEL_SOURCE source = {doc->id, doc->version, start, end, anchor, caret};
+    AI_PANEL_SETTINGS settings = _AiSettings();
+    return AiPanel_Run(workspace->ai, &settings, &source, request->action, SciCall_GetRangePointer(start, end - start), (size_t)(end - start), request->instruction);
+}
+static bool _AiApply(const AI_PANEL_APPLY* request)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace || !request || !request->result || !request->resultLength || SciCall_GetReadOnly() || Sci_IsMultiOrRectangleSelection()) return false;
+    WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
+    const AI_PANEL_SOURCE* source = &request->source;
+    if (doc->id != source->id || doc->version != source->version || SciCall_GetAnchor() != source->anchor || SciCall_GetCurrentPos() != source->caret) return false;
+    DocPos length = SciCall_GetLength();
+    if (source->start < 0 || source->end < source->start || source->end > length || (size_t)(source->end - source->start) != request->originalLength) return false;
+    const char* original = SciCall_GetRangePointer((DocPos)source->start, (DocPos)request->originalLength);
+    if (request->originalLength && (!original || !request->original || memcmp(original, request->original, request->originalLength))) return false;
+    UndoTransActionBegin();
+    SciCall_SetTargetRange((DocPos)source->start, (DocPos)source->end);
+    Sci_ReplaceTargetTestChgHist((DocPos)request->resultLength, request->result);
+    SciCall_SetSel((DocPos)source->start, (DocPos)(source->start + request->resultLength));
+    EndUndoTransAction(); return true;
+}
+static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
+{
+    if (!request || AiPanel_IsBusy(_WorkspaceAi()) || AiEndpoint_Validate(request->settings.endpoint) != AI_OK) return false;
+    WCHAR profile[73]; if (AiCredential_ServiceProfile(request->settings.endpoint, profile, COUNTOF(profile)) != ERROR_SUCCESS) return false;
+    if (removeKey) { DWORD status = AiCredential_Delete(profile); return status == ERROR_SUCCESS || status == ERROR_NOT_FOUND; }
+    if (!request->settings.model[0] || request->settings.timeoutMs < 100 || request->settings.timeoutMs > 120000) return false;
+    int modelBytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, request->settings.model, -1, NULL, 0, NULL, NULL);
+    if (modelBytes < 2 || modelBytes > 257) return false;
+    char* previous = NULL; bool changedKey = request->secret && request->secret[0];
+    if (changedKey) {
+        DWORD status = AiCredential_Load(profile, &previous);
+        if (status != ERROR_SUCCESS && status != ERROR_NOT_FOUND) return false;
+        if (AiCredential_Save(profile, request->secret) != ERROR_SUCCESS) { AiCredential_Free(previous); return false; }
+    }
+    bool saved = false;
+    if (OpenSettingsFile(__FUNCTION__)) {
+        bool updated = Globals.bCanSaveIniFile && IniSectionSetString(L"Settings2", L"AIEndpoint", request->settings.endpoint);
+        updated = updated && IniSectionSetString(L"Settings2", L"AIModel", request->settings.model);
+        updated = updated && IniSectionSetInt(L"Settings2", L"AITimeoutMs", (int)request->settings.timeoutMs);
+        saved = CloseSettingsFile(__FUNCTION__, updated) && updated;
+    }
+    if (!saved && changedKey) { if (previous) AiCredential_Save(profile, previous); else AiCredential_Delete(profile); }
+    AiCredential_Free(previous);
+    if (saved) {
+        StringCchCopyW(Settings2.AIEndpoint, COUNTOF(Settings2.AIEndpoint), request->settings.endpoint);
+        StringCchCopyW(Settings2.AIModel, COUNTOF(Settings2.AIModel), request->settings.model);
+        Settings2.AITimeoutMs = request->settings.timeoutMs;
+    }
+    return saved;
 }
 
 #include "Workspace/WorkspaceSelfTest.inc"

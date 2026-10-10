@@ -833,6 +833,9 @@ typedef struct SETTINGS2_T {
     bool    LexerSQLNumberSignAsComment;
     bool    AtomicFileSave;
     bool    ReopenWorkspace;
+    WCHAR   AIEndpoint[2049];
+    WCHAR   AIModel[257];
+    int     AITimeoutMs;
     bool    DiscardOnClosingUntitledPasteBoard;
     int     ExitOnESCSkipLevel;
     int     ZoomTooltipTimeout;

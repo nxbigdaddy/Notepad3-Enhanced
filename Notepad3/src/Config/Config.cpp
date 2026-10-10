@@ -1491,6 +1491,9 @@ void LoadSettings()
 
     Settings2.AtomicFileSave = IniSectionGetBool(IniSecSettings2, L"AtomicFileSave", true);
     Settings2.ReopenWorkspace = IniSectionGetBool(IniSecSettings2, L"ReopenWorkspace", true);
+    IniSectionGetString(IniSecSettings2, L"AIEndpoint", L"", Settings2.AIEndpoint, COUNTOF(Settings2.AIEndpoint));
+    IniSectionGetString(IniSecSettings2, L"AIModel", L"", Settings2.AIModel, COUNTOF(Settings2.AIModel));
+    Settings2.AITimeoutMs = clampi(IniSectionGetInt(IniSecSettings2, L"AITimeoutMs", 60000), 100, 120000);
 
     Settings2.ExitOnESCSkipLevel = clampi(IniSectionGetInt(IniSecSettings2, L"ExitOnESCSkipLevel", Default_ExitOnESCSkipLevel), 0, 2);
 

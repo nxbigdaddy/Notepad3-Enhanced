@@ -436,3 +436,29 @@ END
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
 
+
+STRINGTABLE
+BEGIN
+    IDS_MUI_AI_ENDPOINT "服务接口地址"
+    IDS_MUI_AI_MODEL "模型"
+    IDS_MUI_AI_KEY "API 密钥（留空保留）"
+    IDS_MUI_AI_TIMEOUT "超时（毫秒）"
+    IDS_MUI_AI_SAVE "保存配置"
+    IDS_MUI_AI_DELETE "删除密钥"
+    IDS_MUI_AI_EXPLAIN "解释"
+    IDS_MUI_AI_TRANSLATE "翻译"
+    IDS_MUI_AI_REWRITE "改写"
+    IDS_MUI_AI_GENERATE "生成"
+    IDS_MUI_AI_CANCEL "取消请求"
+    IDS_MUI_AI_APPLY "应用结果"
+    IDS_MUI_AI_ORIGINAL "原文"
+    IDS_MUI_AI_RESULT "结果"
+    IDS_MUI_AI_INSTRUCTION "附加要求"
+    IDS_MUI_AI_READY "配置服务后选择操作。"
+    IDS_MUI_AI_RUNNING "正在请求…"
+    IDS_MUI_AI_DONE "请查看差异后应用结果。"
+    IDS_MUI_AI_CANCELED "请求已取消。"
+    IDS_MUI_AI_ERROR "AI 请求或配置失败。"
+    IDS_MUI_AI_STALE "请回到原文档和选区；内容已修改时需重新请求。"
+    IDS_MUI_AI_SAVED "已保存。"
+END

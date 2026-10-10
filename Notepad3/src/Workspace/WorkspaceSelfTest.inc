@@ -1,3 +1,4 @@
+#include <richedit.h>
 // Development-only opt-in test driven by NP3_WORKSPACE_SELFTEST_DIR. The runner
 // creates an isolated marker and fixtures; this code never picks user documents.
 typedef struct WORKSPACE_TEST_RESULT { HANDLE log; int checks, failures; } WORKSPACE_TEST_RESULT;
@@ -24,6 +25,15 @@ static bool _WorkspaceTestTreeReady()
         while (PeekMessageW(&message, NULL, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
     }
     return !FileTree_IsLoading(Globals.hwndMain);
+}
+static bool _WorkspaceTestAiReady(void)
+{
+    DWORD start = GetTickCount();
+    while (AiPanel_IsBusy(_WorkspaceAi()) && GetTickCount() - start < 5000) {
+        MsgWaitForMultipleObjectsEx(0, NULL, 50, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        MSG message; while (PeekMessageW(&message, NULL, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+    }
+    return !AiPanel_IsBusy(_WorkspaceAi());
 }
 static bool _WorkspaceTestLogReady(void)
 {
@@ -350,6 +360,97 @@ static void _WorkspaceSelfTest()
     _LogFilterRun();
     _WorkspaceTestCheck(&result, _WorkspaceTestLogReady() && ListView_GetItemCount(GetDlgItem(logPanel, 107)) == 1 && _WorkspaceTestText("alpha\r\nA"), "close during log work and reopen loads fresh results without altering editor");
     _LogFilterToggle();
+    _AiToggle();
+    HWND aiPanel = FindWindowExW(Globals.hwndMain, NULL, L"NP3AiPanel", NULL);
+    _WorkspaceTestCheck(&result, AiPanel_IsOpen(workspace->ai) && GetDlgItem(aiPanel, 110) && GetDlgItem(aiPanel, 113) && !IsWindowEnabled(GetDlgItem(aiPanel, 115)), "AI panel exposes four actions and disables apply without a result");
+    AI_PANEL_CAPTURE aiRequest = {AI_REWRITE, ""};
+    _WorkspaceTestCheck(&result, !_AiRun(&aiRequest) && _WorkspaceTestText("alpha\r\nA") && !AiPanel_IsBusy(workspace->ai), "unconfigured AI never changes source or starts a request");
+    SciCall_SetSel(0, 5);
+    AI_PANEL_SOURCE aiSource = {workspace->documents[workspace->active].id, workspace->documents[workspace->active].version, 0, 5, 0, 5};
+    AI_PANEL_APPLY aiApply = {aiSource, "alpha", 5, "translated", 10};
+    SciCall_SetSel(0, 4);
+    _WorkspaceTestCheck(&result, !_AiApply(&aiApply) && _WorkspaceTestText("alpha\r\nA"), "AI apply rejects changed selection");
+    SciCall_SetSel(0, 5); SciCall_SetReadOnly(true);
+    _WorkspaceTestCheck(&result, !_AiApply(&aiApply) && _WorkspaceTestText("alpha\r\nA"), "AI apply rejects read-only document");
+    SciCall_SetReadOnly(false);
+    aiApply.source.version++;
+    _WorkspaceTestCheck(&result, !_AiApply(&aiApply) && _WorkspaceTestText("alpha\r\nA"), "AI apply rejects stale document version");
+    aiApply.source = aiSource; aiApply.source.id++;
+    _WorkspaceTestCheck(&result, !_AiApply(&aiApply) && _WorkspaceTestText("alpha\r\nA"), "AI apply rejects another source document");
+    aiApply.source = aiSource; aiApply.original = "wrong";
+    _WorkspaceTestCheck(&result, !_AiApply(&aiApply) && _WorkspaceTestText("alpha\r\nA"), "AI apply independently verifies original bytes");
+    aiApply.original = "alpha";
+    _WorkspaceTestCheck(&result, _AiApply(&aiApply) && _WorkspaceTestText("translated\r\nA") && IsSaveNeeded(), "confirmed AI replacement updates selected text and dirty state");
+    _WorkspaceTestCheck(&result, !_AiApply(&aiApply) && _WorkspaceTestText("translated\r\nA"), "AI result cannot be applied twice");
+    SciCall_Undo();
+    _WorkspaceTestCheck(&result, _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(), "AI replacement is undone in one step");
+    _AiToggle(); _AiToggle();
+    _WorkspaceTestCheck(&result, AiPanel_IsOpen(workspace->ai) && !AiPanel_IsBusy(workspace->ai) && _WorkspaceTestText("alpha\r\nA"), "AI panel closes and reopens with editor state intact");
+    _AiToggle();
+    if (Path_IsEmpty(Paths.IniFile)) {
+        AI_PANEL_SAVE failedSave = {0}; WCHAR failedProfile[73] = {0}; char* failedKey = NULL;
+        StringCchPrintfW(failedSave.settings.endpoint,COUNTOF(failedSave.settings.endpoint),L"https://rollback-test.invalid/%lu-%llu",GetCurrentProcessId(),GetTickCount64());
+        StringCchCopyW(failedSave.settings.model,COUNTOF(failedSave.settings.model),L"rollback-test-model"); failedSave.settings.timeoutMs=5000; failedSave.secret="fake-rollback-new";
+        bool absent=AiCredential_ServiceProfile(failedSave.settings.endpoint,failedProfile,COUNTOF(failedProfile))==ERROR_SUCCESS && AiCredential_Load(failedProfile,&failedKey)==ERROR_NOT_FOUND;
+        AiCredential_Free(failedKey); failedKey=NULL;
+        _WorkspaceTestCheck(&result,absent,"AI rollback fixture credential starts absent");
+        if(absent) {
+            bool rejected=!_AiSave(&failedSave,false);
+            _WorkspaceTestCheck(&result,rejected && AiCredential_Load(failedProfile,&failedKey)==ERROR_NOT_FOUND && !Settings2.AIEndpoint[0],"failed AI settings save rolls back newly created key and runtime configuration");
+            AiCredential_Free(failedKey); failedKey=NULL;
+            if(AiCredential_Save(failedProfile,"fake-rollback-existing")==ERROR_SUCCESS) {
+                rejected=!_AiSave(&failedSave,false);
+                bool restored=AiCredential_Load(failedProfile,&failedKey)==ERROR_SUCCESS && !strcmp(failedKey,"fake-rollback-existing");
+                _WorkspaceTestCheck(&result,rejected && restored,"failed AI settings save restores previous scoped credential");
+                AiCredential_Free(failedKey); AiCredential_Delete(failedProfile);
+            } else _WorkspaceTestCheck(&result,false,"prepare existing rollback fixture key");
+        }
+    }
+    WCHAR aiUrl[2049] = {0};
+    if (GetEnvironmentVariableW(L"NP3_AI_SELFTEST_URL", aiUrl, COUNTOF(aiUrl))) {
+        WCHAR profile[73] = {0}; char* key = NULL;
+        bool isolatedKey = AiCredential_ServiceProfile(aiUrl, profile, COUNTOF(profile)) == ERROR_SUCCESS && AiCredential_Load(profile, &key) == ERROR_NOT_FOUND;
+        AiCredential_Free(key); key = NULL;
+        _WorkspaceTestCheck(&result, isolatedKey, "AI fixture service credential is initially absent");
+        if (isolatedKey) {
+            _AiToggle(); aiPanel = FindWindowExW(Globals.hwndMain, NULL, L"NP3AiPanel", NULL);
+            SetWindowTextW(GetDlgItem(aiPanel,101),aiUrl); SetWindowTextW(GetDlgItem(aiPanel,102),L"panel-test-model");
+            SetWindowTextW(GetDlgItem(aiPanel,103),L"fake-panel-test-key"); SetDlgItemInt(aiPanel,104,5000,FALSE);
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
+            WCHAR savedEndpoint[2049] = {0};
+            IniFileGetString(Paths.IniFile,L"Settings2",L"AIEndpoint",L"",savedEndpoint,COUNTOF(savedEndpoint));
+            bool savedKey = AiCredential_Load(profile,&key) == ERROR_SUCCESS && strcmp(key,"fake-panel-test-key") == 0;
+            AiCredential_Free(key); key = NULL;
+            _WorkspaceTestCheck(&result, savedKey && !wcscmp(savedEndpoint,aiUrl) && GetWindowTextLengthW(GetDlgItem(aiPanel,103)) == 0, "AI panel persists service and scoped key with independent readback");
+            for (int action=AI_EXPLAIN;action<=AI_GENERATE;++action) {
+                SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(aiPanel,120),action == AI_GENERATE ? L"生成中文" : L"");
+                SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(110+action,BN_CLICKED),0);
+                bool ready=_WorkspaceTestAiReady(); WCHAR output[128] = {0}; GetWindowTextW(GetDlgItem(aiPanel,122),output,COUNTOF(output));
+                _WorkspaceTestCheck(&result,ready && !wcscmp(output,L"模拟结果") && _WorkspaceTestText("alpha\r\nA"),"AI action reaches local service and previews result without editing");
+                _WorkspaceTestCheck(&result,IsWindowEnabled(GetDlgItem(aiPanel,115)) == (action != AI_EXPLAIN),"AI explain remains view-only while edit results allow manual apply");
+                if(action==AI_REWRITE) {
+                    CHARFORMAT2W originalFormat = {0}, resultFormat = {0}; originalFormat.cbSize=sizeof(originalFormat); resultFormat.cbSize=sizeof(resultFormat);
+                    SendMessageW(GetDlgItem(aiPanel,121),EM_SETSEL,0,1); SendMessageW(GetDlgItem(aiPanel,121),EM_GETCHARFORMAT,SCF_SELECTION,(LPARAM)&originalFormat);
+                    SendMessageW(GetDlgItem(aiPanel,122),EM_SETSEL,0,1); SendMessageW(GetDlgItem(aiPanel,122),EM_GETCHARFORMAT,SCF_SELECTION,(LPARAM)&resultFormat);
+                    _WorkspaceTestCheck(&result,(originalFormat.dwMask & CFM_BACKCOLOR) && originalFormat.crBackColor==RGB(255,220,220),"AI original changed range has red difference highlighting");
+                    _WorkspaceTestCheck(&result,(resultFormat.dwMask & CFM_BACKCOLOR) && resultFormat.crBackColor==RGB(215,245,215),"AI result changed range has green difference highlighting");
+
+                    SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(115,BN_CLICKED),0);
+                    _WorkspaceTestCheck(&result,_WorkspaceTestText("模拟结果\r\nA") && !IsWindowEnabled(GetDlgItem(aiPanel,115)),"AI preview apply button changes original selection once");
+                    SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"actual AI response replacement undoes in one step");
+                }
+            }
+            SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(aiPanel,120),L"delay");
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,AiPanel_IsBusy(workspace->ai) && !IsWindowEnabled(GetDlgItem(aiPanel,105)),"AI running request disables configuration changes");
+            DWORD waitStart=GetTickCount(); while(GetTickCount()-waitStart<200) { MsgWaitForMultipleObjectsEx(0,NULL,20,QS_ALLINPUT,MWMO_INPUTAVAILABLE); MSG message; while(PeekMessageW(&message,NULL,0,0,PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); } }
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(114,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA") && !IsWindowEnabled(GetDlgItem(aiPanel,115)),"AI panel cancel finishes promptly without applying delayed response");
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(106,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,AiCredential_Load(profile,&key) == ERROR_NOT_FOUND && !key,"AI delete-key button removes only fixture service credential");
+            AiCredential_Free(key); AiCredential_Delete(profile); _AiToggle();
+        }
+    }
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;
     StringCchPrintfA(summary, COUNTOF(summary), "RESULT checks=%i failures=%i\r\n", result.checks, result.failures);

@@ -366,6 +366,7 @@ BEGIN
         MENUITEM "File Tree", IDM_VIEW_FILETREE
         MENUITEM "Split Editor", IDM_VIEW_EDITOR_SPLIT
         MENUITEM "Log Filter", IDM_VIEW_LOG_FILTER
+        MENUITEM "AI Assistant", IDM_VIEW_AI_PANEL
         MENUITEM "Chỉ báo dòng dài(&L)\tCtrl+Alt+L",             IDM_VIEW_LONGLINEMARKER
         MENUITEM "Hướng dẫn thụt lề(&A)\tCtrl+Shift+G",       IDM_VIEW_SHOWINDENTGUIDES
         MENUITEM SEPARATOR

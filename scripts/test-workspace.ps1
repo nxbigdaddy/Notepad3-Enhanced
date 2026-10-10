@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/log-filter-panel-x64-v24/Notepad3.exe')
+param([string]$Executable = 'artifacts/log-filter-panel-x64-v24/Notepad3.exe', [string]$AiEndpoint = '')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -23,10 +23,19 @@ for ($taskIndex = 0; $taskIndex -lt 5012; ++$taskIndex) {
     [IO.File]::WriteAllText((Join-Path $taskLargeDirectory ('item-{0:00000}.txt' -f $taskIndex)), '', [Text.UTF8Encoding]::new($false))
 }
 $taskPreviousEnvironment = $env:NP3_WORKSPACE_SELFTEST_DIR
+$taskPreviousAi = $env:NP3_AI_SELFTEST_URL
+$taskArguments = @('/n', '/f0')
+if ($AiEndpoint) {
+    $taskIni = Join-Path $taskFolder 'test.ini'
+    [IO.File]::WriteAllText($taskIni, "[Settings2]`r`nReopenWorkspace=false`r`n", [Text.UTF8Encoding]::new($true))
+    $taskArguments = @('/n', '/f', ('"' + $taskIni + '"'))
+}
 try {
     $env:NP3_WORKSPACE_SELFTEST_DIR = $taskFolder
-    $taskProcess = Start-Process -FilePath $taskExe -ArgumentList @('/n', '/f0') -WindowStyle Hidden -PassThru
+    if ($AiEndpoint) { $env:NP3_AI_SELFTEST_URL = $AiEndpoint } else { Remove-Item Env:NP3_AI_SELFTEST_URL -ErrorAction SilentlyContinue }
+    $taskProcess = Start-Process -FilePath $taskExe -ArgumentList $taskArguments -WindowStyle Hidden -PassThru
 } finally {
+    if ($null -eq $taskPreviousAi) { Remove-Item Env:NP3_AI_SELFTEST_URL -ErrorAction SilentlyContinue } else { $env:NP3_AI_SELFTEST_URL = $taskPreviousAi }
     if ($null -eq $taskPreviousEnvironment) { Remove-Item Env:NP3_WORKSPACE_SELFTEST_DIR -ErrorAction SilentlyContinue }
     else { $env:NP3_WORKSPACE_SELFTEST_DIR = $taskPreviousEnvironment }
 }

@@ -2,6 +2,7 @@
 #include "../TextTools/JsonFormat.h"
 #include <winhttp.h>
 #include <wincred.h>
+#include <bcrypt.h>
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -10,6 +11,7 @@
 #include <string_view>
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "bcrypt.lib")
 namespace {
 bool Utf8(std::string_view text) {
     return text.find('\0') == std::string_view::npos && (text.empty() || MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0) > 0);
@@ -152,6 +154,19 @@ extern "C" int AiProtocol_Response(const char* json, size_t length, char** outpu
         if (reader.Extract(reasonPath, 3, reason) && reason != "stop") return AI_INCOMPLETE;
         return Copy(content, output, outputLength);
     } catch (const BadJson&) { return AI_RESPONSE; } catch (...) { return AI_MEMORY; }
+}
+extern "C" DWORD AiCredential_ServiceProfile(const wchar_t* endpoint, wchar_t* profile, size_t capacity) {
+    if (!profile || capacity < 73 || AiEndpoint_Validate(endpoint) != AI_OK) return ERROR_INVALID_PARAMETER;
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0) return ERROR_INVALID_FUNCTION;
+    unsigned char hash[32];
+    NTSTATUS status = BCryptHash(algorithm, nullptr, 0, reinterpret_cast<PUCHAR>(const_cast<wchar_t*>(endpoint)), static_cast<ULONG>(wcslen(endpoint) * sizeof(wchar_t)), hash, sizeof(hash));
+    BCryptCloseAlgorithmProvider(algorithm, 0);
+    if (status < 0) return ERROR_INVALID_FUNCTION;
+    wcscpy_s(profile, capacity, L"service-");
+    const wchar_t* hex = L"0123456789abcdef";
+    for (size_t i = 0; i < 32; ++i) { profile[8 + 2 * i] = hex[hash[i] >> 4]; profile[9 + 2 * i] = hex[hash[i] & 15]; }
+    profile[72] = 0; return ERROR_SUCCESS;
 }
 extern "C" void AiCredential_Free(char* secret) { if (secret) { SecureZeroMemory(secret, strlen(secret)); std::free(secret); } }
 extern "C" DWORD AiCredential_Save(const wchar_t* profile, const char* secret) {

@@ -19,6 +19,13 @@ int main() {
         expect(AiEndpoint_Validate(L"https://user:password@example.test/v1") == AI_CONFIG, "userinfo credential rejected");
         expect(AiEndpoint_Validate(L"https://example.test/v1#fragment") == AI_CONFIG, "fragment rejected");
         expect(AiEndpoint_Validate(L"https://example.test/\r\n") == AI_CONFIG, "URL controls rejected");
+        wchar_t serviceA[73] = {}, serviceB[73] = {}, serviceAgain[73] = {};
+        expect(AiCredential_ServiceProfile(L"https://example.test/v1", serviceA, 73) == ERROR_SUCCESS && wcslen(serviceA) == 72, "service profile fixed length");
+        expect(AiCredential_ServiceProfile(L"https://example.test/v1", serviceAgain, 73) == ERROR_SUCCESS && !wcscmp(serviceA, serviceAgain), "service profile stable across calls");
+        expect(AiCredential_ServiceProfile(L"https://other.test/v1", serviceB, 73) == ERROR_SUCCESS && wcscmp(serviceA, serviceB), "different service isolates credentials");
+        expect(AiCredential_ServiceProfile(L"https://example.test/v2", serviceB, 73) == ERROR_SUCCESS && wcscmp(serviceA, serviceB), "different endpoint path isolates credentials");
+        expect(AiCredential_ServiceProfile(L"https://example.test/v1", serviceB, 72) == ERROR_INVALID_PARAMETER, "short profile buffer rejected");
+        expect(AiCredential_ServiceProfile(L"http://remote.test/v1", serviceB, 73) == ERROR_INVALID_PARAMETER, "unsafe service has no credential profile");
         const std::string input = "中文\n\"quote\"\\path";
         for (int action = AI_EXPLAIN; action <= AI_GENERATE; ++action) {
             expect(AiProtocol_Request("custom-model", action, input.data(), input.size(), "Keep headings.", &output, &length) == AI_OK, "four actions generate valid request");

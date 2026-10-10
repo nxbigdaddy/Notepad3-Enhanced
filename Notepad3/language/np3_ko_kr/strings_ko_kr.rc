@@ -436,3 +436,29 @@ END
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
 
+
+STRINGTABLE
+BEGIN
+    IDS_MUI_AI_ENDPOINT "Service endpoint"
+    IDS_MUI_AI_MODEL "Model"
+    IDS_MUI_AI_KEY "API key (blank keeps saved key)"
+    IDS_MUI_AI_TIMEOUT "Timeout (ms)"
+    IDS_MUI_AI_SAVE "Save"
+    IDS_MUI_AI_DELETE "Delete key"
+    IDS_MUI_AI_EXPLAIN "Explain"
+    IDS_MUI_AI_TRANSLATE "Translate"
+    IDS_MUI_AI_REWRITE "Rewrite"
+    IDS_MUI_AI_GENERATE "Generate"
+    IDS_MUI_AI_CANCEL "Cancel"
+    IDS_MUI_AI_APPLY "Apply"
+    IDS_MUI_AI_ORIGINAL "Original"
+    IDS_MUI_AI_RESULT "Result"
+    IDS_MUI_AI_INSTRUCTION "Instruction"
+    IDS_MUI_AI_READY "Configure service, then choose an action."
+    IDS_MUI_AI_RUNNING "Request in progress..."
+    IDS_MUI_AI_DONE "Review the result before applying."
+    IDS_MUI_AI_CANCELED "Request canceled."
+    IDS_MUI_AI_ERROR "AI request or configuration failed."
+    IDS_MUI_AI_STALE "Return to the original document and selection; modified documents require a new request."
+    IDS_MUI_AI_SAVED "Saved."
+END

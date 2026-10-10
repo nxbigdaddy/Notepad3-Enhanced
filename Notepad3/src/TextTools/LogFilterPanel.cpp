@@ -111,7 +111,7 @@ extern "C" int LogPanel_Layout(HWND parent, int x, int y, int width, int height)
 extern "C" BOOL LogPanel_Run(HWND parent, const char* text, size_t length, unsigned long long id, unsigned long long version) {
     auto panel = State(Find(parent)); if (!panel || LogPanel_IsBusy(parent)) return FALSE;
     try {
-        if (length > 8 * 1024 * 1024) { Status(panel, LP_LIMIT); return FALSE; }
+        if (length > 8 * 1024 * 1024 || (!text && length)) { Status(panel, LP_LIMIT); return FALSE; }
         auto job = std::make_shared<Job>(); job->text.assign(text ? text : "", length); job->id = id; job->version = version;
         wchar_t pattern[4097]; int chars = GetWindowTextW(panel->edit, pattern, 4097);
         int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, pattern, chars, nullptr, 0, nullptr, nullptr);
