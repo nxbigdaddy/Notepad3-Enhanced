@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/markdown-export-x64-v13/Notepad3.exe')
+param([string]$Executable = 'artifacts/config-check-x64-v15/Notepad3.exe')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))

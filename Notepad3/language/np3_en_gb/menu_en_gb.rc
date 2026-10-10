@@ -255,6 +255,8 @@ BEGIN
             MENUITEM "&Sort Lines...\tAlt+O",             IDM_EDIT_SORTLINES
             MENUITEM "Format JSON", IDM_EDIT_JSON_FORMAT
             MENUITEM "Compact JSON", IDM_EDIT_JSON_COMPACT
+            MENUITEM "Check JSON Structure", IDM_EDIT_CHECK_JSON
+            MENUITEM "Check INI Structure", IDM_EDIT_CHECK_INI
             MENUITEM SEPARATOR
             MENUITEM "&Align Lines...\tAlt+J",            IDM_EDIT_ALIGN
             MENUITEM "Spl&it Lines\tCtrl+I",              IDM_EDIT_SPLITLINES

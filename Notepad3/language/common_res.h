@@ -182,6 +182,13 @@
 #define IDS_MUI_RECOVERY_ERROR          13033
 #define IDS_MUI_MARKDOWN_EXPORT_ERROR   13034
 #define IDS_MUI_MARKDOWN_PDF_ERROR      13035
+#define IDS_MUI_CONFIG_SYNTAX          13036
+#define IDS_MUI_CONFIG_LIMIT           13037
+#define IDS_MUI_CONFIG_JSON            13038
+#define IDS_MUI_CONFIG_TEXT            13039
+#define IDS_MUI_CONFIG_SECTION         13040
+#define IDS_MUI_CONFIG_KEY             13041
+#define IDS_MUI_CONFIG_VALID           14100
 #define IDS_MUI_MARKDOWN_PDF_DONE       14099
 
 
@@ -773,6 +780,8 @@
 #define IDM_EDIT_OPEN_FILE_FROM_SEL          40396
 #define IDM_EDIT_JSON_FORMAT               40397
 #define IDM_EDIT_JSON_COMPACT              40398
+#define IDM_EDIT_CHECK_JSON                40399
+#define IDM_EDIT_CHECK_INI                 40400
 
 #define IDM_VIEW_SCHEME                 41001
 #define IDM_VIEW_USE2NDDEFAULT          41002

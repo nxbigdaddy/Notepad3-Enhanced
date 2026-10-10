@@ -255,6 +255,8 @@ BEGIN
             MENUITEM "排序(&S)...\tAlt+O",                     IDM_EDIT_SORTLINES
             MENUITEM "JSON 格式化", IDM_EDIT_JSON_FORMAT
             MENUITEM "JSON 压缩", IDM_EDIT_JSON_COMPACT
+            MENUITEM "Check JSON Structure", IDM_EDIT_CHECK_JSON
+            MENUITEM "Check INI Structure", IDM_EDIT_CHECK_INI
             MENUITEM SEPARATOR
             MENUITEM "对齐(&A)...\tAlt+J",                     IDM_EDIT_ALIGN
             MENUITEM "拆分行(&I)\tCtrl+I",                      IDM_EDIT_SPLITLINES

@@ -1290,6 +1290,7 @@
     <ClInclude Include="Workspace\SessionStore.h" />
     <ClInclude Include="Workspace\SessionStoreC.h" />
     <ClCompile Include="TextTools\JsonFormat.cpp" />
+    <ClCompile Include="TextTools\ConfigValidate.cpp" />
     <ClCompile Include="Markdown\MarkdownRender.cpp" />
     <ClCompile Include="Markdown\MarkdownExport.cpp" />
     <ClCompile Include="Markdown\MarkdownPdf.cpp" />
@@ -1304,6 +1305,8 @@
     <ClInclude Include="Workspace\WorkspaceRecovery.inc" />
     <ClInclude Include="Workspace\WorkspaceRecoveryTest.inc" />
     <ClInclude Include="TextTools\JsonFormat.h" />
+    <ClInclude Include="TextTools\ConfigValidate.h" />
+    <ClInclude Include="TextTools\ConfigCheck.inc" />
     <ClInclude Include="Markdown\MarkdownRender.h" />
     <ClInclude Include="Markdown\MarkdownExport.h" />
     <ClInclude Include="Markdown\MarkdownPdf.h" />

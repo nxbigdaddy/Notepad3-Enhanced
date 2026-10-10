@@ -381,6 +381,7 @@ static bool _WorkspaceSwitch(int index);
 static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
 static void _WorkspaceDispose();
+static int _ConfigCheck(int kind, bool showMessage);
 static void _MarkdownExportCommand(bool pdf);
 static void _MarkdownPdfSelfTest();
 static bool _MarkdownPdfSelfTestDone(uint32_t error);
@@ -6493,6 +6494,12 @@ static bool _HandleEditLineManipulation(HWND hwnd, UINT umsg, WPARAM wParam, LPA
         break;
 
 
+    case IDM_EDIT_CHECK_JSON:
+        _ConfigCheck(1, true);
+        break;
+    case IDM_EDIT_CHECK_INI:
+        _ConfigCheck(2, true);
+        break;
     case IDM_EDIT_JSON_FORMAT:
     case IDM_EDIT_JSON_COMPACT: {
         if (SciCall_GetReadOnly() || Sci_IsMultiOrRectangleSelection()) { SimpleBeep(); break; }
@@ -12379,6 +12386,7 @@ static inline void _ResetFileWatchingMode() {
 #include "Workspace/WorkspaceNormalSession.inc"
 #include "Workspace/WorkspaceRecovery.inc"
 #include "Markdown/MarkdownExportCommand.inc"
+#include "TextTools/ConfigCheck.inc"
 #include "Workspace/WorkspaceSelfTest.inc"
 #include "Workspace/WorkspaceRecoveryTest.inc"
 #include "Markdown/MarkdownPdfSelfTest.inc"

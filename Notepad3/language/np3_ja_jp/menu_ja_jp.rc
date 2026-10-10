@@ -255,6 +255,8 @@ BEGIN
             MENUITEM "行の並べ替え(&S)...\tAlt+O",              IDM_EDIT_SORTLINES
             MENUITEM "Format JSON", IDM_EDIT_JSON_FORMAT
             MENUITEM "Compact JSON", IDM_EDIT_JSON_COMPACT
+            MENUITEM "Check JSON Structure", IDM_EDIT_CHECK_JSON
+            MENUITEM "Check INI Structure", IDM_EDIT_CHECK_INI
             MENUITEM SEPARATOR
             MENUITEM "行の整列(&A)...\tAlt+J",                 IDM_EDIT_ALIGN
             MENUITEM "長い行を分割し折り返し(&I)\tCtrl+I",       IDM_EDIT_SPLITLINES

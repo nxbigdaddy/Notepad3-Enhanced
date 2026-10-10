@@ -255,6 +255,8 @@ BEGIN
             MENUITEM "Sắp xếp dòng(&O)...\tAlt+O",                 IDM_EDIT_SORTLINES
             MENUITEM "Format JSON", IDM_EDIT_JSON_FORMAT
             MENUITEM "Compact JSON", IDM_EDIT_JSON_COMPACT
+            MENUITEM "Check JSON Structure", IDM_EDIT_CHECK_JSON
+            MENUITEM "Check INI Structure", IDM_EDIT_CHECK_INI
             MENUITEM SEPARATOR
             MENUITEM "Căn chỉnh dòng(&A)...\tAlt+J",               IDM_EDIT_ALIGN
             MENUITEM "Chia dòng(&I)\tCtrl+I",                IDM_EDIT_SPLITLINES
