@@ -489,4 +489,7 @@ BEGIN
     IDS_MUI_BATCH_STALE "文档已变化，请重新预览；未应用修改。"
     IDS_MUI_BATCH_APPLIED "已应用；每份文档可一次撤销。"
     IDS_MUI_BATCH_ERROR "应用失败；原文快照仍保留在预览中。"
+    IDS_MUI_BATCH_ADD "选择文件…"
+    IDS_MUI_BATCH_ADDED "文件已加入；请重新预览。"
+    IDS_MUI_BATCH_ADDERROR "文件加入失败；已打开文档及修改保留。"
 END

@@ -9,6 +9,35 @@ static void _BatchToggle(void)
     for (int i = 0; i < BP_COUNT; ++i) { GetLngString(IDS_MUI_BATCH_REPLACE + i, strings[i], COUNTOF(strings[i])); labels[i] = strings[i]; }
     BatchPanel_Toggle(w->batch, Globals.hwndMain, labels);
 }
+static LRESULT _BatchOpenFiles(const BATCH_FILES* request)
+{
+    DOCUMENT_WORKSPACE* w = _Workspace();
+    if (!w || !request || !request->paths || !request->count || request->count > WORKSPACE_DOCUMENT_LIMIT || w->transitioning || BatchPanel_IsBusy(w->batch)) return 0;
+    _WorkspaceCapture();
+    HPATHL paths[WORKSPACE_DOCUMENT_LIMIT] = {0};
+    bool valid = true; size_t additional = 0;
+    for (size_t i = 0; i < request->count; ++i) {
+        if (!request->paths[i] || !request->paths[i][0] || wcsnlen(request->paths[i],32768) >= 32768) { valid = false; break; }
+        paths[i] = Path_Allocate(request->paths[i]);
+        if (!paths[i] || !Path_NormalizeEx(paths[i],Paths.WorkingDirectory,true,Flags.bSearchPathIfRelative)) { valid = false; break; }
+        DWORD attributes = Path_GetFileAttributes(paths[i]);
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) { valid = false; break; }
+        bool present = false;
+        for (int j = 0; j < w->count; ++j) if (Path_IsNotEmpty(w->documents[j].path) && Path_StrgComparePath(paths[i],w->documents[j].path,Paths.WorkingDirectory,true)==0) { present = true; break; }
+        for (size_t j = 0; j < i && !present; ++j) if (Path_StrgComparePath(paths[i],paths[j],Paths.WorkingDirectory,true)==0) present = true;
+        if (!present) ++additional;
+    }
+    bool reusable = w->count==1 && Path_IsEmpty(Paths.CurrentFile) && SciCall_GetLength()==0 && !IsSaveNeeded();
+    bool limit = additional > (size_t)(WORKSPACE_DOCUMENT_LIMIT - w->count + (reusable ? 1 : 0));
+    int original = w->active;
+    if (valid && !limit) {
+        for (size_t i = 0; i < request->count; ++i) if (!FileLoad(paths[i],FLF_None,0,0)) { valid = false; break; }
+        _WorkspaceSwitch(original);
+    }
+    for (size_t i = 0; i < request->count; ++i) Path_Release(paths[i]);
+    // Files opened before an I/O race/failure remain available; existing text is never replaced.
+    return limit ? -2 : valid ? 1 : 0;
+}
 static bool _BatchRun(void)
 {
     DOCUMENT_WORKSPACE* w = _Workspace();

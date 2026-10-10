@@ -489,4 +489,7 @@ BEGIN
     IDS_MUI_BATCH_STALE "Documents changed; preview again. No changes applied."
     IDS_MUI_BATCH_APPLIED "Applied. Undo once in each document to revert."
     IDS_MUI_BATCH_ERROR "Failed. Original snapshots remain in the preview."
+    IDS_MUI_BATCH_ADD "Choose files..."
+    IDS_MUI_BATCH_ADDED "Files added; preview again."
+    IDS_MUI_BATCH_ADDERROR "Could not add all files. Open documents and edits are preserved."
 END

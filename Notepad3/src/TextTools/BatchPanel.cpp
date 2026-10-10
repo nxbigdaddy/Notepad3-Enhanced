@@ -7,6 +7,8 @@
 #include <memory>
 #include <stdexcept>
 #include <thread>
+#include <shobjidl.h>
+#include <wrl.h>
 
 namespace {
 using namespace np3::batch;
@@ -46,7 +48,7 @@ void StatusText(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel
 bool BusyJob(const Owner& panel) { return panel && panel->job && (!panel->job->done.load() || !panel->published); }
 void Enable(const Owner& panel) {
     const bool busy = BusyJob(panel);
-    for (int id : {101, 102, 103, 110}) EnableWindow(GetDlgItem(panel->window, id), !busy);
+    for (int id : {101, 102, 103, 110, 113}) EnableWindow(GetDlgItem(panel->window, id), !busy);
     EnableWindow(GetDlgItem(panel->window, 111), busy);
     EnableWindow(GetDlgItem(panel->window, 112), !busy && panel->job && !panel->job->error && !panel->job->cancel && !panel->applied && !panel->invalidated);
     const bool replace = SendMessageW(GetDlgItem(panel->window, 101), CB_GETCURSEL, 0, 0) == 0;
@@ -108,6 +110,36 @@ void Apply(const Owner& panel) {
     if (result == 1) panel->applied = true;
     StatusText(panel, result == 1 ? BP_APPLIED : result == 0 ? BP_STALE : BP_ERROR); Enable(panel);
 }
+void ChooseFiles(const Owner& panel) {
+    Microsoft::WRL::ComPtr<IFileOpenDialog> dialog;
+    HRESULT result = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+    if (FAILED(result)) { StatusText(panel, BP_ADDERROR); return; }
+    DWORD flags = 0;
+    if (FAILED(dialog->GetOptions(&flags)) || FAILED(dialog->SetOptions(flags | FOS_ALLOWMULTISELECT | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST))) { StatusText(panel, BP_ADDERROR); return; }
+    dialog->SetTitle(panel->labels[BP_ADD].c_str());
+    result = dialog->Show(panel->parent);
+    if (!panel->window || !IsWindow(panel->parent)) return;
+    if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) return;
+    if (FAILED(result)) { StatusText(panel, BP_ADDERROR); return; }
+    Microsoft::WRL::ComPtr<IShellItemArray> items;
+    DWORD count = 0;
+    if (FAILED(dialog->GetResults(&items)) || FAILED(items->GetCount(&count)) || !count) { StatusText(panel, BP_ADDERROR); return; }
+    if (count > 64) { StatusText(panel, BP_LIMIT); return; }
+    std::vector<std::wstring> paths; paths.reserve(count);
+    for (DWORD i = 0; i < count; ++i) {
+        Microsoft::WRL::ComPtr<IShellItem> item; PWSTR raw = nullptr;
+        if (FAILED(items->GetItemAt(i, &item)) || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &raw))) { StatusText(panel, BP_ADDERROR); return; }
+        std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned(raw, &CoTaskMemFree);
+        if (!raw || wcsnlen(raw, 32768) >= 32768) { StatusText(panel, BP_ADDERROR); return; }
+        paths.emplace_back(raw);
+    }
+    std::vector<const wchar_t*> pointers; pointers.reserve(paths.size());
+    for (const auto& path : paths) pointers.push_back(path.c_str());
+    panel->invalidated = true; Enable(panel);
+    const BATCH_FILES request{pointers.data(), pointers.size()};
+    result = static_cast<HRESULT>(SendMessageW(panel->parent, NP3_WM_BATCH_OPEN, 0, reinterpret_cast<LPARAM>(&request)));
+    StatusText(panel, result == 1 ? BP_ADDED : result == -2 ? BP_LIMIT : BP_ADDERROR);
+}
 LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     auto panel = WindowState(window);
     try {
@@ -122,7 +154,8 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             move(102, 2 * gap + unit, gap, unit, scale(24)); move(103, 3 * gap + 2 * unit, gap, unit, scale(24));
             move(110, 4 * gap + 3 * unit, gap, unit, scale(24));
             move(111, gap, scale(36), scale(95), scale(24)); move(112, scale(108), scale(36), scale(155), scale(24));
-            move(130, scale(270), scale(36), width - scale(276), scale(24));
+            move(113, scale(270), scale(36), scale(140), scale(24));
+            move(130, scale(416), scale(36), width - scale(422), scale(24));
             const int top = scale(68), left = (std::max)(0, width / 3), half = (std::max)(0, (width - left - 3 * gap) / 2);
             move(120, gap, top, left - gap, height - top - gap);
             move(201, left + gap, top, half, scale(20)); move(202, left + 2 * gap + half, top, half, scale(20));
@@ -149,6 +182,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
                 panel->invalidated = true; Enable(panel);
                 if (!SendMessageW(panel->parent, NP3_WM_BATCH_CAPTURE, 0, 0)) StatusText(panel, BP_ERROR);
             } else if (id == 111 && panel->job) { panel->job->cancel = true; EnableWindow(GetDlgItem(window, 111), FALSE); }
+            else if (id == 113 && !BusyJob(panel)) ChooseFiles(panel);
             else if (id == 112) Apply(panel);
             return 0;
         }
@@ -225,6 +259,7 @@ extern "C" void BatchPanel_Toggle(void* context, HWND parent, const wchar_t* con
             control(L"BUTTON", labels[BP_PREVIEW], BS_PUSHBUTTON | WS_TABSTOP, 110);
             control(L"BUTTON", labels[BP_CANCEL], BS_PUSHBUTTON | WS_TABSTOP, 111);
             control(L"BUTTON", labels[BP_APPLY], BS_PUSHBUTTON | WS_TABSTOP, 112);
+            control(L"BUTTON", labels[BP_ADD], BS_PUSHBUTTON | WS_TABSTOP, 113);
             HWND list = control(WC_LISTVIEWW, L"", WS_BORDER | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS, 120);
             ListView_SetExtendedListViewStyle(list, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
             for (int i = 0; i < 2; ++i) { LVCOLUMNW column{}; column.mask = LVCF_TEXT | LVCF_WIDTH; column.cx = 140; column.pszText = panel->labels[i ? BP_STATUS : BP_FILE].data(); ListView_InsertColumn(list, i, &column); }

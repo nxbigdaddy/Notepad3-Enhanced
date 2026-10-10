@@ -402,6 +402,7 @@ static void* _WorkspaceAi(void);
 static void* _WorkspaceBatch(void);
 static void _BatchToggle(void);
 static bool _BatchRun(void);
+static LRESULT _BatchOpenFiles(const BATCH_FILES* request);
 static LRESULT _BatchApply(const BATCH_APPLY* request);
 static int _BatchLayout(int x, int y, int width, int height);
 static bool _LogFilterRun(void);
@@ -2628,6 +2629,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     case NP3_WM_AI_CAPTURE: return _AiRun((const AI_PANEL_CAPTURE*)lParam);
     case NP3_WM_BATCH_CAPTURE: return _BatchRun();
     case NP3_WM_BATCH_APPLY: return _BatchApply((const BATCH_APPLY*)lParam);
+    case NP3_WM_BATCH_OPEN: return _BatchOpenFiles((const BATCH_FILES*)lParam);
     case NP3_WM_AI_APPLY: return _AiApply((const AI_PANEL_APPLY*)lParam);
     case NP3_WM_AI_SAVE: return _AiSave((const AI_PANEL_SAVE*)lParam, wParam != 0);
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
