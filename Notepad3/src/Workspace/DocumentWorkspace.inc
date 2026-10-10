@@ -1,6 +1,13 @@
 // Native document ownership and activation. Included by Notepad3.c so the legacy
 // save/monitoring flags stay behind one transition boundary during migration.
 #define WORKSPACE_DOCUMENT_LIMIT 64
+typedef struct SPLIT_VIEW_STATE {
+    char* selection;
+    DocPos anchor, caret;
+    DocLn firstLine;
+    int xOffset, zoom, wrapMode;
+    bool valid;
+} SPLIT_VIEW_STATE;
 typedef struct WORKSPACE_DOCUMENT {
     sptr_t handle;
     unsigned long long id, version;
@@ -8,6 +15,7 @@ typedef struct WORKSPACE_DOCUMENT {
     void* encryption;
     bool encryptedRecovery, recoveryConflict;
     char* selection;
+    SPLIT_VIEW_STATE views[2];
     DocLn* folds;
     size_t foldCount;
     FILEVARS vars;
@@ -24,16 +32,19 @@ typedef struct WORKSPACE_DOCUMENT {
     WCHAR titleExcerpt[MIDSZ_BUFFER];
 } WORKSPACE_DOCUMENT;
 typedef struct DOCUMENT_WORKSPACE {
-    HWND tabs, closeButton, primaryView, splitView;
+    HWND tabs, closeButton, primaryView, splitView, splitGutter;
     int count, active;
     unsigned long long nextId;
-    bool transitioning;
+    bool transitioning, splitDragging;
+    int splitRatio, splitStartRatio;
+    RECT splitArea;
     void* recovery;
     void* pdfTest;
     WORKSPACE_DOCUMENT documents[WORKSPACE_DOCUMENT_LIMIT];
 } DOCUMENT_WORKSPACE;
 
 static bool _WorkspaceEnsure(void);
+static void _WorkspaceCapture(void);
 static bool _FileLoadSingle(const HPATHL path, FileLoadFlags flags, DocPos position, DocLn line);
 static DOCUMENT_WORKSPACE* _Workspace() { return (DOCUMENT_WORKSPACE*)Globals.workspace; }
 
@@ -45,6 +56,30 @@ static void _SplitActivate(HWND view)
     if (!workspace || !workspace->splitView || (view != workspace->primaryView && view != workspace->splitView) || view == Globals.hwndEdit) return;
     Globals.hwndEdit = view; InitScintillaHandle(view);
     UpdateToolbar();
+}
+static void _SplitCaptureView(HWND view, SPLIT_VIEW_STATE* state)
+{
+    DocPos length = Sci_ViewCall(view, SCI_GETSELECTIONSERIALIZED, 0, 0);
+    char* selection = length > 0 ? AllocMem((size_t)length + 1, HEAP_ZERO_MEMORY) : NULL;
+    if (selection) Sci_ViewCall(view, SCI_GETSELECTIONSERIALIZED, 0, (LPARAM)selection);
+    FreeMem(state->selection); state->selection = selection;
+    state->anchor = Sci_ViewCall(view, SCI_GETANCHOR, 0, 0);
+    state->caret = Sci_ViewCall(view, SCI_GETCURRENTPOS, 0, 0);
+    state->firstLine = Sci_ViewCall(view, SCI_GETFIRSTVISIBLELINE, 0, 0);
+    state->xOffset = (int)Sci_ViewCall(view, SCI_GETXOFFSET, 0, 0);
+    state->zoom = (int)Sci_ViewCall(view, SCI_GETZOOM, 0, 0);
+    state->wrapMode = (int)Sci_ViewCall(view, SCI_GETWRAPMODE, 0, 0);
+    state->valid = true;
+}
+static void _SplitRestoreView(HWND view, const SPLIT_VIEW_STATE* state, const WORKSPACE_DOCUMENT* doc)
+{
+    const char* selection = state->valid ? state->selection : doc->selection;
+    Sci_ViewCall(view, SCI_SETWRAPMODE, state->valid ? state->wrapMode : doc->wrapMode, 0);
+    Sci_ViewCall(view, SCI_SETZOOM, state->valid ? state->zoom : doc->zoom, 0);
+    if (selection) Sci_ViewCall(view, SCI_SETSELECTIONSERIALIZED, 0, (LPARAM)selection);
+    else Sci_ViewCall(view, SCI_SETSEL, state->valid ? state->anchor : doc->anchor, state->valid ? state->caret : doc->caret);
+    Sci_ViewCall(view, SCI_SETFIRSTVISIBLELINE, state->valid ? state->firstLine : doc->firstLine, 0);
+    Sci_ViewCall(view, SCI_SETXOFFSET, state->valid ? state->xOffset : doc->xOffset, 0);
 }
 static void _SplitSync(void)
 {
@@ -60,6 +95,8 @@ static void _SplitSync(void)
     Sci_ViewCall(other, SCI_SETTABWIDTH, SciCall_GetTabWidth(), 0);
     Sci_ViewCall(other, SCI_SETINDENT, SciCall_GetIndent(), 0);
     if (!changed) return;
+    WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
+    _SplitRestoreView(other, &doc->views[other == workspace->primaryView ? 0 : 1], doc);
     for (int style = 0; style < 256; ++style) {
         char font[256] = {0};
         SciCall(SCI_STYLEGETFONT, style, (LPARAM)font);
@@ -71,19 +108,72 @@ static void _SplitSync(void)
         Sci_ViewCall(other, SCI_STYLESETITALIC, style, SciCall(SCI_STYLEGETITALIC, style, 0));
     }
 }
+static void _SplitRelayout(void)
+{
+    RECT rect; GetClientRect(Globals.hwndMain, &rect);
+    SendMessageW(Globals.hwndMain, WM_SIZE, 0, MAKELPARAM(rect.right, rect.bottom));
+}
+static LRESULT CALLBACK _SplitGutterProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data)
+{
+    UNREFERENCED_PARAMETER(id); UNREFERENCED_PARAMETER(data);
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace) return DefSubclassProc(window, message, wParam, lParam);
+    switch (message) {
+    case WM_SETCURSOR: SetCursor(LoadCursorW(NULL, IDC_SIZEWE)); return TRUE;
+    case WM_LBUTTONDOWN:
+        workspace->splitDragging = true; workspace->splitStartRatio = workspace->splitRatio;
+        SetCapture(window); return 0;
+    case WM_MOUSEMOVE:
+        if (workspace->splitDragging && GetCapture() == window) {
+            POINT point = POINTFromLParam(lParam); MapWindowPoints(window, Globals.hwndMain, &point, 1);
+            int gap = MulDiv(6, GetDpiForWindow(Globals.hwndMain), 96);
+            int usable = max_i(0, workspace->splitArea.right - workspace->splitArea.left - gap);
+            int minimum = MulDiv(120, GetDpiForWindow(Globals.hwndMain), 96);
+            if (usable >= 2 * minimum) {
+                int left = clampi(point.x - workspace->splitArea.left, minimum, usable - minimum);
+                workspace->splitRatio = MulDiv(left, 10000, usable); _SplitRelayout();
+            }
+        }
+        return 0;
+    case WM_LBUTTONUP:
+        workspace->splitDragging = false; if (GetCapture() == window) ReleaseCapture(); return 0;
+    case WM_CANCELMODE:
+        if (workspace->splitDragging) {
+            workspace->splitRatio = workspace->splitStartRatio; workspace->splitDragging = false;
+            if (GetCapture() == window) ReleaseCapture(); _SplitRelayout();
+        }
+        return 0;
+    case WM_CAPTURECHANGED: workspace->splitDragging = false; return 0;
+    case WM_PAINT: {
+        PAINTSTRUCT paint; HDC dc = BeginPaint(window, &paint);
+        HBRUSH brush = CreateSolidBrush((COLORREF)SciCall(SCI_STYLEGETBACK, STYLE_DEFAULT, 0));
+        FillRect(dc, &paint.rcPaint, brush); DeleteObject(brush); EndPaint(window, &paint); return 0;
+    }
+    case WM_NCDESTROY: RemoveWindowSubclass(window, _SplitGutterProc, 0); break;
+    }
+    return DefSubclassProc(window, message, wParam, lParam);
+}
 static void _SplitToggle(void)
 {
     if (!_WorkspaceEnsure()) return;
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (workspace->splitView) {
+        _WorkspaceCapture();
         HWND closing = workspace->splitView;
         _SplitActivate(workspace->primaryView); workspace->splitView = NULL;
+        DestroyWindow(workspace->splitGutter); workspace->splitGutter = NULL;
         DestroyWindow(closing); SetFocus(Globals.hwndEdit);
     } else {
+        _WorkspaceCapture();
         workspace->primaryView = Globals.hwndEdit;
         HWND view = CreateWindowExW(WS_EX_CLIENTEDGE, L"Scintilla", NULL, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
             0, 0, 0, 0, Globals.hwndMain, (HMENU)IDC_EDITOR_SPLIT, Globals.hInstance, NULL);
         if (!view) return;
+        workspace->splitGutter = CreateWindowExW(0, L"STATIC", NULL, WS_CHILD | WS_VISIBLE | SS_NOTIFY,
+            0, 0, 0, 0, Globals.hwndMain, NULL, Globals.hInstance, NULL);
+        if (!workspace->splitGutter) { DestroyWindow(view); return; }
+        SetWindowSubclass(workspace->splitGutter, _SplitGutterProc, 0, 0);
+        if (!workspace->splitRatio) workspace->splitRatio = 5000;
         workspace->splitView = view;
         Globals.hwndEdit = view; InitScintillaHandle(view); _InitializeSciEditCtrl(view);
         Globals.hwndEdit = workspace->primaryView; InitScintillaHandle(Globals.hwndEdit);
@@ -96,10 +186,14 @@ static int _SplitLayout(int x, int y, int width, int height)
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace || !workspace->splitView) return 0;
-    int gap = MulDiv(6, GetDpiForWindow(Globals.hwndMain), 96);
-    int rightWidth = max_i(0, (width - gap) / 2);
-    MoveWindow(workspace->splitView, x + width - rightWidth, y, rightWidth, height, TRUE);
-    return rightWidth + min_i(width, gap);
+    workspace->splitArea = (RECT){x, y, x + width, y + height};
+    int gap = min_i(width, MulDiv(6, GetDpiForWindow(Globals.hwndMain), 96));
+    int usable = max_i(0, width - gap), minimum = MulDiv(120, GetDpiForWindow(Globals.hwndMain), 96);
+    int leftWidth = usable >= 2 * minimum ? clampi(MulDiv(usable, workspace->splitRatio, 10000), minimum, usable - minimum) : usable / 2;
+    int rightWidth = usable - leftWidth;
+    MoveWindow(workspace->splitGutter, x + leftWidth, y, gap, height, TRUE);
+    MoveWindow(workspace->splitView, x + leftWidth + gap, y, rightWidth, height, TRUE);
+    return rightWidth + gap;
 }
 
 static void _WorkspaceCapture()
@@ -107,6 +201,12 @@ static void _WorkspaceCapture()
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace || workspace->active < 0 || workspace->active >= workspace->count) return;
     WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
+    if (workspace->splitView) {
+        if (Sci_ViewCall(workspace->primaryView, SCI_GETDOCPOINTER, 0, 0) == doc->handle)
+            _SplitCaptureView(workspace->primaryView, &doc->views[0]);
+        if (Sci_ViewCall(workspace->splitView, SCI_GETDOCPOINTER, 0, 0) == doc->handle)
+            _SplitCaptureView(workspace->splitView, &doc->views[1]);
+    }
     Path_Reset(doc->path, Path_Get(Paths.CurrentFile));
     Encryption_CaptureContext(doc->encryption);
     doc->vars = Globals.fvCurFile;
@@ -250,6 +350,11 @@ static void _WorkspaceRestore(int index)
     }
     _SetEnumWindowsItems(Globals.hwndMain); UpdateSaveSettingsCmds();
     if (IsSaveNeeded()) AutoSaveStart(true);
+    if (workspace->splitView) {
+        _SplitSync();
+        _SplitRestoreView(workspace->primaryView, &doc->views[0], doc);
+        _SplitRestoreView(workspace->splitView, &doc->views[1], doc);
+    }
     MarkdownPreview_Changed(Globals.hwndMain);
 }
 
@@ -273,7 +378,7 @@ static bool _WorkspaceSwitch(int index)
 static void _WorkspaceReleaseDocument(WORKSPACE_DOCUMENT* doc)
 {
     SciCall_ReleaseDocument(doc->handle); Path_Release(doc->path);
-    Encryption_FreeContext(doc->encryption); FreeMem(doc->selection); FreeMem(doc->folds); SecureZeroMemory(doc, sizeof(*doc));
+    Encryption_FreeContext(doc->encryption); FreeMem(doc->selection); FreeMem(doc->views[0].selection); FreeMem(doc->views[1].selection); FreeMem(doc->folds); SecureZeroMemory(doc, sizeof(*doc));
 }
 static bool _WorkspaceCloseActive()
 {
