@@ -10,8 +10,16 @@
   };
   const finish = async () => {
     try {
+      document.documentElement.getBoundingClientRect();
       if (document.fonts) await document.fonts.ready;
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      // Hidden native preview/PDF controllers may never receive animation frames.
+      // Force layout and use a bounded frame fallback instead of waiting forever.
+      const frame = () => new Promise(resolve => {
+        let complete = false;
+        const settle = () => { if (!complete) { complete = true; document.documentElement.getBoundingClientRect(); resolve(); } };
+        requestAnimationFrame(settle); setTimeout(settle, 100);
+      });
+      await frame(); await frame();
     } finally { state.done = true; }
   };
   const run = async () => {

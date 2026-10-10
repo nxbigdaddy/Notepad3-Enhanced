@@ -1,2 +1,5 @@
 # Preserve downloaded bytes and integrity hashes across Windows checkouts.
 * -text
+
+# Notepad3-owned runner uses canonical LF; upstream byte hashes remain untouched.
+np3-render.js text eol=lf

@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/log-filter-panel-x64-v24/Notepad3.exe', [string]$AiEndpoint = '')
+param([string]$Executable = 'artifacts/log-filter-panel-x64-v24/Notepad3.exe', [string]$AiEndpoint = '', [switch]$Preview)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -24,6 +24,8 @@ for ($taskIndex = 0; $taskIndex -lt 5012; ++$taskIndex) {
 }
 $taskPreviousEnvironment = $env:NP3_WORKSPACE_SELFTEST_DIR
 $taskPreviousAi = $env:NP3_AI_SELFTEST_URL
+$taskPreviousPreview = $env:NP3_MARKDOWN_CHECK_PREVIEW
+$taskPreviousDiagnostics = $env:NP3_MARKDOWN_DIAGNOSTICS
 $taskArguments = @('/n', '/f0')
 if ($AiEndpoint) {
     $taskIni = Join-Path $taskFolder 'test.ini'
@@ -32,14 +34,17 @@ if ($AiEndpoint) {
 }
 try {
     $env:NP3_WORKSPACE_SELFTEST_DIR = $taskFolder
+    if ($Preview) { $env:NP3_MARKDOWN_CHECK_PREVIEW = '1'; $env:NP3_MARKDOWN_DIAGNOSTICS = Join-Path $taskFolder 'preview-trace.log' } else { Remove-Item Env:NP3_MARKDOWN_CHECK_PREVIEW -ErrorAction SilentlyContinue }
     if ($AiEndpoint) { $env:NP3_AI_SELFTEST_URL = $AiEndpoint } else { Remove-Item Env:NP3_AI_SELFTEST_URL -ErrorAction SilentlyContinue }
     $taskProcess = Start-Process -FilePath $taskExe -ArgumentList $taskArguments -WindowStyle Hidden -PassThru
 } finally {
+    if ($null -eq $taskPreviousPreview) { Remove-Item Env:NP3_MARKDOWN_CHECK_PREVIEW -ErrorAction SilentlyContinue } else { $env:NP3_MARKDOWN_CHECK_PREVIEW = $taskPreviousPreview }
+    if ($null -eq $taskPreviousDiagnostics) { Remove-Item Env:NP3_MARKDOWN_DIAGNOSTICS -ErrorAction SilentlyContinue } else { $env:NP3_MARKDOWN_DIAGNOSTICS = $taskPreviousDiagnostics }
     if ($null -eq $taskPreviousAi) { Remove-Item Env:NP3_AI_SELFTEST_URL -ErrorAction SilentlyContinue } else { $env:NP3_AI_SELFTEST_URL = $taskPreviousAi }
     if ($null -eq $taskPreviousEnvironment) { Remove-Item Env:NP3_WORKSPACE_SELFTEST_DIR -ErrorAction SilentlyContinue }
     else { $env:NP3_WORKSPACE_SELFTEST_DIR = $taskPreviousEnvironment }
 }
-if (!$taskProcess.WaitForExit(30000)) { throw "Native test still running, PID $($taskProcess.Id). Inspect $taskFolder before retrying." }
+if (!$taskProcess.WaitForExit(60000)) { throw "Native test still running, PID $($taskProcess.Id). Inspect $taskFolder before retrying." }
 $taskLog = Join-Path $taskFolder 'workspace-test.log'
 if (!(Test-Path -LiteralPath $taskLog)) { throw "Native test produced no log. Inspect $taskFolder" }
 $taskResult = [IO.File]::ReadAllText($taskLog)
@@ -55,3 +60,10 @@ Write-Output "Saved UTF-8 BOM / UTF-16 LE bytes independently verified. Evidence
 $taskExportedHtml = [IO.File]::ReadAllText((Join-Path $taskFolder 'buffer-export.html'), [Text.Encoding]::UTF8)
 if (!$taskExportedHtml.Contains('<h1>导出验证</h1>') -or $taskExportedHtml.Contains('np3-preview.invalid')) { throw 'Exported unsaved buffer HTML content incorrect' }
 Write-Output 'Unsaved buffer Markdown HTML independently verified.'
+
+if ($Preview) {
+    $taskTrace = [IO.File]::ReadAllText((Join-Path $taskFolder 'preview-trace.log'))
+    $taskStates = @($taskTrace -split "`r?`n" | Where-Object { $_.StartsWith('{') } | ForEach-Object { ($_ -replace ' HRESULT=.*$','') | ConvertFrom-Json })
+    if (!($taskStates | Where-Object { $_.done -eq $true -and $_.diagrams -eq 1 -and $_.formulas -eq 2 -and $_.errors -eq 0 })) { throw "Native advanced renderer counts incorrect: $taskFolder" }
+    Write-Output 'Native WebView2 diagram and formula counts independently verified.'
+}

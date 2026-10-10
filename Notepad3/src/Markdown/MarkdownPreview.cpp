@@ -17,6 +17,7 @@ using Microsoft::WRL::ComPtr;
 namespace {
 constexpr wchar_t HostClass[] = L"NP3MarkdownPreview";
 constexpr UINT_PTR RefreshTimer = 1;
+constexpr UINT_PTR RenderTimer = 2;
 void Trace(const char* event, HRESULT status = S_OK)
 {
     wchar_t path[32768];
@@ -43,12 +44,49 @@ struct Preview {
     bool dragging = false;
     unsigned long long renderVersion = 0, navigationVersion = 0, navigationId = 0;
     double scrollToRestore = 0;
-    bool loaded = false;
+    bool loaded = false, advanced = false, renderAdvanced = false, polling = false, rendered = false, captureDone = false, tracedPending = false;
+    ULONGLONG renderDeadline = 0;
+    HRESULT captureResult = E_PENDING;
     std::wstring documentKey;
     std::wstring message = L"Starting Markdown preview...";
     ~Preview() { if (loader) FreeLibrary(loader); }
 };
 
+void RestoreScroll(const std::shared_ptr<Preview>& state) {
+    wchar_t script[160]; swprintf_s(script, L"window.scrollTo(0,%.0f)", state->scrollToRestore);
+    const auto version=state->renderVersion; const std::weak_ptr<Preview> weak=state;
+    HRESULT status=state->web->ExecuteScript(script,Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+        [weak,version](HRESULT status,LPCWSTR)->HRESULT { auto live=weak.lock(); if(live && live->window && live->renderVersion==version) Trace("scroll-restore-completed",status); return S_OK; }).Get());
+    if(FAILED(status)) Trace("scroll-restore-start",status);
+}
+std::wstring AssetsDirectory() {
+    wchar_t module[32768]; DWORD length=GetModuleFileNameW(nullptr,module,32768);
+    if(!length || length>=32768) return {};
+    std::wstring folder(module,length); folder.resize(folder.find_last_of(L"\\/")+1); folder+=L"render-assets";
+    for(const wchar_t* filename:{L"katex.min.js",L"katex.min.css",L"mermaid.min.js",L"np3-render.js"}) {
+        DWORD attributes=GetFileAttributesW((folder+L"\\"+filename).c_str());
+        if(attributes==INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) return {};
+    }
+    return folder;
+}
+void PollRender(const std::shared_ptr<Preview>& state) {
+    if(!state->web || state->polling) return;
+    if(GetTickCount64()>state->renderDeadline) { KillTimer(state->window,RenderTimer); Trace("advanced-render-timeout",HRESULT_FROM_WIN32(ERROR_TIMEOUT)); RestoreScroll(state); return; }
+    state->polling=true; const auto version=state->renderVersion; const std::weak_ptr<Preview> weak=state;
+    HRESULT status=state->web->ExecuteScript(L"window.np3RenderState || null",
+        Callback<ICoreWebView2ExecuteScriptCompletedHandler>([weak,version](HRESULT status,LPCWSTR json)->HRESULT {
+            auto live=weak.lock(); if(!live || !live->window || live->renderVersion!=version) return S_OK;
+            live->polling=false;
+            if(SUCCEEDED(status) && json && json[0]==L'{') {
+                if(!wcsstr(json,L"\"done\":true")) { if(!live->tracedPending) { char pending[128]={}; if(WideCharToMultiByte(CP_UTF8,0,json,-1,pending,sizeof(pending),nullptr,nullptr)) Trace(pending); live->tracedPending=true; } return S_OK; }
+                KillTimer(live->window,RenderTimer); char event[128] = {};
+                if(WideCharToMultiByte(CP_UTF8,0,json,-1,event,sizeof(event),nullptr,nullptr)) Trace(event);
+                live->rendered=true; Trace("advanced-render-completed"); RestoreScroll(live);
+            }
+            return S_OK;
+        }).Get());
+    if(FAILED(status)) { state->polling=false; Trace("advanced-poll-failed",status); }
+}
 std::shared_ptr<Preview> State(HWND window)
 {
     auto* holder = reinterpret_cast<std::shared_ptr<Preview>*>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -117,16 +155,21 @@ void Start(const std::shared_ptr<Preview>& state)
                             Trace("controller-ready", status);
                             if (!state->window) { if (controller) controller->Close(); return S_OK; }
                             if (FAILED(status) || !controller) { Failed(state, L"Cannot start preview."); return S_OK; }
-                            state->controller = controller;
+                            state->controller = controller; controller->put_IsVisible(TRUE);
                             controller->get_CoreWebView2(&state->web);
                             if (!state->web) { Failed(state, L"Cannot create preview content."); return S_OK; }
+                            const auto assets=AssetsDirectory(); ComPtr<ICoreWebView2_3> assetMapping;
+                            state->advanced=!assets.empty() && SUCCEEDED(state->web.As(&assetMapping)) &&
+                                SUCCEEDED(assetMapping->SetVirtualHostNameToFolderMapping(L"np3-assets.invalid",assets.c_str(),COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW));
+                            Trace(state->advanced?"advanced-assets-mapped":"advanced-assets-unavailable");
                             ComPtr<ICoreWebView2Settings> settings;
                             state->web->get_Settings(&settings);
                             if (settings) {
-                                settings->put_IsScriptEnabled(FALSE);
+                                if(FAILED(settings->put_IsScriptEnabled(state->advanced?TRUE:FALSE))) state->advanced=false;
+                                settings->put_IsWebMessageEnabled(FALSE);
+                                settings->put_AreHostObjectsAllowed(FALSE);
                                 settings->put_AreDevToolsEnabled(FALSE);
                                 settings->put_AreDefaultContextMenusEnabled(FALSE);
-                                settings->put_IsWebMessageEnabled(FALSE);
                             }
                             EventRegistrationToken token;
                             const std::weak_ptr<Preview> weakState = state;
@@ -140,17 +183,8 @@ void Start(const std::shared_ptr<Preview>& state)
                                     if (live && live->window && live->web && id == live->navigationId && live->navigationVersion == live->renderVersion) {
                                         live->loaded = success != FALSE;
                                         if (success) {
-                                            wchar_t script[160];
-                                            swprintf_s(script, L"window.scrollTo(0,%.0f)", live->scrollToRestore);
-                                            const auto version = live->renderVersion;
-                                            const HRESULT scrollResult = live->web->ExecuteScript(script,
-                                                Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-                                                    [weakState, version](HRESULT status, LPCWSTR) -> HRESULT {
-                                                        auto active = weakState.lock();
-                                                        if (active && active->window && active->renderVersion == version) Trace("scroll-restore-completed", status);
-                                                        return S_OK;
-                                                    }).Get());
-                                            if (FAILED(scrollResult)) Trace("scroll-restore-start", scrollResult);
+                                            if(live->renderAdvanced) { live->renderDeadline=GetTickCount64()+15000; live->polling=false; SetTimer(live->window,RenderTimer,50,nullptr); }
+                                            else { live->rendered=true; RestoreScroll(live); }
                                         }
                                     }
                                     COREWEBVIEW2_WEB_ERROR_STATUS error;
@@ -238,6 +272,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         [[fallthrough]];
     case WM_CAPTURECHANGED: state->dragging = false; break;
     case WM_TIMER:
+        if (wParam == RenderTimer) { PollRender(state); return 0; }
         if (wParam == RefreshTimer) {
             KillTimer(window, RefreshTimer);
             SendMessageW(state->parent, NP3_WM_MARKDOWN_REFRESH, 0, 0);
@@ -259,6 +294,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     }
     case WM_NCDESTROY:
         KillTimer(window, RefreshTimer);
+        KillTimer(window, RenderTimer);
         state->window = nullptr;
         if (state->controller) state->controller->Close();
         state->web.Reset(); state->controller.Reset();
@@ -301,6 +337,30 @@ extern "C" int MarkdownPreview_Layout(HWND parent, int x, int y, int width, int 
     MoveWindow(window, x + width - reserved, y, reserved, height, TRUE);
     return reserved;
 }
+extern "C" BOOL MarkdownPreview_IsRendered(HWND parent) { auto state=State(Find(parent)); return state && state->rendered; }
+extern "C" BOOL MarkdownPreview_IsCaptureDone(HWND parent) { auto state=State(Find(parent)); return state && state->captureDone; }
+extern "C" BOOL MarkdownPreview_IsCaptureSuccessful(HWND parent) { auto state=State(Find(parent)); return state && state->captureDone && SUCCEEDED(state->captureResult); }
+extern "C" BOOL MarkdownPreview_Capture(HWND parent,const WCHAR* destination) {
+    auto state=State(Find(parent)); if(!state || !state->web || !state->rendered || !destination || !*destination) return FALSE;
+    ComPtr<IStream> stream; HRESULT created=CreateStreamOnHGlobal(nullptr,TRUE,&stream); if(FAILED(created)) { Trace("capture-stream-failed",created); return FALSE; }
+    RECT bounds={}; state->controller->get_Bounds(&bounds); char dimensions[96]={}; sprintf_s(dimensions,"capture-bounds width=%ld height=%ld visible=%d",bounds.right-bounds.left,bounds.bottom-bounds.top,IsWindowVisible(state->window)); Trace(dimensions);
+    const std::wstring path=destination; const auto version=state->renderVersion; const std::weak_ptr<Preview> weak=state; state->captureDone=false; state->captureResult=E_PENDING;
+    HRESULT status=state->web->CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,stream.Get(),Callback<ICoreWebView2CapturePreviewCompletedHandler>(
+        [weak,version,stream,path](HRESULT status)->HRESULT {
+            auto live=weak.lock(); if(!live || !live->window || live->renderVersion!=version) return S_OK;
+            if(SUCCEEDED(status)) {
+                HGLOBAL memory=nullptr; STATSTG stats={};
+                if(SUCCEEDED(GetHGlobalFromStream(stream.Get(),&memory)) && SUCCEEDED(stream->Stat(&stats,STATFLAG_NONAME)) && stats.cbSize.QuadPart>0 && stats.cbSize.QuadPart<=32*1024*1024) {
+                    void* data=GlobalLock(memory); HANDLE file=data?CreateFileW(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr):INVALID_HANDLE_VALUE;
+                    if(file!=INVALID_HANDLE_VALUE) { DWORD written=0; if(!WriteFile(file,data,stats.cbSize.LowPart,&written,nullptr) || written!=stats.cbSize.LowPart) status=E_FAIL; CloseHandle(file); }
+                    else status=data?HRESULT_FROM_WIN32(GetLastError()):E_OUTOFMEMORY;
+                    if(data) GlobalUnlock(memory);
+                } else status=E_FAIL;
+            }
+            live->captureDone=true; live->captureResult=status; Trace("preview-capture-completed",status); return S_OK;
+        }).Get());
+    Trace("preview-capture-start",status); if(FAILED(status)) { state->captureDone=true; state->captureResult=status; } return SUCCEEDED(status);
+}
 extern "C" void MarkdownPreview_Changed(HWND parent)
 {
     if (HWND window = Find(parent)) SetTimer(window, RefreshTimer, 350, nullptr);
@@ -310,8 +370,11 @@ extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t len
     auto state = State(Find(parent));
     if (!state || !state->web) return;
     try {
-        std::string html = length <= 2 * 1024 * 1024 ? np3::RenderMarkdown(std::string_view(text, length))
+        state->renderAdvanced = state->advanced && length <= 2 * 1024 * 1024;
+        std::string html = length <= 2 * 1024 * 1024 ? np3::RenderMarkdown(std::string_view(text, length), state->advanced)
             : np3::RenderMarkdown("# Preview paused\n\nThis document exceeds the 2 MiB live preview limit.");
+        if(!state->advanced) html.insert(html.find("<body>")+6,"<p>Diagram and formula rendering assets are unavailable; source text is shown.</p>");
+        if(html.size()>1024*1024) { html=np3::RenderMarkdown("# Preview paused\n\nRendered HTML exceeds the safe live preview size."); state->renderAdvanced=false; }
         const std::wstring wide = Wide(html);
         if (wide.empty()) { Failed(state, L"Cannot render Markdown preview."); return; }
         const std::wstring folder = directory ? directory : L"";
@@ -319,6 +382,7 @@ extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t len
         const bool sameDocument = key == state->documentKey;
         const bool preserveScroll = state->loaded && sameDocument;
         state->documentKey = key;
+        KillTimer(state->window, RenderTimer); state->polling=false; state->rendered=false; state->tracedPending=false;
         const auto version = ++state->renderVersion;
         const std::weak_ptr<Preview> weakState = state;
         auto navigate = [weakState, version, wide, folder](double scroll) {

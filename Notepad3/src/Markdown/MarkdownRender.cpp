@@ -18,7 +18,7 @@ void Append(const MD_CHAR* text, MD_SIZE size, void* context) noexcept
 }
 }
 
-std::string RenderMarkdown(std::string_view markdown)
+std::string RenderMarkdown(std::string_view markdown, bool advanced)
 {
     if (markdown.size() > std::numeric_limits<MD_SIZE>::max()) {
         throw std::length_error("Markdown exceeds parser limits");
@@ -38,8 +38,20 @@ std::string RenderMarkdown(std::string_view markdown)
         "padding-left:14px;margin-left:0;color:#888}table{border-collapse:collapse}"
         "td,th{border:1px solid #8886;padding:6px 12px}img{max-width:100%}"
         "a{color:#428bdd}input{pointer-events:none}</style></head><body>";
+    if (advanced) {
+        auto position = output.text.find("style-src 'unsafe-inline';");
+        output.text.replace(position, sizeof("style-src 'unsafe-inline';") - 1,
+            "script-src https://np3-assets.invalid; style-src 'unsafe-inline' https://np3-assets.invalid; font-src https://np3-assets.invalid;");
+        position = output.text.find("</head>");
+        output.text.insert(position,
+            "<link rel=\"stylesheet\" href=\"https://np3-assets.invalid/katex.min.css\">"
+            "<style>.np3-diagram svg{max-width:100%}.np3-render-error{color:#c33}.katex-display{overflow-x:auto;overflow-y:hidden;padding:.25em 0}</style>"
+            "<script defer src=\"https://np3-assets.invalid/katex.min.js\"></script>"
+            "<script defer src=\"https://np3-assets.invalid/mermaid.min.js\"></script>"
+            "<script defer src=\"https://np3-assets.invalid/np3-render.js\"></script>");
+    }
     const int result = md_html(markdown.data(), static_cast<MD_SIZE>(markdown.size()),
-        Append, &output, MD_DIALECT_GITHUB | MD_FLAG_NOHTML,
+        Append, &output, MD_DIALECT_GITHUB | MD_FLAG_NOHTML | (advanced ? MD_FLAG_LATEXMATHSPANS : 0),
         MD_HTML_FLAG_SKIP_UTF8_BOM);
     if (result != 0 || output.failed) throw std::runtime_error("Markdown rendering failed");
     output.text += "</body></html>";

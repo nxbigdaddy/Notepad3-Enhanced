@@ -35,6 +35,16 @@ static bool _WorkspaceTestAiReady(void)
     }
     return !AiPanel_IsBusy(_WorkspaceAi());
 }
+static bool _WorkspaceTestPreviewReady(bool capture)
+{
+    DWORD start=GetTickCount();
+    while(GetTickCount()-start<15000) {
+        if(capture?MarkdownPreview_IsCaptureDone(Globals.hwndMain):MarkdownPreview_IsRendered(Globals.hwndMain)) return true;
+        MsgWaitForMultipleObjectsEx(0,NULL,50,QS_ALLINPUT,MWMO_INPUTAVAILABLE); MSG message;
+        while(PeekMessageW(&message,NULL,0,0,PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+    }
+    return false;
+}
 static bool _WorkspaceTestLogReady(void)
 {
     DWORD start = GetTickCount();
@@ -450,6 +460,17 @@ static void _WorkspaceSelfTest()
             _WorkspaceTestCheck(&result,AiCredential_Load(profile,&key) == ERROR_NOT_FOUND && !key,"AI delete-key button removes only fixture service credential");
             AiCredential_Free(key); AiCredential_Delete(profile); _AiToggle();
         }
+    }
+    if(GetEnvironmentVariableW(L"NP3_MARKDOWN_CHECK_PREVIEW",NULL,0)) {
+        const char* markdown="# 原生 Markdown 图表与公式\n\n```mermaid\nflowchart LR\n A[开始] --> B[结束]\n```\n\n行内公式 $E=mc^2$\n\n$$\\frac{1}{2}+\\sum_{i=1}^{n} i$$\n";
+        UndoTransActionBegin(); SciCall_SetTargetRange(0,SciCall_GetLength()); Sci_ReplaceTargetTestChgHist((DocPos)strlen(markdown),markdown); EndUndoTransAction();
+        MarkdownPreview_Toggle(Globals.hwndMain); bool ready=_WorkspaceTestPreviewReady(false);
+        _WorkspaceTestCheck(&result,ready,"actual WebView2 preview completes offline advanced rendering");
+        WCHAR capturePath[32768]; StringCchPrintfW(capturePath,COUNTOF(capturePath),L"%s\\preview.png",folder);
+        bool capture=ready && MarkdownPreview_Capture(Globals.hwndMain,capturePath) && _WorkspaceTestPreviewReady(true);
+        _WorkspaceTestCheck(&result,capture && MarkdownPreview_IsCaptureSuccessful(Globals.hwndMain) && GetFileAttributesW(capturePath)!=INVALID_FILE_ATTRIBUTES,"actual native preview captures PNG after graph and formula layout");
+        MarkdownPreview_Toggle(Globals.hwndMain); SciCall_Undo();
+        _WorkspaceTestCheck(&result,!MarkdownPreview_IsOpen(Globals.hwndMain) && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"advanced preview and capture preserve source undo and saved state");
     }
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;

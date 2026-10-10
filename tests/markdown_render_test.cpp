@@ -29,6 +29,14 @@ int main()
         require(hostile.find("<img src=x") == std::string::npos, "raw HTML blocked");
         require(hostile.find("default-src 'none'") != std::string::npos, "CSP");
         require(np3::RenderMarkdown("").find("</body></html>") != std::string::npos, "empty document");
+        const auto advanced = np3::RenderMarkdown("Inline $E=mc^2$\n\n$$\\frac{1}{2}$$\n\n```mermaid\nflowchart LR\n A --> B\n```\n\n<script>window.attack=1</script>",true);
+        require(advanced.find("<x-equation>E=mc^2</x-equation>") != std::string::npos,"inline math parser node");
+        require(advanced.find("<x-equation type=\"display\">") != std::string::npos,"display math parser node");
+        require(advanced.find("code class=\"language-mermaid\"") != std::string::npos,"Mermaid source remains escaped code before rendering");
+        require(advanced.find("script-src https://np3-assets.invalid;") != std::string::npos,"scripts restricted to separate packaged asset origin");
+        require(advanced.find("font-src https://np3-assets.invalid;") != std::string::npos,"fonts restricted to packaged asset origin");
+        require(advanced.find("<script>window.attack=1</script>") == std::string::npos,"advanced mode still blocks document script markup");
+        require(np3::RenderMarkdown("$E=mc^2$",false).find("<x-equation>")==std::string::npos,"basic export remains script-free until advanced export integration");
         const auto bom = np3::RenderMarkdown("\xEF\xBB\xBF# BOM\n");
         require(bom.find("<h1>BOM</h1>") != std::string::npos, "UTF-8 BOM");
         require(np3::IsHostRenderNavigation(L"data:text/html;charset=utf-8,<h1>test</h1>", false, 1), "Runtime host data navigation");

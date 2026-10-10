@@ -1,4 +1,4 @@
-import http.server, json, pathlib, subprocess, threading, time, re
+import http.server, json, pathlib, subprocess, threading, time, re, argparse
 class Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -20,12 +20,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with self.server.lock: self.server.errors.append(str(exc))
             try: self.send_response(500); self.end_headers()
             except OSError: pass
+parser=argparse.ArgumentParser(); parser.add_argument("--preview",action="store_true"); options=parser.parse_args()
 root = pathlib.Path(__file__).resolve().parents[1]
 folder = root / 'artifacts' / ('ai-panel-test-' + str(time.time_ns())); folder.mkdir()
 server = Server(('127.0.0.1', 0), Handler); server.lock = threading.Lock(); server.requests = []; server.errors = []
 thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
 try:
-    process = subprocess.run(['pwsh','-NoProfile','-File',str(root/'scripts/test-workspace.ps1'),'-Executable','Notepad3/Bin/Release_x64_v143/Notepad3.exe','-AiEndpoint',f'http://127.0.0.1:{server.server_port}/panel'], cwd=root, capture_output=True, encoding='utf-8', errors='replace', timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
+    process = subprocess.run(['pwsh','-NoProfile','-File',str(root/'scripts/test-workspace.ps1'),'-Executable','Notepad3/Bin/Release_x64_v143/Notepad3.exe','-AiEndpoint',f'http://127.0.0.1:{server.server_port}/panel'] + (['-Preview'] if options.preview else []), cwd=root, capture_output=True, encoding='utf-8', errors='replace', timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
     (folder/'native-test.log').write_text(process.stdout + process.stderr, encoding='utf-8')
     evidence = {'requests': server.requests, 'errors': server.errors, 'exitCode': process.returncode}
     (folder/'server-verification.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')

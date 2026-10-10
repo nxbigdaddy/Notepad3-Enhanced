@@ -18,3 +18,5 @@ Copy-Item -LiteralPath "$taskRoot\docs\迭代进展.md" -Destination "$taskPacka
 Write-Output "Packaged development build: $taskPackage\Notepad3.exe"
 
 Copy-Item -LiteralPath (Join-Path $taskOutput 'render-assets') -Destination $taskPackage -Recurse -Force
+
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs/examples/markdown-advanced.md') -Destination (Join-Path $taskPackage 'Markdown-图表公式示例.md')
