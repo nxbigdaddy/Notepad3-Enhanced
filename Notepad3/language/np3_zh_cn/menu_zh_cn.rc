@@ -364,6 +364,7 @@ BEGIN
         MENUITEM "自动换行(&R)\tCtrl+W",                        IDM_VIEW_WORDWRAP
         MENUITEM "Markdown 预览\tCtrl+Shift+F12", IDM_VIEW_MARKDOWN_PREVIEW
         MENUITEM "File Tree", IDM_VIEW_FILETREE
+        MENUITEM "Split Editor", IDM_VIEW_EDITOR_SPLIT
         MENUITEM "显示行长度标记(&L)\tCtrl+Alt+L",               IDM_VIEW_LONGLINEMARKER
         MENUITEM "显示缩进指示(&A)\tCtrl+Shift+G",               IDM_VIEW_SHOWINDENTGUIDES
         MENUITEM SEPARATOR

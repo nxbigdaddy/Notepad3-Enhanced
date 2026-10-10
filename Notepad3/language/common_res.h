@@ -664,6 +664,7 @@
 #define IDM_FILE_EXPORT_MARKDOWN_HTML   40033
 #define IDM_FILE_EXPORT_MARKDOWN_PDF    40034
 #define IDC_WORKSPACE_TABS              18190
+#define IDC_EDITOR_SPLIT                18192
 
 #define IDM_ENCODING_ANSI               40100
 #define IDM_ENCODING_UNICODE            40101
@@ -855,6 +856,7 @@
 #define IDM_VIEW_NONPRINTINGCHARS       41065
 #define IDM_VIEW_MARKDOWN_PREVIEW       41066
 #define IDM_VIEW_FILETREE               41067
+#define IDM_VIEW_EDITOR_SPLIT           41068
 
 // keep Scintilla(SC) order
 #define IDM_SET_RENDER_TECH_GDI         42000   // SC_TECHNOLOGY_DEFAULT(0)

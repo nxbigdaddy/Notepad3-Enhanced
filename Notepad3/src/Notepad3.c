@@ -378,6 +378,12 @@ static BOOL CALLBACK _EnumTopmostWndProc(HWND hwnd, LPARAM lParam);
 static HPATHL _ResolveSelectionForOpen(int* lineNum, bool* isDir);
 static void _WorkspaceRefresh();
 static int _WorkspaceLayout(int x, int y, int width);
+static void _SplitActivate(HWND view);
+static void _SplitToggle(void);
+static bool _SplitIsOpen(void);
+static HWND _SplitPrimary(void);
+static int _SplitLayout(int x, int y, int width, int height);
+static void _SplitSync(void);
 static bool _WorkspaceSwitch(int index);
 static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
@@ -2846,6 +2852,7 @@ static LRESULT CALLBACK _EditSubclassProc(
     UNREFERENCED_PARAMETER(dwRefData);
 
     switch (uMsg) {
+    case WM_SETFOCUS: _SplitActivate(hwnd); break;
 
     case WM_MBUTTONDOWN: {
         if (NP3Util_IsAutoScrollMode()) {
@@ -3963,11 +3970,12 @@ LRESULT MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam)
     x += treeWidth; cx -= treeWidth;
     cx -= MarkdownPreview_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
 
+    cx -= _SplitLayout(x, y, max_i(0, cx), max_i(0, cy));
     HDWP const hdwp = BeginDeferWindowPos(2);
 
     DeferWindowPos(hdwp,s_hwndEditFrame,NULL,x,y,cx,cy, SWP_NOZORDER | SWP_NOACTIVATE);
 
-    DeferWindowPos(hdwp, g_hwndEditWindow, s_hwndEditFrame,
+    DeferWindowPos(hdwp, _SplitPrimary(), s_hwndEditFrame,
                    x+s_cxEditFrame,y+s_cyEditFrame, cx-2*s_cxEditFrame,cy-2*s_cyEditFrame,
                    SWP_NOZORDER | SWP_NOACTIVATE);
 
@@ -5234,6 +5242,7 @@ LRESULT MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam)
     CheckCmd(hmenu, IDM_VIEW_READONLY, ro);
     CheckCmd(hmenu, IDM_VIEW_WORDWRAP, Globals.fvCurFile.bWordWrap);
     CheckCmd(hmenu, IDM_VIEW_FILETREE, FileTree_IsOpen(hwnd));
+    CheckCmd(hmenu, IDM_VIEW_EDITOR_SPLIT, _SplitIsOpen());
     CheckCmd(hmenu, IDM_VIEW_MARKDOWN_PREVIEW, MarkdownPreview_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_LONGLINEMARKER, Settings.MarkLongLines);
     CheckCmd(hmenu, IDM_VIEW_SHOWINDENTGUIDES, Settings.ShowIndentGuides);
@@ -7226,6 +7235,9 @@ static bool _HandleViewAndSettingsCommands(HWND hwnd, UINT umsg, WPARAM wParam, 
         break;
 
 
+    case IDM_VIEW_EDITOR_SPLIT:
+        _SplitToggle();
+        break;
     case IDM_VIEW_FILETREE:
         _FileTreeToggle();
         break;
@@ -10009,7 +10021,7 @@ inline static LRESULT _MsgNotifyLean(const SCNotification* const scn, bool* bMod
     const LPNMHDR pnmh = (LPNMHDR)scn;
 
     // --- check only mandatory events (must be fast !!!) ---
-    if (pnmh->idFrom != IDC_EDIT) {
+    if (pnmh->idFrom != IDC_EDIT && pnmh->idFrom != IDC_EDITOR_SPLIT) {
         return FALSE;
     }
 
@@ -10459,7 +10471,9 @@ LRESULT MsgNotify(HWND hwnd, WPARAM wParam, LPARAM lParam)
         if (pnmh->code == TCN_SELCHANGE) _WorkspaceSwitch(TabCtrl_GetCurSel(pnmh->hwndFrom));
         break;
 
-    case IDC_EDIT: {
+    case IDC_EDIT:
+    case IDC_EDITOR_SPLIT: {
+        if (pnmh->hwndFrom != Globals.hwndEdit) break;
         bool bModified = false;
         result = NotifyDocChanged() ? _MsgNotifyFromEdit(hwnd, scn) : _MsgNotifyLean(scn, &bModified);
     } break;

@@ -24,7 +24,7 @@ typedef struct WORKSPACE_DOCUMENT {
     WCHAR titleExcerpt[MIDSZ_BUFFER];
 } WORKSPACE_DOCUMENT;
 typedef struct DOCUMENT_WORKSPACE {
-    HWND tabs, closeButton;
+    HWND tabs, closeButton, primaryView, splitView;
     int count, active;
     unsigned long long nextId;
     bool transitioning;
@@ -33,8 +33,74 @@ typedef struct DOCUMENT_WORKSPACE {
     WORKSPACE_DOCUMENT documents[WORKSPACE_DOCUMENT_LIMIT];
 } DOCUMENT_WORKSPACE;
 
+static bool _WorkspaceEnsure(void);
 static bool _FileLoadSingle(const HPATHL path, FileLoadFlags flags, DocPos position, DocLn line);
 static DOCUMENT_WORKSPACE* _Workspace() { return (DOCUMENT_WORKSPACE*)Globals.workspace; }
+
+static bool _SplitIsOpen(void) { DOCUMENT_WORKSPACE* workspace = _Workspace(); return workspace && workspace->splitView; }
+static HWND _SplitPrimary(void) { DOCUMENT_WORKSPACE* workspace = _Workspace(); return workspace && workspace->primaryView ? workspace->primaryView : Globals.hwndEdit; }
+static void _SplitActivate(HWND view)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace || !workspace->splitView || (view != workspace->primaryView && view != workspace->splitView) || view == Globals.hwndEdit) return;
+    Globals.hwndEdit = view; InitScintillaHandle(view);
+    UpdateToolbar();
+}
+static void _SplitSync(void)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace || !workspace->splitView) return;
+    HWND other = Globals.hwndEdit == workspace->primaryView ? workspace->splitView : workspace->primaryView;
+    bool const changed = Sci_ViewCall(other, SCI_GETDOCPOINTER, 0, 0) != SciCall_GetDocPointer();
+    if (changed)
+        Sci_ViewCall(other, SCI_SETDOCPOINTER, 0, SciCall_GetDocPointer());
+    Sci_ViewCall(other, SCI_SETREADONLY, SciCall_GetReadOnly(), 0);
+    Sci_ViewCall(other, SCI_SETCODEPAGE, SciCall_GetCodePage(), 0);
+    Sci_ViewCall(other, SCI_SETEOLMODE, SciCall_GetEOLMode(), 0);
+    Sci_ViewCall(other, SCI_SETTABWIDTH, SciCall_GetTabWidth(), 0);
+    Sci_ViewCall(other, SCI_SETINDENT, SciCall_GetIndent(), 0);
+    if (!changed) return;
+    for (int style = 0; style < 256; ++style) {
+        char font[256] = {0};
+        SciCall(SCI_STYLEGETFONT, style, (LPARAM)font);
+        Sci_ViewCall(other, SCI_STYLESETFONT, style, (LPARAM)font);
+        Sci_ViewCall(other, SCI_STYLESETFORE, style, SciCall(SCI_STYLEGETFORE, style, 0));
+        Sci_ViewCall(other, SCI_STYLESETBACK, style, SciCall(SCI_STYLEGETBACK, style, 0));
+        Sci_ViewCall(other, SCI_STYLESETSIZEFRACTIONAL, style, SciCall(SCI_STYLEGETSIZEFRACTIONAL, style, 0));
+        Sci_ViewCall(other, SCI_STYLESETBOLD, style, SciCall(SCI_STYLEGETBOLD, style, 0));
+        Sci_ViewCall(other, SCI_STYLESETITALIC, style, SciCall(SCI_STYLEGETITALIC, style, 0));
+    }
+}
+static void _SplitToggle(void)
+{
+    if (!_WorkspaceEnsure()) return;
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (workspace->splitView) {
+        HWND closing = workspace->splitView;
+        _SplitActivate(workspace->primaryView); workspace->splitView = NULL;
+        DestroyWindow(closing); SetFocus(Globals.hwndEdit);
+    } else {
+        workspace->primaryView = Globals.hwndEdit;
+        HWND view = CreateWindowExW(WS_EX_CLIENTEDGE, L"Scintilla", NULL, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+            0, 0, 0, 0, Globals.hwndMain, (HMENU)IDC_EDITOR_SPLIT, Globals.hInstance, NULL);
+        if (!view) return;
+        workspace->splitView = view;
+        Globals.hwndEdit = view; InitScintillaHandle(view); _InitializeSciEditCtrl(view);
+        Globals.hwndEdit = workspace->primaryView; InitScintillaHandle(Globals.hwndEdit);
+        _SplitSync();
+    }
+    RECT rect; GetClientRect(Globals.hwndMain, &rect);
+    SendMessageW(Globals.hwndMain, WM_SIZE, 0, MAKELPARAM(rect.right, rect.bottom));
+}
+static int _SplitLayout(int x, int y, int width, int height)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace || !workspace->splitView) return 0;
+    int gap = MulDiv(6, GetDpiForWindow(Globals.hwndMain), 96);
+    int rightWidth = max_i(0, (width - gap) / 2);
+    MoveWindow(workspace->splitView, x + width - rightWidth, y, rightWidth, height, TRUE);
+    return rightWidth + min_i(width, gap);
+}
 
 static void _WorkspaceCapture()
 {
@@ -75,6 +141,7 @@ static void _WorkspaceCapture()
 
 static void _WorkspaceRefresh()
 {
+    _SplitSync();
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace || workspace->transitioning || !IsWindow(workspace->tabs)) return;
     int const shown = TabCtrl_GetItemCount(workspace->tabs);
@@ -247,6 +314,7 @@ static void _WorkspaceDispose()
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace) return;
+    if (workspace->splitView) _SplitToggle();
     for (int i = 0; i < workspace->count; ++i) _WorkspaceReleaseDocument(&workspace->documents[i]);
     Globals.workspace = NULL; FreeMem(workspace);
 }
