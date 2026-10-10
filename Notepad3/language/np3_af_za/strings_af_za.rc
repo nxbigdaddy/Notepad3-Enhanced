@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    "Kon nie ""%s"" laai nie"
     IDS_MUI_ERR_SAVEFILE    "Kon nie ""%s"" stoor nie"
     IDS_MUI_ERR_PATHNOTFOUND "Die pad vir ""%s"" bestaan ​​nie meer nie.\nHerskep die pad en stoor die lêer?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Fout '%s', oorsaak:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Geen lêerblaaier plugin is gevind nie\nDie MiniPath-lêerblaaier plugin kan afgelaai word vanaf https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Geen lêer soek-inprop is gevind nie\nDie grepWin Portable lêersoek plugin kan afgelaai word vanaf https://github.com/stefankueng/grepWin/releases"

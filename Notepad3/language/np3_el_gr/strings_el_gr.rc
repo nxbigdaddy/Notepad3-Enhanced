@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    "Σφάλμα φόρτωσης του ""%s"""
     IDS_MUI_ERR_SAVEFILE    "Σφάλμα αποθήκευσης του ""%s"""
     IDS_MUI_ERR_PATHNOTFOUND "Η διαδρομή για το ""%s"" δεν υπάρχει πλέον.\nΔημιουργήστε ξανά τη διαδρομή και αποθηκεύστε το αρχείο;"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Σφάλμα '%s'. Αιτία:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Δεν βρέθηκε το πρόσθετο περιήγησης αρχείων\nΜπορείτε να κάνετε λήψη του πρόσθετου περιήγησης αρχείων MiniPath από https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Δεν βρέθηκε το πρόσθετο αναζήτησης αρχείων\nΜπορείτε να κάνετε λήψη του πρόσθετου αναζήτησης αρχείων grepWin Portable από https://github.com/stefankueng/grepWin/releases"

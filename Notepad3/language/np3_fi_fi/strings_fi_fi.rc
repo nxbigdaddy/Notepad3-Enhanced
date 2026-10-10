@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    "Virhe ladattaessa ""%s"""
     IDS_MUI_ERR_SAVEFILE    "Virhe tallennettaessa ""%s"""
     IDS_MUI_ERR_PATHNOTFOUND "Polkua ""%s"" ei ole enää olemassa.\nLuodaanko polku ja tallennetaan tiedosto?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Virhe '%s', syy:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Tiedostoselaimen laajennusta ei löytynyt\nMiniPath-tiedostoselaimen laajennuksen voi ladata osoitteesta https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Tiedostonhakulaajennusta ei löytynyt\ngrepWin Portable-tiedostonhakulaajennuksen voi ladata osoitteesta https://github.com/stefankueng/grepWin/releases"

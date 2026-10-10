@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    "Kesalahan memuat ""%s"""
     IDS_MUI_ERR_SAVEFILE    "Kesalahan menyimpan ""%s"""
     IDS_MUI_ERR_PATHNOTFOUND "Jalur untuk ""%s"" sudah tidak ada.\nBuat ulang jalur dan simpan file?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Kesalahan pada '%s', penyebab:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Tidak ditemukan plugin penelusuran berkas\nPlugin penelusuran berkas MiniPath dapat diunduh di https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Tidak ditemukan plugin pencarian berkas\nPlugin pencarian berkas grepWin Portable dapat diunduh di https://github.com/stefankueng/grepWin/releases"

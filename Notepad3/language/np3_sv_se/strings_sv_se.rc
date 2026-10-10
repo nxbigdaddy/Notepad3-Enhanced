@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    "Fel vid laddning ""%s"""
     IDS_MUI_ERR_SAVEFILE    "Fel vid sparande ""%s"""
     IDS_MUI_ERR_PATHNOTFOUND "Sökvägen till ""%s"" finns inte längre.\nVill du återskapa sökvägen och spara filen?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Fel '%s', orsak:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Inget plugin för filbläddring hittades\nMinipath filbläddrare kan laddas ner från https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Inget sökplugin hittades\ngrepWin Portable filsökningsplugin kan hämtas från https://github.com/stefankueng/grepWin/releases"

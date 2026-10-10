@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    "Chyba načítania ""%s"""
     IDS_MUI_ERR_SAVEFILE    "Chyba ukladania ""%s"""
     IDS_MUI_ERR_PATHNOTFOUND "Cesta pre ""%s"" už neexistuje.\nZnovu vytvoriť cestu a uložiť súbor?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Chyba '%s', príčina:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Nenašiel sa doplnok na prehľadávanie súborov\nDoplnok MiniPath si môžete stiahnuť z https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Nenašiel sa vyhľadávací doplnok\nDoplnok na vyhľadávanie súborov grepWin Portable si môžete stiahnuť z https://github.com/stefankueng/grepWin/releases"

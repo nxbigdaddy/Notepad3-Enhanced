@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    "Error cargando ""%s"""
     IDS_MUI_ERR_SAVEFILE    "Error guardando ""%s"""
     IDS_MUI_ERR_PATHNOTFOUND "La ruta para ""%s"" ya no existe.\n¿Recrear la ruta y guardar el archivo?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Error '%s', causa:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "No se encontró plug-in para el navegador de archivos\nEl plug-in de navegador de archivos MiniPath se puede descargar desde https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "No se encontró plug-in de búsqueda de archivos\nEl plug-in grepWin Portable de búsqueda de archivos se puede descargar desde https://github.com/stefankueng/grepWin/releases"

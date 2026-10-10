@@ -248,6 +248,8 @@ BEGIN
             MENUITEM SEPARATOR
             MENUITEM "&Змяніць радкі...\tAlt+M",        IDM_EDIT_MODIFYLINES
             MENUITEM "Сар&таваць радкі...\tAlt+O",      IDM_EDIT_SORTLINES
+            MENUITEM "Format JSON", IDM_EDIT_JSON_FORMAT
+            MENUITEM "Compact JSON", IDM_EDIT_JSON_COMPACT
             MENUITEM SEPARATOR
             MENUITEM "Выраў&наваць радкі...\tAlt+J",                  IDM_EDIT_ALIGN
             MENUITEM "Падзяліць &радкі\tCtrl+I",                      IDM_EDIT_SPLITLINES

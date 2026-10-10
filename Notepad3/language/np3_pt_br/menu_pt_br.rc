@@ -248,6 +248,8 @@ BEGIN
             MENUITEM SEPARATOR
             MENUITEM "&Modificar Linhas ...\tAlt+M",    IDM_EDIT_MODIFYLINES
             MENUITEM "&Ordenar Linhas ...\tAlt+O",      IDM_EDIT_SORTLINES
+            MENUITEM "Format JSON", IDM_EDIT_JSON_FORMAT
+            MENUITEM "Compact JSON", IDM_EDIT_JSON_COMPACT
             MENUITEM SEPARATOR
             MENUITEM "&Alinhar Linhas ...\tAlt+J",             IDM_EDIT_ALIGN
             MENUITEM "D&ividir Linhas\tCtrl+I",                IDM_EDIT_SPLITLINES

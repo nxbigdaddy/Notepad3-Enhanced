@@ -248,6 +248,8 @@ BEGIN
             MENUITEM SEPARATOR
             MENUITEM "修改(&M)...\tAlt+M",                     IDM_EDIT_MODIFYLINES
             MENUITEM "排序(&S)...\tAlt+O",                     IDM_EDIT_SORTLINES
+            MENUITEM "JSON 格式化", IDM_EDIT_JSON_FORMAT
+            MENUITEM "JSON 壓縮", IDM_EDIT_JSON_COMPACT
             MENUITEM SEPARATOR
             MENUITEM "對齊(&A)...\tAlt+J",                     IDM_EDIT_ALIGN
             MENUITEM "拆分行(&I)\tCtrl+I",                      IDM_EDIT_SPLITLINES

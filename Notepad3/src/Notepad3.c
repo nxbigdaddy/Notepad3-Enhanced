@@ -48,6 +48,7 @@
 #include "DarkMode/DarkMode.h"
 #include "Notepad3Util.h"
 #include "Markdown/MarkdownPreview.h"
+#include "TextTools/JsonFormat.h"
 #include "StyleLexers/EditLexer.h"
 
 #if (defined(_DEBUG) || defined(DEBUG)) && !defined(NDEBUG)
@@ -5068,6 +5069,8 @@ LRESULT MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam)
     EnableCmd(hmenu, IDM_EDIT_STRIPLASTCHAR, !ro && !se);
     EnableCmd(hmenu, IDM_EDIT_TRIMLINES, !ro);
     EnableCmd(hmenu, IDM_EDIT_COMPRESS_BLANKS, !ro);
+    EnableCmd(hmenu, IDM_EDIT_JSON_FORMAT, !ro && !Sci_IsMultiOrRectangleSelection());
+    EnableCmd(hmenu, IDM_EDIT_JSON_COMPACT, !ro && !Sci_IsMultiOrRectangleSelection());
 
     EnableCmd(hmenu, IDM_EDIT_MODIFYLINES, !ro);
     EnableCmd(hmenu, IDM_EDIT_ALIGN, mls && !ro);
@@ -6418,6 +6421,42 @@ static bool _HandleEditLineManipulation(HWND hwnd, UINT umsg, WPARAM wParam, LPA
         EditStripLastCharacter(Globals.hwndEdit, false, true);
         break;
 
+
+    case IDM_EDIT_JSON_FORMAT:
+    case IDM_EDIT_JSON_COMPACT: {
+        if (SciCall_GetReadOnly() || Sci_IsMultiOrRectangleSelection()) { SimpleBeep(); break; }
+        DocPos const selectionStart = SciCall_GetSelectionStart();
+        DocPos const selectionEnd = SciCall_GetSelectionEnd();
+        bool const selected = selectionStart != selectionEnd;
+        DocPos const start = selected ? selectionStart : 0;
+        DocPos const end = selected ? selectionEnd : SciCall_GetLength();
+        DocPos const length = end - start;
+        if (length > 8 * 1024 * 1024) {
+            InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_JSON_LIMIT);
+            break;
+        }
+        char* output = NULL;
+        size_t outputLength = 0, errorOffset = 0;
+        int const eolMode = SciCall_GetEOLMode();
+        const char* eol = eolMode == SC_EOL_CRLF ? "\r\n" : eolMode == SC_EOL_CR ? "\r" : "\n";
+        const char* input = SciCall_GetRangePointer(start, length);
+        int const result = JsonFormat(input ? input : "", (size_t)length,
+            iLoWParam == IDM_EDIT_JSON_COMPACT, eol, &output, &outputLength, &errorOffset);
+        if (result != 0) {
+            if (result == 1) InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_JSON_SYNTAX, (int)errorOffset + 1);
+            else InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_JSON_LIMIT);
+            break;
+        }
+        if (outputLength != (size_t)length || memcmp(input ? input : "", output, outputLength) != 0) {
+            UndoTransActionBegin();
+            SciCall_SetTargetRange(start, end);
+            Sci_ReplaceTargetTestChgHist((DocPos)outputLength, output);
+            if (selected) SciCall_SetSel(start, start + (DocPos)outputLength);
+            EndUndoTransAction();
+        }
+        JsonFormat_Free(output);
+        break;
+    }
 
     case IDM_EDIT_COMPRESS_BLANKS:
         EditCompressBlanks(Globals.hwndEdit);

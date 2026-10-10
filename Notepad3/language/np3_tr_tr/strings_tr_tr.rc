@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    """%s"" yüklenirken sorun çıktı"
     IDS_MUI_ERR_SAVEFILE    """%s"" kaydedilirken sorun çıktı"
     IDS_MUI_ERR_PATHNOTFOUND """%s"" için yol artık mevcut değil.\nYolu yeniden oluşturup dosyayı kaydetmek ister misiniz?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Hata '%s'. Nedeni:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Dosya gezgini uygulama eki bulunamadı\nMiniPath dosya tarayıcı uygulama ekini şuradan indirebilirsiniz: https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Dosya arama uygulama eki bulunamadı\ngrepWin Portable dosya arama uygulama ekini şuradan indirebilirsiniz: https://github.com/stefankueng/grepWin/releases"

@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    "Fout bij laden ""%s"""
     IDS_MUI_ERR_SAVEFILE    "Fout bij opslaan ""%s"""
     IDS_MUI_ERR_PATHNOTFOUND "Het pad voor ""%s"" bestaat niet meer.\nPad opnieuw aanmaken en bestand opslaan?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Fout '%s', oorzaak:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Geen bestandsbrowser-plugin gevonden\nDe plugin voor de MiniPath bestandsbrowser kan worden gedownload van https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Geen plugin voor het doorzoeken van bestanden gevonden\nDe plug-in grepWin Portable voor het doorzoeken van bestanden kan worden gedownload van https://github.com/stefankueng/grepWin/releases"

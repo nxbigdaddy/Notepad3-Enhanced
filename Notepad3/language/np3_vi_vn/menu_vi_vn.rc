@@ -248,6 +248,8 @@ BEGIN
             MENUITEM SEPARATOR
             MENUITEM "Chỉnh sửa dòng(&M)...\tAlt+M",                 IDM_EDIT_MODIFYLINES
             MENUITEM "Sắp xếp dòng(&O)...\tAlt+O",                 IDM_EDIT_SORTLINES
+            MENUITEM "Format JSON", IDM_EDIT_JSON_FORMAT
+            MENUITEM "Compact JSON", IDM_EDIT_JSON_COMPACT
             MENUITEM SEPARATOR
             MENUITEM "Căn chỉnh dòng(&A)...\tAlt+J",               IDM_EDIT_ALIGN
             MENUITEM "Chia dòng(&I)\tCtrl+I",                IDM_EDIT_SPLITLINES

@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    """%s"" शुरू करने में त्रुटि"
     IDS_MUI_ERR_SAVEFILE    """%s"" सहेजने में त्रुटि"
     IDS_MUI_ERR_PATHNOTFOUND """%s"" का पथ अब मौजूद नहीं है।\nपथ पुनः बनाएं और फ़ाईल सहेजें?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "त्रुटि '%s', कारण:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "कोई फ़ाईल ब्राउज़र plugin नहीं मिला।\nकृपया MiniPath फ़ाईल ब्राउज़र plugin यहाँ से डाउनलोड करें: https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "कोई फ़ाईल सर्च plugin नहीं मिला।\ngrepWin Portable सर्च plugin कृपया यहाँ से डाउनलोड करें: https://github.com/stefankueng/grepWin/releases"

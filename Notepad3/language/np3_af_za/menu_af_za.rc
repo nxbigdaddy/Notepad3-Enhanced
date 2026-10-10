@@ -248,6 +248,8 @@ BEGIN
             MENUITEM SEPARATOR
             MENUITEM "&Modifiseer Lyne...\tAlt+M",          IDM_EDIT_MODIFYLINES
             MENUITEM "&Sorteer Lyne...\tAlt+O",             IDM_EDIT_SORTLINES
+            MENUITEM "Format JSON", IDM_EDIT_JSON_FORMAT
+            MENUITEM "Compact JSON", IDM_EDIT_JSON_COMPACT
             MENUITEM SEPARATOR
             MENUITEM "&Bring Lyne in Lyn...\tAlt+J",        IDM_EDIT_ALIGN
             MENUITEM "V&erdeel Lyne\tCtrl+I",               IDM_EDIT_SPLITLINES

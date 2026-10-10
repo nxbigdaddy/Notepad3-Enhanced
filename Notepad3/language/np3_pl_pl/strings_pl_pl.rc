@@ -131,6 +131,8 @@ BEGIN
     IDS_MUI_ERR_LOADFILE    "Błąd podczas ładowania ""%s"""
     IDS_MUI_ERR_SAVEFILE    "Błąd podczas zapisu ""%s"""
     IDS_MUI_ERR_PATHNOTFOUND "Ścieżka do ""%s"" już nie istnieje.\nOdtwórz ścieżkę i zapisz plik?"
+    IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
+    IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_ERR_DLG_FORMAT  "Błąd '%s', powód:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Nie znaleziono wtyczki przeglądarki pliku\nWtyczkę przeglądarki pliku do MiniPath można pobrać z https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Nie znaleziono wtyczki wyszukiwania pliku.\Wtyczkę wyszukiwania pliku programu grepWin Portable można pobrać ze strony https://github.com/stefankueng/grepWin/releases"

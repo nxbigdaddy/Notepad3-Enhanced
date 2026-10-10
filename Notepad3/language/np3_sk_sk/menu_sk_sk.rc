@@ -248,6 +248,8 @@ BEGIN
             MENUITEM SEPARATOR
             MENUITEM "&Upraviť riadky...\tAlt+M",           IDM_EDIT_MODIFYLINES
             MENUITEM "Zor&adiť riadky...\tAlt+O",           IDM_EDIT_SORTLINES
+            MENUITEM "Format JSON", IDM_EDIT_JSON_FORMAT
+            MENUITEM "Compact JSON", IDM_EDIT_JSON_COMPACT
             MENUITEM SEPARATOR
             MENUITEM "Z&arovnať riadky...\tAlt+J",          IDM_EDIT_ALIGN
             MENUITEM "&Rozdeliť riadky\tCtrl+I",            IDM_EDIT_SPLITLINES

@@ -174,6 +174,8 @@
 #define IDS_MUI_WARN_STYLE_RESET        13025
 #define IDS_MUI_ASK_INSTANCE_EXISTS     13026
 #define IDS_MUI_ERR_PATHNOTFOUND        13027
+#define IDS_MUI_JSON_SYNTAX             13028
+#define IDS_MUI_JSON_LIMIT              13029
 
 
 #define IDS_MUI_SELRECT                 14000
@@ -754,6 +756,8 @@
 #define IDM_EDIT_COPYRTF                40394
 #define IDM_EDIT_OPEN_CONTAINING_FOLDER_SEL  40395
 #define IDM_EDIT_OPEN_FILE_FROM_SEL          40396
+#define IDM_EDIT_JSON_FORMAT               40397
+#define IDM_EDIT_JSON_COMPACT              40398
 
 #define IDM_VIEW_SCHEME                 41001
 #define IDM_VIEW_USE2NDDEFAULT          41002

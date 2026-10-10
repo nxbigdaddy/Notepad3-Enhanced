@@ -1286,11 +1286,13 @@
     <Natvis Include="STRINGW.natvis" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="TextTools\JsonFormat.cpp" />
     <ClCompile Include="Markdown\MarkdownRender.cpp" />
     <ClCompile Include="Markdown\MarkdownPreview.cpp" />
     <ClCompile Include="Markdown\vendor\md4c\md4c.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
     <ClCompile Include="Markdown\vendor\md4c\md4c-html.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
     <ClCompile Include="Markdown\vendor\md4c\entity.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError></ClCompile>
+    <ClInclude Include="TextTools\JsonFormat.h" />
     <ClInclude Include="Markdown\MarkdownRender.h" />
     <ClInclude Include="Markdown\MarkdownPreview.h" />
   </ItemGroup>
