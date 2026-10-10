@@ -1,6 +1,8 @@
 #include "MarkdownPdf.h"
 #include "MarkdownRender.h"
 #include "MarkdownExport.h"
+#include "MarkdownStandalone.h"
+#include <system_error>
 #include "vendor/webview2/WebView2.h"
 #include <wrl.h>
 #include <memory>
@@ -18,7 +20,7 @@ struct Job {
     ComPtr<ICoreWebView2Controller> controller;
     ComPtr<ICoreWebView2> web;
     std::wstring folder, target, temporary, staging, index;
-    bool done = false, printing = false, adopted = false, ownsTemporary = false, ownsStaging = false;
+    bool done = false, printing = false, adopted = false, ownsTemporary = false, ownsStaging = false, advanced = false, polling = false;
     ~Job() {
         if (ownsTemporary) DeleteFileW(temporary.c_str());
         if (ownsStaging) { DeleteFileW(index.c_str()); RemoveDirectoryW(staging.c_str()); }
@@ -74,6 +76,18 @@ void Print(const std::shared_ptr<Job>& job) {
         }).Get());
     if (FAILED(status)) Finish(job, Status(status));
 }
+void PollRender(const std::shared_ptr<Job>& job) {
+    if(job->done || job->printing || job->polling || !job->web) return;
+    job->polling=true; const std::weak_ptr<Job> weak=job;
+    HRESULT status=job->web->ExecuteScript(L"window.np3RenderState && window.np3RenderState.done ? true : false",
+        Callback<ICoreWebView2ExecuteScriptCompletedHandler>([weak](HRESULT status,LPCWSTR result)->HRESULT {
+            auto live=weak.lock(); if(!live || live->done || live->printing) return S_OK; live->polling=false;
+            if(FAILED(status)) { Finish(live,Status(status)); return S_OK; }
+            if(result && !wcscmp(result,L"true")) { KillTimer(live->window,2); Print(live); }
+            return S_OK;
+        }).Get());
+    if(FAILED(status)) { job->polling=false; Finish(job,Status(status)); }
+}
 void Start(const std::shared_ptr<Job>& job) {
     wchar_t module[32768]; DWORD size = GetModuleFileNameW(nullptr, module, 32768);
     if (!size || size >= 32768) { Finish(job, ERROR_PATH_NOT_FOUND); return; }
@@ -99,7 +113,7 @@ void Start(const std::shared_ptr<Job>& job) {
                     if (!job->web) { Finish(job, ERROR_NOT_SUPPORTED); return S_OK; }
                     RECT bounds = { 0, 0, 1024, 768 }; controller->put_Bounds(bounds); controller->put_IsVisible(FALSE);
                     ComPtr<ICoreWebView2Settings> settings; job->web->get_Settings(&settings);
-                    if (settings) { settings->put_IsScriptEnabled(FALSE); settings->put_AreDevToolsEnabled(FALSE); settings->put_AreDefaultContextMenusEnabled(FALSE); settings->put_IsWebMessageEnabled(FALSE); }
+                    if (settings) { settings->put_IsScriptEnabled(job->advanced?TRUE:FALSE); settings->put_AreHostObjectsAllowed(FALSE); settings->put_AreDevToolsEnabled(FALSE); settings->put_AreDefaultContextMenusEnabled(FALSE); settings->put_IsWebMessageEnabled(FALSE); }
                     ComPtr<ICoreWebView2_3> mapping;
                     if (FAILED(job->web.As(&mapping)) || FAILED(mapping->SetVirtualHostNameToFolderMapping(L"np3-preview.invalid", job->folder.c_str(), COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) { Finish(job, ERROR_NOT_SUPPORTED); return S_OK; }
                     if (FAILED(mapping->SetVirtualHostNameToFolderMapping(L"np3-export.invalid", job->staging.c_str(), COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) { Finish(job, ERROR_NOT_SUPPORTED); return S_OK; }
@@ -112,7 +126,7 @@ void Start(const std::shared_ptr<Job>& job) {
                     job->web->add_NavigationCompleted(Callback<ICoreWebView2NavigationCompletedEventHandler>([weak](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
                         auto job = weak.lock(); if (!job || job->done) return S_OK;
                         BOOL success = FALSE; args->get_IsSuccess(&success);
-                        if (success) Print(job); else Finish(job, ERROR_INVALID_DATA);
+                        if (success) { if(job->advanced) { if(!SetTimer(job->window,2,50,nullptr)) Finish(job,ERROR_NOT_ENOUGH_MEMORY); } else Print(job); } else Finish(job, ERROR_INVALID_DATA);
                         return S_OK;
                     }).Get(), &token);
                     HRESULT status = job->web->Navigate(L"https://np3-export.invalid/index.html");
@@ -130,7 +144,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         auto* create = reinterpret_cast<CREATESTRUCTW*>(lParam);
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
         auto* owner = static_cast<std::shared_ptr<Job>*>(create->lpCreateParams); (*owner)->adopted = true;
-    } else if (message == WM_TIMER && holder) Finish(*holder, ERROR_TIMEOUT);
+    } else if (message == WM_TIMER && holder) { if(wParam==2) PollRender(*holder); else Finish(*holder, ERROR_TIMEOUT); }
     else if (message == WM_NCDESTROY && holder) {
         auto job = *holder; job->window = nullptr; job->done = true;
         if (job->controller) job->controller->Close();
@@ -150,7 +164,8 @@ extern "C" int MarkdownPdf_Start(HWND parent, const char* text, size_t length, c
     if (MarkdownPdf_IsBusy(parent)) { *error = ERROR_BUSY; return 0; }
     try {
         auto job = std::make_shared<Job>(); job->parent = parent; job->folder = Absolute(directory); job->target = Absolute(destination);
-        auto html = np3::RenderMarkdownExport(std::string_view(text ? text : "", length), job->folder);
+        auto html = np3::RenderMarkdownStandalone(std::string_view(text ? text : "", length), job->folder, np3::MarkdownAssetsDirectory());
+        job->advanced = html.find("script-src 'sha256-") < html.find("<body>");
         auto base = html.find("<base href="); auto end = html.find('>', base);
         html.replace(base, end - base + 1, "<base href=\"https://np3-preview.invalid/\">");
         auto image = html.find("img-src file: data:"); html.replace(image, strlen("img-src file: data:"), "img-src https://np3-preview.invalid data:");
@@ -176,7 +191,8 @@ extern "C" int MarkdownPdf_Start(HWND parent, const char* text, size_t length, c
         if (!job->window) { if (!job->adopted) delete holder; DeleteFileW(job->temporary.c_str()); DeleteFileW(job->index.c_str()); RemoveDirectoryW(job->staging.c_str()); *error = GetLastError(); return 0; }
         SetTimer(job->window, 1, 60000, nullptr);
         Start(job); return 1;
-    } catch (const std::length_error&) { *error = ERROR_FILE_TOO_LARGE; }
+    } catch (const std::system_error& exception) { *error = static_cast<uint32_t>(exception.code().value()); }
+    catch (const std::length_error&) { *error = ERROR_FILE_TOO_LARGE; }
     catch (...) { *error = ERROR_INVALID_DATA; }
     return 0;
 }

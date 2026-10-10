@@ -1299,6 +1299,7 @@
     <ClCompile Include="Workspace\FileTree.cpp" />
     <ClCompile Include="Markdown\MarkdownRender.cpp" />
     <ClCompile Include="Markdown\MarkdownExport.cpp" />
+    <ClCompile Include="Markdown\MarkdownStandalone.cpp" />
     <ClCompile Include="Markdown\MarkdownPdf.cpp" />
     <ClCompile Include="Markdown\MarkdownPreview.cpp" />
     <ClCompile Include="Markdown\vendor\md4c\md4c.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
@@ -1321,6 +1322,7 @@
     <ClInclude Include="TextTools\ConfigCheck.inc" />
     <ClInclude Include="Markdown\MarkdownRender.h" />
     <ClInclude Include="Markdown\MarkdownExport.h" />
+    <ClInclude Include="Markdown\MarkdownStandalone.h" />
     <ClInclude Include="Markdown\MarkdownPdf.h" />
     <ClInclude Include="Markdown\MarkdownPdfSelfTest.inc" />
     <ClInclude Include="Markdown\MarkdownExportCommand.inc" />

@@ -1,3 +1,4 @@
+import unicodedata
 """Inspect actual native export, compare failed replacement, and render pages."""
 import argparse
 import hashlib
@@ -9,8 +10,11 @@ from pypdf import PdfReader
 
 parser = argparse.ArgumentParser()
 parser.add_argument("directory", type=Path)
+parser.add_argument("--advanced", action="store_true")
+parser.add_argument("--long", action="store_true")
 args = parser.parse_args()
 folder = args.directory.resolve()
+advanced = args.advanced
 assert (folder / "pdf-test.marker").is_file(), "Missing isolated test marker"
 output = folder / "export.pdf"
 reader = PdfReader(output)
@@ -18,19 +22,30 @@ text = "\n".join(page.extract_text() or "" for page in reader.pages)
 for expected in ["Markdown PDF", "导出验证", "这是中文正文", "English text.", "项目", "示例", "42", "return"]:
     assert expected in text, f"Missing PDF content: {expected}"
 assert "AFTER SNAPSHOT" not in text, "PDF includes editing after snapshot"
-assert len(reader.pages) == 1, "Unexpected fixture pagination"
+if advanced:
+    for expected in ["离线图表与公式", "图表起点", "图表终点", "公式标记"]:
+        assert expected in text, f"Advanced PDF content missing: {expected}"
+    assert "flowchart LR" not in text and "\\frac" not in text and "$E=mc^2$" not in text, "PDF printed raw graph or math source"
+    normalized = "".join(unicodedata.normalize("NFKC", text).split())
+    assert "E=mc2" in normalized, f"Rendered math not extracted: {normalized}"
+if args.long:
+    assert len(reader.pages)>=3, "Long fixture was not paginated"
+    assert "END-OF-LONG-DOCUMENT" in reader.pages[-1].extract_text(), "Final paragraph was lost or moved"
+    for number in range(1,61): assert f"分页段落 {number}" in text, f"Paragraph {number} missing"
+else:
+    assert len(reader.pages) == 1, "Unexpected fixture pagination"
 page = reader.pages[0]
-assert abs(float(page.mediabox.width) - 210 / 25.4 * 72) < 1, "Page width is not A4"
-assert abs(float(page.mediabox.height) - 297 / 25.4 * 72) < 1, "Page height is not A4"
+assert all(abs(float(item.mediabox.width)-210/25.4*72)<1 for item in reader.pages), "Page width is not A4"
+assert all(abs(float(item.mediabox.height)-297/25.4*72)<1 for item in reader.pages), "Page height is not A4"
 images = [item for page in reader.pages for item in page.images]
-assert images and images[0].image.size == (96, 64), "Local fixture image not embedded"
+assert images and any(item.image.size == (96, 64) for item in images), "Local fixture image not embedded"
 digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
 assert digest(output) == digest(folder / "baseline.pdf"), "Failed replacement changed earlier PDF"
 (folder / "extracted-text.txt").write_text(text, encoding="utf-8")
 renderer = shutil.which("pdftoppm")
 assert renderer, "Install Poppler or add pdftoppm to PATH for visual inspection"
 subprocess.run([renderer, "-png", "-r", "120", str(output), str(folder / "page")], check=True)
-report = {"pages": len(reader.pages), "images": len(images), "a4": True,
+report = {"pages": len(reader.pages), "images": len(images), "a4": True, "advanced": advanced,
           "snapshot_immutable": True, "locked_replacement_preserved": True,
           "sha256": digest(output), "rendered_pages": [p.name for p in folder.glob("page-*.png")]}
 (folder / "verification.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

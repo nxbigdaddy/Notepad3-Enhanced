@@ -1,4 +1,5 @@
 #include "../Notepad3/src/Markdown/MarkdownExport.h"
+#include "../Notepad3/src/Markdown/MarkdownStandalone.h"
 #include <windows.h>
 #include <fstream>
 #include <iterator>
@@ -28,6 +29,21 @@ int main() {
         expect(Markdown_ExportHtml(markdown.data(), markdown.size(), folder.c_str(), target.c_str(), &error) && !error, "actual UTF-8 atomic file export");
         const auto original = disk(target);
         expect(original == html && original.substr(0, 15) == "<!doctype html>", "saved HTML bytes match rendering without BOM");
+        const std::string advancedSource="# 单文件图表与公式\n\n```mermaid\nflowchart LR\n A[开始] --> B[结束]\n```\n\n行内 $E=mc^2$\n\n$$\\frac{1}{2}$$\n\n<script>window.attack=1</script>\n";
+        const auto advanced=np3::RenderMarkdownStandalone(advancedSource,folder,np3::MarkdownAssetsDirectory());
+        expect(advanced.find("script-src 'sha256-")!=std::string::npos && advanced.find("'unsafe-eval'")==std::string::npos,"standalone scripts use exact content hashes");
+        expect(advanced.find("np3-assets.invalid")==std::string::npos && advanced.find("np3-preview.invalid")==std::string::npos,"standalone page has no virtual host dependencies");
+        expect(advanced.find("data:font/woff2;base64,")!=std::string::npos && advanced.find("url(fonts/")==std::string::npos,"font dependencies are embedded");
+        expect(advanced.find("<script>window.attack=1</script>")==std::string::npos,"advanced standalone document markup remains inert");
+        expect(advanced.size()>5*1024*1024 && advanced.size()<32*1024*1024,"bounded actual bundled page");
+        const auto advancedTarget=folder+L"\\advanced.html";
+        expect(Markdown_ExportHtml(advancedSource.data(),advancedSource.size(),folder.c_str(),advancedTarget.c_str(),&error) && disk(advancedTarget)==advanced,"native export selects advanced standalone rendering");
+        bool assetsMissing=false; try { np3::RenderMarkdownStandalone(advancedSource,folder,folder+L"\\missing-assets"); } catch(const std::exception&) { assetsMissing=true; }
+        expect(assetsMissing,"missing advanced assets fail instead of silently exporting raw graphs");
+        std::ofstream fixture("advanced-export-fixture.json",std::ios::binary);
+        int pathLength=WideCharToMultiByte(CP_UTF8,0,advancedTarget.c_str(),-1,nullptr,0,nullptr,nullptr); std::string utf8Path(pathLength,0);
+        WideCharToMultiByte(CP_UTF8,0,advancedTarget.c_str(),-1,utf8Path.data(),pathLength,nullptr,nullptr); utf8Path.pop_back();
+        fixture << "{\"html\":\""; for(char c:utf8Path) { if(c=='\\') fixture << "\\\\"; else if(c=='\"') fixture << "\\\""; else fixture << c; } fixture << "\"}"; fixture.close();
         HANDLE locked = CreateFileW(target.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
         expect(locked != INVALID_HANDLE_VALUE, "hold replacement lock");
         expect(!Markdown_ExportHtml("changed", 7, folder.c_str(), target.c_str(), &error) && error && disk(target) == original, "failed replacement retains earlier export");

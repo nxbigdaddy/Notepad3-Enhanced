@@ -53,4 +53,23 @@ Tests: scripts/test-markdown.cmd (33 checks), scripts/test-markdown-export.cmd
 Notepad3/Bin/Release_x64_v143/Notepad3.exe -Preview (116 checks), and
 python scripts/test-ai-panel.py --preview (130 combined checks).
 Actual native preview trace/PNG: artifacts/workspace-test-1225f06fe4d9430c919fc1be0053d3b6.
-Preview supports graph/math now; HTML/PDF advanced rendering integration is pending.
+Preview supports graph/math. Iteration 30 also supports advanced HTML/PDF export.
+
+## Advanced export (iteration 30)
+
+Advanced HTML embeds the pinned renderer scripts, CSS and WOFF2 fonts in one file.
+Exact SHA-256 script hashes restrict CSP execution; authored HTML remains escaped.
+Basic documents retain their small script-free export. Relative images still refer
+to the source folder; they are not embedded. Source is limited to 8 MiB, output to
+32 MiB. Missing assets fail without replacing an existing destination.
+
+PDF uses an immutable source snapshot and waits for diagram, formula and font
+layout before printing. A bounded timer reports failure rather than printing an
+unfinished rendering. Atomic replacement, source-file protection and cancellation
+remain enforced. Print styles discourage splitting tables, code, diagrams and
+display formulas, and keep headings with following content.
+
+Validation: 28 export checks; offline standalone browser rendering; actual editor
+PDF checks for basic, advanced and 8-page documents; 130 AI/preview regression
+checks. Oversized diagrams, missing-runtime UI and close-during-print interaction
+still need separate acceptance.

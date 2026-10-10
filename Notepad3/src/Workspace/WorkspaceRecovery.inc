@@ -126,7 +126,7 @@ static void _WorkspaceNormalRestoreLatest(WORKSPACE_RECOVERY* recovery)
 }
 static void _WorkspaceRecoveryStart()
 {
-    if (GetEnvironmentVariableW(L"NP3_WORKSPACE_SELFTEST_DIR", NULL, 0)) return;
+    if (GetEnvironmentVariableW(L"NP3_WORKSPACE_SELFTEST_DIR", NULL, 0) || GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_DIR", NULL, 0)) return;
     if (!_WorkspaceEnsure() || _Workspace()->recovery) return;
     WCHAR root[MAX_PATH_EXPLICIT];
     DWORD length = GetEnvironmentVariableW(L"NP3_RECOVERY_TEST_DIR", root, COUNTOF(root));

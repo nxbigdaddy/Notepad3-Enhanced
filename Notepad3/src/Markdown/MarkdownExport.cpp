@@ -1,5 +1,7 @@
 #include "MarkdownExport.h"
 #include "MarkdownRender.h"
+#include "MarkdownStandalone.h"
+#include <system_error>
 #include <windows.h>
 #include <stdexcept>
 #include <algorithm>
@@ -55,7 +57,7 @@ std::string RenderMarkdownExport(std::string_view markdown, const std::wstring& 
     Replace(html, "img-src https://np3-preview.invalid data:", "img-src file: data:");
     Replace(html, "base-uri https://np3-preview.invalid", "base-uri file:");
     Replace(html, "<base href=\"https://np3-preview.invalid/\">", "<base href=\"" + uri + "\">");
-    Replace(html, "</style>", "@media print{html{color-scheme:light}body{color:#111;background:#fff;padding:0;max-width:none}pre{white-space:pre-wrap;overflow-wrap:anywhere}table,pre,blockquote{break-inside:avoid}a{color:inherit}}@page{margin:18mm}</style>");
+    Replace(html, "</style>", "@media print{html{color-scheme:light}body{color:#111;background:#fff;padding:0;max-width:none}pre{white-space:pre-wrap;overflow-wrap:anywhere}table,pre,blockquote,.np3-diagram,.katex-display{break-inside:avoid}h1,h2,h3,h4{break-after:avoid}a{color:inherit}}@page{margin:18mm}</style>");
     if (html.size() > OutputLimit) throw std::length_error("Export exceeds 32 MiB output limit");
     return html;
 }
@@ -66,7 +68,7 @@ extern "C" int Markdown_ExportHtml(const char* markdown, size_t length, const wc
     std::wstring temporary;
     bool ownsTemporary = false;
     try {
-        auto html = np3::RenderMarkdownExport(std::string_view(markdown ? markdown : "", length), directory);
+        auto html = np3::RenderMarkdownStandalone(std::string_view(markdown ? markdown : "", length), directory, np3::MarkdownAssetsDirectory());
         auto target = NativePath(destination);
         temporary = target + L".tmp-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetCurrentThreadId()) + L"-" + std::to_wstring(GetTickCount64());
         {
@@ -79,7 +81,8 @@ extern "C" int Markdown_ExportHtml(const char* markdown, size_t length, const wc
         if (!*error && !MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) *error = GetLastError();
         if (*error) DeleteFileW(temporary.c_str());
         return *error == 0;
-    } catch (const std::bad_alloc&) { *error = ERROR_NOT_ENOUGH_MEMORY; }
+    } catch (const std::system_error& exception) { *error = static_cast<uint32_t>(exception.code().value()); }
+    catch (const std::bad_alloc&) { *error = ERROR_NOT_ENOUGH_MEMORY; }
     catch (const std::length_error&) { *error = ERROR_FILE_TOO_LARGE; }
     catch (...) { *error = ERROR_INVALID_DATA; }
     if (ownsTemporary) DeleteFileW(temporary.c_str());
