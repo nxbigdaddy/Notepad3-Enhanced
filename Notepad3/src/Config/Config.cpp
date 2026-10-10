@@ -1491,6 +1491,8 @@ void LoadSettings()
 
     Settings2.AtomicFileSave = IniSectionGetBool(IniSecSettings2, L"AtomicFileSave", true);
     Settings2.ReopenWorkspace = IniSectionGetBool(IniSecSettings2, L"ReopenWorkspace", true);
+    Settings2.FileTreeWidth = clampi(IniSectionGetInt(IniSecSettings2, L"FileTreeWidth", 240), 120, 10000);
+    IniSectionGetString(IniSecSettings2, L"FileTreeRoot", L"", Settings2.FileTreeRoot, COUNTOF(Settings2.FileTreeRoot));
     IniSectionGetString(IniSecSettings2, L"AIEndpoint", L"", Settings2.AIEndpoint, COUNTOF(Settings2.AIEndpoint));
     IniSectionGetString(IniSecSettings2, L"AIModel", L"", Settings2.AIModel, COUNTOF(Settings2.AIModel));
     Settings2.AITimeoutMs = clampi(IniSectionGetInt(IniSecSettings2, L"AITimeoutMs", 60000), 100, 120000);
@@ -2126,6 +2128,8 @@ static bool _SaveSettings(bool bForceSaveSettings)
     }
 
     IniSectionSetInt(IniSecSettings, L"SettingsVersion", CFG_VER_CURRENT);  // new settings
+    IniSectionSetInt(L"Settings2", L"FileTreeWidth", Settings2.FileTreeWidth);
+    IniSectionSetString(L"Settings2", L"FileTreeRoot", Settings2.FileTreeRoot);
 
     SAVE_VALUE_IF_NOT_EQ_DEFAULT(Bool, SaveSettings);
     SAVE_VALUE_IF_NOT_EQ_DEFAULT(Bool, SaveRecentFiles);

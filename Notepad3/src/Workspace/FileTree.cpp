@@ -30,6 +30,11 @@ Preferences* GetPreferences(HWND parent) {
     auto* saved = reinterpret_cast<Preferences*>(GetPropW(parent, PreferencesKey));
     if (saved) return saved;
     auto candidate = std::make_unique<Preferences>();
+    std::vector<wchar_t> root(32768);
+    FILETREE_STATE initial{root.data(),static_cast<UINT>(root.size()),240};
+    if (SendMessageW(parent,NP3_WM_FILETREE_STATE,0,reinterpret_cast<LPARAM>(&initial))) {
+        candidate->root=root.data(); candidate->widthDip=(std::clamp)(initial.widthDip,120,10000);
+    }
     if (!SetWindowSubclass(parent, PreferencesProc, 0, 0)) throw std::bad_alloc();
     if (!SetPropW(parent, PreferencesKey, candidate.get())) {
         RemoveWindowSubclass(parent, PreferencesProc, 0); throw std::bad_alloc();
@@ -66,6 +71,10 @@ std::shared_ptr<Tree> State(HWND window) {
     return holder ? *holder : nullptr;
 }
 HWND Find(HWND parent) { return FindWindowExW(parent, nullptr, ClassName, nullptr); }
+void Publish(const std::shared_ptr<Tree>& state) {
+    FILETREE_STATE saved{state->root.data(),static_cast<UINT>(state->root.size()+1),state->dragging?state->startWidthDip:state->widthDip};
+    SendMessageW(state->parent,NP3_WM_FILETREE_STATE,1,reinterpret_cast<LPARAM>(&saved));
+}
 void Icons(const std::shared_ptr<Tree>& state, HWND window) {
     UINT dpi=GetDpiForWindow(window);
     int width=GetSystemMetricsForDpi(SM_CXSMICON,dpi),height=GetSystemMetricsForDpi(SM_CYSMICON,dpi);
@@ -101,7 +110,7 @@ LRESULT CALLBACK GripProc(HWND window,UINT message,WPARAM wParam,LPARAM lParam,U
             int minimum=MulDiv(120,dpi,96),maximum=(std::min)(available/2,(std::max)(0,available-MulDiv(240,dpi,96)));
             if(maximum>=minimum) { state->widthDip=MulDiv((std::clamp)(static_cast<int>(point.x-state->area.left),minimum,maximum),96,dpi); Relayout(state); }
         } return 0;
-    case WM_LBUTTONUP: state->dragging=false; if(GetCapture()==window) ReleaseCapture(); return 0;
+    case WM_LBUTTONUP: state->dragging=false; if(GetCapture()==window) ReleaseCapture(); Publish(state); return 0;
     case WM_CANCELMODE:
         if(state->dragging) { state->widthDip=state->startWidthDip; state->dragging=false; if(GetCapture()==window) ReleaseCapture(); Relayout(state); } return 0;
     case WM_CAPTURECHANGED: state->dragging=false; return 0;
@@ -212,6 +221,7 @@ bool Root(const std::shared_ptr<Tree>& state, const wchar_t* directory) {
     HTREEITEM root = Insert(state, TVI_ROOT, full, node);
     if (!root) { delete node; return false; }
     Insert(state, root, state->loading, nullptr); Request(state, root); TreeView_Expand(state->tree, root, TVE_EXPAND);
+    Publish(state);
     return true;
 }
 void Drain(const std::shared_ptr<Tree>& state) {
@@ -302,6 +312,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         auto* saved = GetPreferences(state->parent);
         saved->root = state->root;
         saved->widthDip = state->dragging ? state->startWidthDip : state->widthDip;
+        Publish(state);
     }
     if (message == WM_NCDESTROY && state) {
         state->window = nullptr; ++state->generation; state->queued.clear();

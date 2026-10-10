@@ -2668,6 +2668,19 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     case NP3_WM_FILETREE_ERROR:
         InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_FILETREE_ERROR, (uint32_t)wParam);
         return 0;
+    case NP3_WM_FILETREE_STATE: {
+        FILETREE_STATE* state=(FILETREE_STATE*)lParam;
+        if (!state || !state->root || !state->capacity) return FALSE;
+        if (!wParam) {
+            state->widthDip=Settings2.FileTreeWidth;
+            return SUCCEEDED(StringCchCopyW(state->root,state->capacity,Settings2.FileTreeRoot));
+        }
+        size_t length=0;
+        if (state->widthDip<120 || state->widthDip>10000 || FAILED(StringCchLengthW(state->root,state->capacity,&length)) || length>=COUNTOF(Settings2.FileTreeRoot)) return FALSE;
+        if (FAILED(StringCchCopyW(Settings2.FileTreeRoot,COUNTOF(Settings2.FileTreeRoot),state->root))) return FALSE;
+        Settings2.FileTreeWidth=state->widthDip;
+        return TRUE;
+    }
     case NP3_WM_WORKSPACE_RECOVERY:
         _WorkspaceRecoveryStart();
         _WorkspaceRecoveryTest();

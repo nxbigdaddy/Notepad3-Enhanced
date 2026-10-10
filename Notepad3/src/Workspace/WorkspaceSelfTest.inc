@@ -99,6 +99,34 @@ static void _WorkspaceSelfTest()
     bool const isolated = workspace && workspace->count == 1 && Path_IsEmpty(Paths.CurrentFile) && !IsSaveNeeded() && SciCall_GetLength() == 0;
     _WorkspaceTestCheck(&result, isolated, "isolated empty startup");
     if (!isolated) { CloseHandle(result.log); return; }
+    WCHAR treeStage[32]={0};
+    if (GetEnvironmentVariableW(L"NP3_FILETREE_SETTINGS_TEST",treeStage,COUNTOF(treeStage))) {
+        WCHAR chosen[32768]; StringCchPrintfW(chosen,COUNTOF(chosen),L"%s\\自选目录",folder);
+        FILETREE_LABELS labels={L"Choose",L"Refresh",L"Loading",L"More"};
+        bool writeStage=lstrcmpW(treeStage,L"write")==0 || lstrcmpW(treeStage,L"disabled")==0;
+        int initialWidth=Settings2.FileTreeWidth;
+        FileTree_Toggle(Globals.hwndMain,folder,&labels);
+        _WorkspaceTestCheck(&result,FileTree_IsOpen(Globals.hwndMain) && _WorkspaceTestTreeReady(),"settings test opens real directory tree");
+        if (writeStage) {
+            _WorkspaceTestCheck(&result,FileTree_SetRoot(Globals.hwndMain,chosen) && _WorkspaceTestTreeReady(),"settings test selects Unicode root");
+            HWND panel=FindWindowExW(Globals.hwndMain,NULL,L"NP3WorkspaceFileTree",NULL);
+            HWND grip=FindWindowExW(panel,NULL,L"STATIC",NULL);
+            if(grip) { SendMessageW(grip,WM_LBUTTONDOWN,MK_LBUTTON,0); SendMessageW(grip,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(40,0)); SendMessageW(grip,WM_LBUTTONUP,0,0); }
+            _WorkspaceTestCheck(&result,grip && Settings2.FileTreeWidth>initialWidth && lstrcmpW(Settings2.FileTreeRoot,chosen)==0,"confirmed drag and root publish to settings while panel remains open");
+        } else {
+            WCHAR actual[32768]={0}; HWND panel=FindWindowExW(Globals.hwndMain,NULL,L"NP3WorkspaceFileTree",NULL); HWND tree=FindWindowExW(panel,NULL,WC_TREEVIEWW,NULL);
+            TVITEMW item={0}; item.mask=TVIF_TEXT; item.hItem=TreeView_GetRoot(tree); item.pszText=actual; item.cchTextMax=COUNTOF(actual); TreeView_GetItem(tree,&item);
+            const WCHAR* expected=lstrcmpW(treeStage,L"read")==0?chosen:folder;
+            _WorkspaceTestCheck(&result,lstrcmpW(actual,expected)==0 && lstrcmpW(Settings2.FileTreeRoot,expected)==0,"new process restores root or replaces unavailable root with current directory");
+            int width=FileTree_Layout(Globals.hwndMain,0,0,40000,700);
+            _WorkspaceTestCheck(&result,width==MulDiv(Settings2.FileTreeWidth,GetDpiForWindow(Globals.hwndMain),96),"new process renders saved logical width at current DPI");
+            int expectedWidth=lstrcmpW(treeStage,L"low")==0?120:lstrcmpW(treeStage,L"high")==0?10000:initialWidth;
+            _WorkspaceTestCheck(&result,Settings2.FileTreeWidth==expectedWidth,"loaded tree width stays within supported bounds");
+        }
+        char summary[128]; DWORD written;
+        StringCchPrintfA(summary,COUNTOF(summary),"RESULT checks=%i failures=%i\r\n",result.checks,result.failures); WriteFile(result.log,summary,(DWORD)strlen(summary),&written,NULL); CloseHandle(result.log);
+        _WorkspaceDispose(); DestroyWindow(Globals.hwndMain); return;
+    }
     HPATHL a = Path_Allocate(folder); Path_Append(a, L"a.txt");
     HPATHL b = Path_Allocate(folder); Path_Append(b, L"b.txt");
     _WorkspaceTestCheck(&result, FileLoad(a, FLF_None, 0, 0), "load A");
