@@ -148,7 +148,7 @@ BEGIN
     IDS_MUI_FILETREE_CHOOSE "Choose Folder..."
     IDS_MUI_FILETREE_REFRESH "Refresh"
     IDS_MUI_FILETREE_LOADING "Loading..."
-    IDS_MUI_FILETREE_LIMIT "First 5000 entries shown"
+    IDS_MUI_FILETREE_LIMIT "Load next 5000 entries (Enter / double-click)"
     IDS_MUI_FILETREE_ERROR "Unable to read folder (error %u). Try Refresh."
     IDS_MUI_MARKDOWN_PDF_DONE "Markdown PDF export completed."
     IDS_MUI_SESSION_OVERWRITE "这是从会话恢复的内容，磁盘文件可能已经改变。确定将恢复内容保存到原文件吗？"

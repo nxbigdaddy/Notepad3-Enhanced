@@ -14,11 +14,16 @@
 namespace {
 constexpr wchar_t ClassName[] = L"NP3WorkspaceFileTree";
 constexpr UINT Ready = WM_APP + 1;
-struct FindHandle { HANDLE value; ~FindHandle() { if (value != INVALID_HANDLE_VALUE) FindClose(value); } };
+struct Cursor {
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    WIN32_FIND_DATAW found = {};
+    bool started = false, finished = false;
+    ~Cursor() { if (handle != INVALID_HANDLE_VALUE) FindClose(handle); }
+};
 struct Entry { std::wstring name; bool directory, reparse; };
-struct Result { unsigned long long generation; HTREEITEM item; std::wstring path; std::vector<Entry> entries; DWORD error = 0; };
-struct Work { unsigned long long generation; HTREEITEM item; std::wstring path; };
-struct Node { std::wstring path; bool directory, reparse, loaded = false, pending = false; };
+struct Result { unsigned long long generation; HTREEITEM item; std::wstring path; std::vector<Entry> entries; DWORD error = 0; bool append = false; };
+struct Work { unsigned long long generation; HTREEITEM item; std::wstring path; std::shared_ptr<Cursor> cursor; bool append; };
+struct Node { std::wstring path; bool directory, reparse, loaded = false, pending = false; std::shared_ptr<Cursor> cursor; bool more = false; };
 struct Tree {
     std::atomic<HWND> window{nullptr};
     std::atomic<unsigned long long> generation{0};
@@ -66,21 +71,29 @@ void Schedule(const std::shared_ptr<Tree>& state) {
                 // Even allocation failures and canceled generations release the slot and wake the queue.
                 bool failed = false;
                 try {
-                    Result result = { generation, item, path, {}, 0 };
+                    Result result = { generation, item, path, {}, 0, work.append };
                     try {
-                        WIN32_FIND_DATAW found; HANDLE search = FindFirstFileW(Native(Join(path, L"*")).c_str(), &found);
-                        FindHandle owner{search};
-                        if (search == INVALID_HANDLE_VALUE) {
-                            result.error = GetLastError();
-                            if (result.error == ERROR_FILE_NOT_FOUND) result.error = 0;
-                        } else {
-                            do {
-                                if (!state->window.load() || state->generation.load() != generation) break;
-                                if (!wcscmp(found.cFileName, L".") || !wcscmp(found.cFileName, L"..")) continue;
+                        auto& cursor = *work.cursor;
+                        if (!cursor.started) {
+                            cursor.started = true;
+                            cursor.handle = FindFirstFileW(Native(Join(path, L"*")).c_str(), &cursor.found);
+                            if (cursor.handle == INVALID_HANDLE_VALUE) {
+                                result.error = GetLastError();
+                                if (result.error == ERROR_FILE_NOT_FOUND) result.error = 0;
+                                cursor.finished = true;
+                            }
+                        }
+                        while (!cursor.finished && state->window.load() && state->generation.load() == generation) {
+                            const auto& found = cursor.found;
+                            if (wcscmp(found.cFileName, L".") && wcscmp(found.cFileName, L"..")) {
                                 if (result.entries.size() == 5000) { result.error = ERROR_MORE_DATA; break; }
-                                result.entries.push_back({ found.cFileName, (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, (found.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 });
-                            } while (FindNextFileW(search, &found));
-                            DWORD error = GetLastError(); if (!result.error && error != ERROR_NO_MORE_FILES) result.error = error;
+                                result.entries.push_back({found.cFileName, (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, (found.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0});
+                            }
+                            if (!FindNextFileW(cursor.handle, &cursor.found)) {
+                                cursor.finished = true;
+                                DWORD error = GetLastError();
+                                if (error != ERROR_NO_MORE_FILES) result.error = error;
+                            }
                         }
                         std::sort(result.entries.begin(), result.entries.end(), [](const Entry& left, const Entry& right) {
                             if (left.directory != right.directory) return left.directory;
@@ -102,10 +115,12 @@ void Schedule(const std::shared_ptr<Tree>& state) {
         }
     }
 }
-void Request(const std::shared_ptr<Tree>& state, HTREEITEM item) {
+void Request(const std::shared_ptr<Tree>& state, HTREEITEM item, bool more = false) {
     Node* node = Data(state->tree, item);
-    if (!node || !node->directory || node->reparse || node->loaded || node->pending) return;
-    state->queued.push_back({state->generation.load(), item, node->path});
+    if (!node || !node->directory || node->reparse || (node->loaded && !more) || node->pending) return;
+    if (more && !node->cursor) return;
+    if (!node->cursor) node->cursor = std::make_shared<Cursor>();
+    state->queued.push_back({state->generation.load(), item, node->path, node->cursor, node->loaded});
     node->pending = true; ++state->pending;
     Schedule(state);
 }
@@ -134,13 +149,27 @@ void Drain(const std::shared_ptr<Tree>& state) {
         node->pending = false; node->loaded = result.error == 0 || result.error == ERROR_MORE_DATA;
         if (state->pending) --state->pending;
         SendMessageW(state->tree, WM_SETREDRAW, FALSE, 0);
-        while (HTREEITEM child = TreeView_GetChild(state->tree, result.item)) TreeView_DeleteItem(state->tree, child);
+        if (!result.append) {
+            while (HTREEITEM child = TreeView_GetChild(state->tree, result.item)) TreeView_DeleteItem(state->tree, child);
+        } else {
+            for (HTREEITEM child = TreeView_GetChild(state->tree, result.item); child;) {
+                HTREEITEM next = TreeView_GetNextSibling(state->tree, child);
+                Node* data = Data(state->tree, child);
+                if (data && data->more) TreeView_DeleteItem(state->tree, child);
+                child = next;
+            }
+        }
         for (const auto& entry : result.entries) {
             auto* child = new Node{Join(result.path, entry.name), entry.directory, entry.reparse};
             if (!Insert(state, result.item, entry.name, child)) delete child;
         }
-        if (result.error == ERROR_MORE_DATA) Insert(state, result.item, state->limit, nullptr);
-        else if (result.error) PostMessageW(state->parent, NP3_WM_FILETREE_ERROR, result.error, 0);
+        if (result.error == ERROR_MORE_DATA) {
+            auto* more = new Node{L"", false, false}; more->more = true;
+            if (!Insert(state, result.item, state->limit, more)) delete more;
+        } else {
+            node->cursor.reset();
+            if (result.error) PostMessageW(state->parent, NP3_WM_FILETREE_ERROR, result.error, 0);
+        }
         TVITEMW count = {}; count.mask = TVIF_CHILDREN; count.hItem = result.item; count.cChildren = TreeView_GetChild(state->tree, result.item) ? 1 : 0; TreeView_SetItem(state->tree, &count);
         SendMessageW(state->tree, WM_SETREDRAW, TRUE, 0); InvalidateRect(state->tree, nullptr, TRUE);
     }
@@ -180,7 +209,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         else if (notify->code == TVN_ITEMEXPANDINGW) Request(state, reinterpret_cast<NMTREEVIEWW*>(lParam)->itemNew.hItem);
         else if (notify->code == NM_DBLCLK || notify->code == NM_RETURN) {
             auto* node = Data(state->tree, TreeView_GetSelection(state->tree));
-            if (node && !node->directory) { auto path = node->path; SendMessageW(state->parent, NP3_WM_FILETREE_OPEN, 0, reinterpret_cast<LPARAM>(path.c_str())); }
+            if (node && node->more) Request(state, TreeView_GetParent(state->tree, TreeView_GetSelection(state->tree)), true);
+            else if (node && !node->directory) { auto path = node->path; SendMessageW(state->parent, NP3_WM_FILETREE_OPEN, 0, reinterpret_cast<LPARAM>(path.c_str())); }
         }
         return 0;
     }

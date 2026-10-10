@@ -191,6 +191,27 @@ static void _WorkspaceSelfTest()
     bool queuedComplete = _WorkspaceTestTreeReady();
     for (int i = 0; i < 12; ++i) queuedComplete = queuedComplete && queuedFolders[i] && _WorkspaceTestTreeChild(tree, queuedFolders[i], L"child.txt");
     _WorkspaceTestCheck(&result, queuedComplete, "all concurrent directory expansions eventually populate");
+    HTREEITEM largeItem = _WorkspaceTestTreeChild(tree, root, L"large");
+    TreeView_Expand(tree, largeItem, TVE_EXPAND);
+    bool firstPageReady = _WorkspaceTestTreeReady();
+    int firstPageCount = 0; HTREEITEM moreItem = NULL;
+    for (HTREEITEM item = TreeView_GetChild(tree, largeItem); item; item = TreeView_GetNextSibling(tree, item)) { ++firstPageCount; moreItem = item; }
+    _WorkspaceTestCheck(&result, firstPageReady && firstPageCount == 5001, "large directory shows bounded first page and continuation action");
+    HTREEITEM retainedItem = TreeView_GetChild(tree, largeItem);
+    TreeView_SelectItem(tree, moreItem);
+    NMHDR nextPage = {tree, 0, NM_RETURN}; SendMessageW(panel, WM_NOTIFY, 0, (LPARAM)&nextPage);
+    bool allPagesReady = _WorkspaceTestTreeReady();
+    bool seenFiles[5012] = {false}; int fileCount = 0; bool uniqueFiles = true;
+    for (HTREEITEM item = TreeView_GetChild(tree, largeItem); item; item = TreeView_GetNextSibling(tree, item)) {
+        wchar_t fileLabel[64]; TVITEMW entry = {0}; entry.hItem = item; entry.mask = TVIF_TEXT; entry.pszText = fileLabel; entry.cchTextMax = COUNTOF(fileLabel);
+        TreeView_GetItem(tree, &entry);
+        wchar_t* suffix = NULL; long number = wcstol(fileLabel + 5, &suffix, 10);
+        if (wcsncmp(fileLabel, L"item-", 5) || wcscmp(suffix, L".txt") || number < 0 || number >= 5012 || seenFiles[number]) uniqueFiles = false;
+        else seenFiles[number] = true;
+        ++fileCount;
+    }
+    _WorkspaceTestCheck(&result, allPagesReady && uniqueFiles && fileCount == 5012, "continuation returns every file exactly once and removes action at end");
+    _WorkspaceTestCheck(&result, retainedItem == TreeView_GetChild(tree, largeItem), "continuation preserves existing tree nodes");
     HTREEITEM fileItem = _WorkspaceTestTreeChild(tree, root, L"b.txt");
     SciCall_AppendText(1, "+");
     TreeView_SelectItem(tree, fileItem);

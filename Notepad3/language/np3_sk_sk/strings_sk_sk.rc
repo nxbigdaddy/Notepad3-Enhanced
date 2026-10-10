@@ -148,7 +148,7 @@ BEGIN
     IDS_MUI_FILETREE_CHOOSE "Choose Folder..."
     IDS_MUI_FILETREE_REFRESH "Refresh"
     IDS_MUI_FILETREE_LOADING "Loading..."
-    IDS_MUI_FILETREE_LIMIT "First 5000 entries shown"
+    IDS_MUI_FILETREE_LIMIT "Load next 5000 entries (Enter / double-click)"
     IDS_MUI_FILETREE_ERROR "Unable to read folder (error %u). Try Refresh."
     IDS_MUI_MARKDOWN_PDF_DONE "Markdown PDF export completed."
     IDS_MUI_SESSION_OVERWRITE "This buffer was recovered from a session. The disk file may have changed. Save the recovered buffer to the original file?"

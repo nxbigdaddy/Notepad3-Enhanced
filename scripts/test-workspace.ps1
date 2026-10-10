@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/file-tree-queue-x64-v18/Notepad3.exe')
+param([string]$Executable = 'artifacts/file-tree-pages-x64-v19/Notepad3.exe')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -17,6 +17,11 @@ for ($taskIndex = 0; $taskIndex -lt 12; ++$taskIndex) {
 [IO.File]::WriteAllText((Join-Path $taskFolder 'b.txt'), "beta`r`n", [Text.UnicodeEncoding]::new($false, $true))
 [IO.File]::WriteAllText((Join-Path $taskFolder 'c.txt'), "gamma`r`n", [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $taskFolder 'fold.json'), "{`r`n  `"nested`": {`r`n    `"value`": 1`r`n  }`r`n}`r`n", [Text.UTF8Encoding]::new($false))
+$taskLargeDirectory = Join-Path $taskFolder 'large'
+New-Item -ItemType Directory -Path $taskLargeDirectory | Out-Null
+for ($taskIndex = 0; $taskIndex -lt 5012; ++$taskIndex) {
+    [IO.File]::WriteAllText((Join-Path $taskLargeDirectory ('item-{0:00000}.txt' -f $taskIndex)), '', [Text.UTF8Encoding]::new($false))
+}
 $taskPreviousEnvironment = $env:NP3_WORKSPACE_SELFTEST_DIR
 try {
     $env:NP3_WORKSPACE_SELFTEST_DIR = $taskFolder
