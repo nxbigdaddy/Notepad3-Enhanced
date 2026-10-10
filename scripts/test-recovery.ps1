@@ -83,3 +83,18 @@ $taskArchiveAfter = @(Get-ChildItem -LiteralPath $taskFolder -Filter '*.np3works
 if (($taskArchiveBefore -join '|') -ne ($taskArchiveAfter -join '|')) { throw 'Disabled reopening changed normal-session archives' }
 if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($taskCorrupt)) -ne 'AQIDBA==') { throw 'Invalid recovery source was changed' }
 Write-Output "Live isolation, protected bytes, crash recovery, normal discard and corrupt-source preservation verified. Evidence: $taskFolder"
+
+$taskMainEvidence = $taskFolder
+$taskFolder = Join-Path $taskMainEvidence 'split'
+New-Item -ItemType Directory -Path $taskFolder | Out-Null
+[IO.File]::WriteAllText((Join-Path $taskFolder 'recovery-test.marker'), 'isolated split session regression')
+$taskRows = (0..79 | ForEach-Object { '    [1,2]' + $(if ($_ -lt 79) { ',' } else { '' }) }) -join "`r`n"
+$taskJson = "{`r`n  ""left"": [`r`n$taskRows`r`n  ],`r`n  ""right"": [`r`n$taskRows`r`n  ]`r`n}`r`n"
+[IO.File]::WriteAllText((Join-Path $taskFolder 'split-long.json'), $taskJson, [Text.UTF8Encoding]::new($false))
+foreach ($taskMode in @('split-seed', 'split-verify', 'split-import')) {
+    $taskSplit = Start-RecoveryTest $taskMode
+    if (!$taskSplit.WaitForExit(30000)) { throw "Split session test still running: PID $($taskSplit.Id), mode $taskMode" }
+    Read-RecoveryResult $taskMode
+}
+if ([IO.File]::ReadAllText((Join-Path $taskFolder 'split-long.json')) -ne $taskJson) { throw 'Split session import changed original disk bytes' }
+Write-Output "Long document split scrolling, opposite folds, selections, zoom and manual import verified across processes. Evidence: $taskFolder"

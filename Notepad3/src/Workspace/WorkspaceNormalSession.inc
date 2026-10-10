@@ -23,7 +23,7 @@ static bool _WorkspaceNormalSave(const HPATHL path, uint32_t* error)
         entry.tabWidth = doc->tabWidth; entry.indent = doc->indent; entry.wrapMode = doc->wrapMode;
         if (doc->readOnly) entry.flags |= NP3_SESSION_READONLY;
         if (i == workspace->active) active = (uint32_t)Session_Count(session);
-        success = Session_Add(session, &entry) != 0;
+        success = _WorkspaceSessionAddDocument(session, &entry, doc);
         FreeMem(folds);
     }
     // An explicit empty session supersedes an earlier workspace on next launch.
@@ -32,7 +32,7 @@ static bool _WorkspaceNormalSave(const HPATHL path, uint32_t* error)
         empty.codePage = SC_CP_UTF8; empty.tabWidth = 4; empty.indent = 4;
         success = Session_Add(session, &empty) != 0;
     }
-    if (success) success = Session_SetActive(session, active) && Session_Save(session, Path_Get(path), error);
+    if (success) success = Session_SetActive(session, active) && _WorkspaceSessionCaptureLayout(session) && Session_Save(session, Path_Get(path), error);
     else *error = ERROR_INVALID_DATA;
     Session_Free(session); return success;
 }
@@ -77,10 +77,13 @@ static bool _WorkspaceNormalLoad(const HPATHL path, uint32_t* error)
         SciCall_SetFirstVisibleLine((DocLn)(entry.firstLine < (uint64_t)SciCall_GetLineCount() ? entry.firstLine : (uint64_t)(SciCall_GetLineCount() - 1)));
         SciCall_SetXOffset(entry.xOffset);
         if (entry.flags & NP3_SESSION_READONLY) { SciCall_SetReadOnly(true); Settings.DocReadOnlyMode = true; }
-        _WorkspaceCapture(); _WorkspaceRefresh();
+        _WorkspaceCapture();
+        if (!_WorkspaceSessionCopyViews(&workspace->documents[workspace->active], &entry)) { *error = ERROR_NOT_ENOUGH_MEMORY; success = false; }
+        _WorkspaceRefresh();
         if (i == Session_Active(session)) selected = workspace->active;
     }
     if (explicitDocument) _WorkspaceSwitch(original);
     else if (selected >= 0) _WorkspaceSwitch(selected);
+    if (!explicitDocument) { _WorkspaceSessionRestoreLayout(session, true); SetFocus(Globals.hwndEdit); }
     Session_Free(session); return success;
 }

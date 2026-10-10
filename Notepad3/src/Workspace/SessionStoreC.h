@@ -10,6 +10,14 @@ typedef void* NP3_SESSION;
 #define NP3_SESSION_READONLY 2u
 #define NP3_SESSION_ENCRYPTED_SOURCE 4u
 #define NP3_SESSION_DISK_BACKED 8u
+typedef struct NP3_SESSION_VIEW {
+    const char* selection; size_t selectionLength;
+    const uint64_t* folds; size_t foldCount;
+    uint64_t anchor, caret, firstLine;
+    uint32_t xOffset, wrapMode;
+    int32_t zoom;
+    uint32_t valid;
+} NP3_SESSION_VIEW;
 typedef struct NP3_SESSION_DOCUMENT {
     const wchar_t* path;
     const char* text;
@@ -23,11 +31,14 @@ typedef struct NP3_SESSION_DOCUMENT {
     uint32_t xOffset;
     uint32_t codePage, tabWidth, indent, wrapMode;
     int32_t zoom;
+    NP3_SESSION_VIEW views[2];
 } NP3_SESSION_DOCUMENT;
 NP3_SESSION Session_Create(void);
 void Session_Free(NP3_SESSION session);
 int Session_Add(NP3_SESSION session, const NP3_SESSION_DOCUMENT* document);
 int Session_SetActive(NP3_SESSION session, uint32_t active);
+int Session_SetLayout(NP3_SESSION session, uint32_t splitEnabled, uint32_t activeView, uint32_t ratio);
+int Session_GetLayout(NP3_SESSION session, uint32_t* splitEnabled, uint32_t* activeView, uint32_t* ratio);
 size_t Session_Count(NP3_SESSION session);
 uint32_t Session_Active(NP3_SESSION session);
 // Returned pointers are borrowed until the session is mutated or freed.

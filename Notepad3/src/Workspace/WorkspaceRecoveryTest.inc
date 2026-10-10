@@ -20,12 +20,15 @@ static void _WorkspaceRecoveryTest()
     bool const live = wcscmp(mode, L"live") == 0;
     bool const clean = wcscmp(mode, L"clean") == 0;
     bool const failure = wcscmp(mode, L"failure") == 0;
+    bool const splitSeed = wcscmp(mode, L"split-seed") == 0;
+    bool const splitVerify = wcscmp(mode, L"split-verify") == 0;
+    bool const splitImport = wcscmp(mode, L"split-import") == 0;
     bool const normalSeed = wcscmp(mode, L"normal-seed") == 0;
     bool const normalVerify = wcscmp(mode, L"normal-verify") == 0;
     bool const normalExplicit = wcscmp(mode, L"normal-explicit") == 0;
     bool const normalMissing = wcscmp(mode, L"normal-missing") == 0;
     bool const normalDisabled = wcscmp(mode, L"normal-disabled") == 0;
-    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || normalSeed || normalVerify || normalExplicit || normalMissing || normalDisabled, "recognized recovery test mode");
+    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || splitSeed || splitVerify || splitImport || normalSeed || normalVerify || normalExplicit || normalMissing || normalDisabled, "recognized recovery test mode");
     if (seeded) {
         _WorkspaceTestCheck(&result, workspace->count == 1 && SciCall_GetLength() == 0, "seed starts isolated");
         SciCall_AppendText(15, "unsaved alpha\r\n"); Encoding_Current(CPI_UTF8SIGN);
@@ -34,15 +37,47 @@ static void _WorkspaceRecoveryTest()
         Path_Release(empty);
         SciCall_AppendText(14, "unsaved beta\r\n"); Encoding_Current(CPI_UNICODE);
         _WorkspaceTestCheck(&result, _WorkspaceRecoveryHarvest(recovery, 10000), "initial background snapshot completed");
+        _SplitToggle(); workspace->splitRatio = 3700; _SplitRelayout();
+        Sci_ViewCall(workspace->primaryView, SCI_SETSEL, 1, 3); Sci_ViewCall(workspace->primaryView, SCI_SETZOOM, 2, 0);
+        SendMessageW(workspace->splitView, WM_SETFOCUS, 0, 0); SciCall_SetSel(4, 7); SciCall_SetZoom(5);
         _WorkspaceRecoveryTimer(NULL, 0, 0, 0);
         _WorkspaceTestCheck(&result, recovery->job && _WorkspaceRecoveryHarvest(recovery, 10000) && Path_IsExistingFile(recovery->file), "two-document background snapshot persisted");
     } else if (verified) {
         _WorkspaceTestCheck(&result, workspace->count == 2, "crash restored both unsaved documents");
+        _WorkspaceTestCheck(&result, workspace->splitView && workspace->active == 1 && Globals.hwndEdit == workspace->splitView && workspace->splitRatio == 3700, "crash restores split ratio and active right view across processes");
+        _WorkspaceTestCheck(&result, workspace->splitView && Sci_ViewCall(workspace->primaryView, SCI_GETANCHOR, 0, 0) == 1 && Sci_ViewCall(workspace->primaryView, SCI_GETCURRENTPOS, 0, 0) == 3 && Sci_ViewCall(workspace->primaryView, SCI_GETZOOM, 0, 0) == 2 && SciCall_GetAnchor() == 4 && SciCall_GetCurrentPos() == 7 && SciCall_GetZoom() == 5, "crash restores independent split selections and zoom across processes");
         _WorkspaceTestCheck(&result, _WorkspaceSwitch(0) && _WorkspaceTestText("unsaved alpha\r\n"), "alpha content restored");
         _WorkspaceTestCheck(&result, Encoding_GetCurrent() == CPI_UTF8SIGN && IsSaveNeeded(), "alpha encoding and unsaved status restored");
         _WorkspaceTestCheck(&result, _WorkspaceSwitch(1) && _WorkspaceTestText("unsaved beta\r\n"), "beta content restored");
         _WorkspaceTestCheck(&result, Encoding_GetCurrent() == CPI_UNICODE && IsSaveNeeded(), "beta encoding and unsaved status restored");
         _WorkspaceTestCheck(&result, _WorkspaceRecoveryHarvest(recovery, 10000) && Path_IsExistingFile(recovery->file), "recovery transferred to current owner");
+    } else if (splitSeed || splitVerify || splitImport) {
+        HPATHL fixture = Path_Copy(recovery->directory); Path_Append(fixture, L"split-long.json");
+        HPATHL snapshot = Path_Copy(recovery->directory); Path_Append(snapshot, L"split-state.np3session");
+        uint32_t error = 0;
+        if (splitSeed) {
+            _WorkspaceTestCheck(&result, FileLoad(fixture, FLF_DontSave, 0, 0) && !IsSaveNeeded(), "split session long JSON loads from disk");
+            if (!workspace->splitView) _SplitToggle();
+            workspace->splitRatio = 4600; _SplitRelayout();
+            _SplitActivate(workspace->primaryView); Sci_ColouriseAll();
+            Sci_ViewCall(workspace->primaryView, SCI_FOLDLINE, 1, SC_FOLDACTION_CONTRACT);
+            Sci_ViewCall(workspace->splitView, SCI_FOLDLINE, 1, SC_FOLDACTION_EXPAND);
+            Sci_ViewCall(workspace->primaryView, SCI_FOLDLINE, 83, SC_FOLDACTION_EXPAND);
+            Sci_ViewCall(workspace->splitView, SCI_FOLDLINE, 83, SC_FOLDACTION_CONTRACT);
+            Sci_ViewCall(workspace->primaryView, SCI_SETWRAPMODE, SC_WRAP_NONE, 0); Sci_ViewCall(workspace->splitView, SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
+            Sci_ViewCall(workspace->primaryView, SCI_SETZOOM, 2, 0); Sci_ViewCall(workspace->splitView, SCI_SETZOOM, 5, 0);
+            Sci_ViewCall(workspace->primaryView, SCI_SETSEL, 1, 3); Sci_ViewCall(workspace->splitView, SCI_SETSEL, 4, 7);
+            Sci_ViewCall(workspace->primaryView, SCI_SETFIRSTVISIBLELINE, 10, 0); Sci_ViewCall(workspace->splitView, SCI_SETFIRSTVISIBLELINE, 30, 0);
+            _WorkspaceTestCheck(&result, _WorkspaceSessionSave(snapshot, &error), "manual split snapshot writes protected long document");
+        } else if (splitImport) {
+            _WorkspaceTestCheck(&result, _WorkspaceSessionLoad(snapshot, &error) && workspace->count == 2 && IsSaveNeeded(), "manual import restores long snapshot as independent dirty document");
+        }
+        _WorkspaceTestCheck(&result, workspace->splitView && Globals.hwndEdit == workspace->primaryView && workspace->splitRatio == 4600, "long split session restores active primary and ratio");
+        _WorkspaceTestCheck(&result, workspace->splitView && Sci_ViewCall(workspace->primaryView, SCI_GETFIRSTVISIBLELINE, 0, 0) == 10 && Sci_ViewCall(workspace->splitView, SCI_GETFIRSTVISIBLELINE, 0, 0) == 30, "long split session preserves independent vertical scroll");
+        _WorkspaceTestCheck(&result, workspace->splitView && !Sci_ViewCall(workspace->primaryView, SCI_GETFOLDEXPANDED, 1, 0) && Sci_ViewCall(workspace->splitView, SCI_GETFOLDEXPANDED, 1, 0) && Sci_ViewCall(workspace->primaryView, SCI_GETFOLDEXPANDED, 83, 0) && !Sci_ViewCall(workspace->splitView, SCI_GETFOLDEXPANDED, 83, 0), "long split session preserves opposite folds in each view");
+        _WorkspaceTestCheck(&result, workspace->splitView && Sci_ViewCall(workspace->primaryView, SCI_GETANCHOR, 0, 0) == 1 && Sci_ViewCall(workspace->primaryView, SCI_GETCURRENTPOS, 0, 0) == 3 && Sci_ViewCall(workspace->primaryView, SCI_GETZOOM, 0, 0) == 2 && Sci_ViewCall(workspace->splitView, SCI_GETANCHOR, 0, 0) == 4 && Sci_ViewCall(workspace->splitView, SCI_GETCURRENTPOS, 0, 0) == 7 && Sci_ViewCall(workspace->splitView, SCI_GETZOOM, 0, 0) == 5, "long split session preserves selections and zoom");
+        if (!splitSeed && !splitImport) _WorkspaceTestCheck(&result, !IsSaveNeeded(), "normal long split reopening retains saved disk state");
+        Path_Release(snapshot); Path_Release(fixture);
     } else if (normalSeed) {
         HPATHL a = Path_Copy(recovery->directory); Path_Append(a, L"normal-a.txt");
         HPATHL b = Path_Copy(recovery->directory); Path_Append(b, L"normal-b.txt");
@@ -56,6 +91,9 @@ static void _WorkspaceRecoveryTest()
         _WorkspaceTestCheck(&result, FileLoad(empty, FLF_New | FLF_DontSave, 0, 0), "new discarded untitled document");
         SciCall_AppendText(17, "UNTITLED DISCARD!"); Path_Release(empty);
         _WorkspaceSwitch(0);
+        if (!workspace->splitView) _SplitToggle(); workspace->splitRatio = 4100; _SplitRelayout();
+        Sci_ViewCall(workspace->primaryView, SCI_SETSEL, 1, 4); Sci_ViewCall(workspace->primaryView, SCI_SETZOOM, 3, 0);
+        SendMessageW(workspace->splitView, WM_SETFOCUS, 0, 0); SciCall_SetSel(2, 5); SciCall_SetZoom(6);
         uint32_t error = 0; NP3_SESSION normal = NULL;
         _WorkspaceTestCheck(&result, _WorkspaceNormalSave(recovery->normalPath, &error) && Session_Load(Path_Get(recovery->normalPath), &normal, &error), "normal metadata persisted");
         _WorkspaceTestCheck(&result, Session_Count(normal) == 2 && Session_Active(normal) == 0, "normal archive excludes discarded untitled tab");
@@ -70,14 +108,18 @@ static void _WorkspaceRecoveryTest()
     } else if (normalMissing) {
         _WorkspaceTestCheck(&result, workspace->count == 2 && recovery->errorReports > 0, "missing normal-session file reported while available files reopen");
         _WorkspaceTestCheck(&result, _WorkspaceSwitch(1) && _WorkspaceTestText("x") && !IsSaveNeeded(), "externally shortened disk file loaded without stale buffer text");
-        _WorkspaceTestCheck(&result, SciCall_GetCurrentPos() <= 1 && SciCall_GetAnchor() <= 1 && SciCall_GetZoom() == 3, "selection clamped to shortened document");
+        _WorkspaceTestCheck(&result, SciCall_GetCurrentPos() <= 1 && SciCall_GetAnchor() <= 1 && SciCall_GetZoom() == 6, "selection clamped to shortened document");
     } else if (normalVerify || normalExplicit) {
         int const offset = normalExplicit ? 1 : 0;
         _WorkspaceTestCheck(&result, workspace->count == 2 + offset, "normal session tab count restored");
+        if (!normalExplicit) {
+            _WorkspaceTestCheck(&result, workspace->splitView && Globals.hwndEdit == workspace->splitView && workspace->splitRatio == 4100, "normal restart restores split ratio and active right side");
+            _WorkspaceTestCheck(&result, workspace->splitView && Sci_ViewCall(workspace->primaryView, SCI_GETANCHOR, 0, 0) == 1 && Sci_ViewCall(workspace->primaryView, SCI_GETCURRENTPOS, 0, 0) == 4 && Sci_ViewCall(workspace->primaryView, SCI_GETZOOM, 0, 0) == 3 && SciCall_GetAnchor() == 2 && SciCall_GetCurrentPos() == 5 && SciCall_GetZoom() == 6, "normal restart restores independent split selections and zoom");
+        } else _WorkspaceTestCheck(&result, !workspace->splitView, "explicit incoming document retains its original single-view layout");
         if (normalExplicit) _WorkspaceTestCheck(&result, workspace->active == 0 && _WorkspaceTestText("incoming\r\n"), "explicit incoming document stays active");
         else _WorkspaceTestCheck(&result, workspace->active == 0, "normal active tab restored");
         _WorkspaceTestCheck(&result, _WorkspaceSwitch(offset) && _WorkspaceTestText("alpha\r\nSAVED") && !IsSaveNeeded(), "saved A reopens from disk without dirty state");
-        _WorkspaceTestCheck(&result, Encoding_GetCurrent() == CPI_UTF8SIGN && SciCall_GetZoom() == 3 && SciCall_GetAnchor() == 1 && SciCall_GetCurrentPos() == 4, "normal A encoding and view restored");
+        _WorkspaceTestCheck(&result, Encoding_GetCurrent() == CPI_UTF8SIGN && SciCall_GetZoom() == 6 && SciCall_GetAnchor() == 2 && SciCall_GetCurrentPos() == 5, "normal A encoding and active view restored");
         _WorkspaceTestCheck(&result, _WorkspaceSwitch(offset + 1) && _WorkspaceTestText("beta\r\n") && !IsSaveNeeded(), "discarded B text not resurrected");
     } else if (failure) {
         _WorkspaceTestCheck(&result, recovery->errorReports > 0, "corrupt orphan recovery reported");

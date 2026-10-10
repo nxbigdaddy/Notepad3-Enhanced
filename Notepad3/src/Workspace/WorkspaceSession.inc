@@ -1,5 +1,71 @@
 #include "SessionStoreC.h"
 
+static bool _WorkspaceSessionAddDocument(NP3_SESSION session, NP3_SESSION_DOCUMENT* entry, const WORKSPACE_DOCUMENT* doc)
+{
+    uint64_t* folds[2] = {NULL,NULL};
+    bool success = true;
+    for (int i = 0; i < 2 && success; ++i) {
+        const SPLIT_VIEW_STATE* state = &doc->views[i];
+        NP3_SESSION_VIEW* view = &entry->views[i];
+        view->valid = state->valid;
+        if (!state->valid) continue;
+        view->selection = state->selection; view->selectionLength = state->selection ? strlen(state->selection) : 0;
+        view->anchor = state->anchor; view->caret = state->caret; view->firstLine = state->firstLine;
+        view->xOffset = state->xOffset; view->zoom = state->zoom; view->wrapMode = state->wrapMode;
+        folds[i] = state->foldCount ? AllocMem(state->foldCount * sizeof(uint64_t), HEAP_ZERO_MEMORY) : NULL;
+        if (state->foldCount && !folds[i]) { success = false; break; }
+        for (size_t j = 0; j < state->foldCount; ++j) folds[i][j] = (uint64_t)state->folds[j];
+        view->folds = folds[i]; view->foldCount = state->foldCount;
+    }
+    if (success) success = Session_Add(session, entry) != 0;
+    FreeMem(folds[0]); FreeMem(folds[1]); return success;
+}
+static bool _WorkspaceSessionCopyViews(WORKSPACE_DOCUMENT* doc, const NP3_SESSION_DOCUMENT* entry)
+{
+    for (int i = 0; i < 2; ++i) {
+        const NP3_SESSION_VIEW* input = &entry->views[i];
+        SPLIT_VIEW_STATE state = {0};
+        if (!input->valid) continue;
+        if (input->selectionLength) {
+            state.selection = AllocMem(input->selectionLength + 1, HEAP_ZERO_MEMORY);
+            if (!state.selection) return false;
+            CopyMemory(state.selection, input->selection, input->selectionLength);
+        }
+        if (input->foldCount) {
+            state.folds = AllocMem(input->foldCount * sizeof(DocLn), HEAP_ZERO_MEMORY);
+            if (!state.folds) { FreeMem(state.selection); return false; }
+            for (size_t j = 0; j < input->foldCount; ++j) state.folds[j] = (DocLn)input->folds[j];
+        }
+        state.foldCount = input->foldCount; state.anchor = (DocPos)input->anchor; state.caret = (DocPos)input->caret;
+        state.firstLine = (DocLn)input->firstLine; state.xOffset = input->xOffset; state.zoom = input->zoom;
+        state.wrapMode = input->wrapMode; state.valid = true;
+        FreeMem(doc->views[i].selection); FreeMem(doc->views[i].folds); doc->views[i] = state;
+    }
+    return true;
+}
+static bool _WorkspaceSessionCaptureLayout(NP3_SESSION session)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    return Session_SetLayout(session, workspace->splitView != NULL, workspace->splitView && Globals.hwndEdit == workspace->splitView,
+        workspace->splitRatio > 0 && workspace->splitRatio < 10000 ? workspace->splitRatio : 5000) != 0;
+}
+static void _WorkspaceSessionRestoreLayout(NP3_SESSION session, bool replace)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    uint32_t split = 0, active = 0, ratio = 5000;
+    if (!Session_GetLayout(session, &split, &active, &ratio)) return;
+    if (!split) { if (replace && workspace->splitView) _SplitToggle(); return; }
+    workspace->splitRatio = (int)ratio;
+    if (!workspace->splitView) _SplitToggle();
+    if (!workspace->splitView) return;
+    WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
+    _SplitRestoreView(workspace->primaryView, &doc->views[0], doc);
+    _SplitRestoreView(workspace->splitView, &doc->views[1], doc);
+    _SplitActivate(active ? workspace->splitView : workspace->primaryView);
+    _SplitRelayout();
+}
+
+
 static HWND _WorkspaceSessionReader()
 {
     return CreateWindowExW(0, L"Scintilla", L"", WS_CHILD, 0, 0, 0, 0,
@@ -34,13 +100,13 @@ static NP3_SESSION _WorkspaceSessionCapture(uint32_t* error)
         if (doc->readOnly) entry.flags |= NP3_SESSION_READONLY;
         Encryption_RestoreContext(doc->encryption);
         if (IsEncryptionRequired() || doc->encryptedRecovery) entry.flags |= NP3_SESSION_ENCRYPTED_SOURCE;
-        success = Session_Add(session, &entry) != 0;
+        success = _WorkspaceSessionAddDocument(session, &entry, doc);
         FreeMem(folds);
     }
     // Snapshot reading never activates another editor view or changes its undo.
     Encryption_RestoreContext(workspace->documents[workspace->active].encryption);
     if (reader) DestroyWindow(reader);
-    if (success) success = Session_SetActive(session, workspace->active) != 0;
+    if (success) success = Session_SetActive(session, workspace->active) && _WorkspaceSessionCaptureLayout(session);
     else *error = ERROR_INVALID_DATA;
     if (!success) { Session_Free(session); return NULL; }
     return session;
@@ -108,6 +174,7 @@ static bool _WorkspaceSessionLoad(const HPATHL path, uint32_t* error)
             doc->foldCount = entry.foldCount;
             for (size_t j = 0; j < entry.foldCount; ++j) doc->folds[j] = (DocLn)entry.folds[j];
         }
+        if (!_WorkspaceSessionCopyViews(doc, &entry)) { success = false; break; }
         if (Path_IsNotEmpty(doc->path)) Path_GetFileAttributesEx(doc->path, GetFileExInfoStandard, &doc->observedFile);
     }
     if (reader) DestroyWindow(reader);
@@ -125,6 +192,7 @@ static bool _WorkspaceSessionLoad(const HPATHL path, uint32_t* error)
         _WorkspaceRestore(offset + (int)Session_Active(session));
         workspace->transitioning = false;
         _WorkspaceRefresh(); UpdateToolbar_Now(Globals.hwndMain); UpdateMargins(true);
+        _WorkspaceSessionRestoreLayout(session, replaceEmpty);
         SetFocus(Globals.hwndEdit); *error = ERROR_SUCCESS;
     } else {
         if (candidates) for (int i = 0; i < count; ++i) {

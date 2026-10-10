@@ -5,6 +5,14 @@
 #include <vector>
 
 namespace np3 {
+struct SessionView {
+    std::string selection;
+    std::vector<std::uint64_t> folds;
+    std::uint64_t anchor = 0, caret = 0, firstLine = 0;
+    std::uint32_t xOffset = 0, wrapMode = 0;
+    std::int32_t zoom = 0;
+    bool valid = false;
+};
 struct SessionDocument {
     std::wstring path;
     std::string text, selection;
@@ -13,10 +21,13 @@ struct SessionDocument {
     std::uint64_t anchor = 0, caret = 0, firstLine = 0;
     std::uint32_t xOffset = 0, codePage = 65001, tabWidth = 4, indent = 4, wrapMode = 0;
     std::int32_t zoom = 0;
+    SessionView views[2];
 };
 struct SessionSnapshot {
     std::vector<SessionDocument> documents;
     std::uint32_t active = 0;
+    bool splitEnabled = false;
+    std::uint32_t activeView = 0, splitRatio = 5000;
 };
 // Exceptions describe metadata/size errors without containing document text.
 std::string EncodeSession(const SessionSnapshot& session);
