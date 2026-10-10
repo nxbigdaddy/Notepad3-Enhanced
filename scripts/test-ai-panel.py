@@ -14,7 +14,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with self.server.lock: self.server.requests.append(body)
             if 'delay' in body['messages'][0]['content']: time.sleep(2)
             answer = 'new\r\nkeep\r\nthird' if content == 'old\r\nkeep\r\nsecond' else '模拟结果'
-            if content == 'old\r\n' * 1200: answer = 'new\r\n' * 1200
+            if content == 'old\r\n' * 1200: answer = 'new\r\n' * 120000
             data = json.dumps({'choices': [{'message': {'content': answer}, 'finish_reason': 'stop'}]}).encode()
             self.send_response(200); self.send_header('Content-Length', str(len(data))); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(data)
         except (BrokenPipeError, ConnectionResetError): pass

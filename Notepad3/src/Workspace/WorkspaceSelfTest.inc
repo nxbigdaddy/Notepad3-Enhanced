@@ -591,6 +591,21 @@ static void _WorkspaceSelfTest()
             _WorkspaceTestCheck(&result,groupedReady && !wcscmp(groupedStatus,expectedGrouped) && _WorkspaceTestText(groupedSource),"AI large grouped difference explicitly warns before any source edit");
             SendMessageW(aiPanel,NP3_WM_PANEL_REFRESH,0,0); GetWindowTextW(GetDlgItem(aiPanel,130),groupedStatus,COUNTOF(groupedStatus));
             _WorkspaceTestCheck(&result,!wcscmp(groupedStatus,expectedGrouped),"grouped difference warning survives theme refresh");
+            size_t const groupedLength=600000;
+            WCHAR* groupedExpected=AllocMem((groupedLength+1)*sizeof(WCHAR),HEAP_ZERO_MEMORY);
+            WCHAR* groupedPreview=AllocMem((groupedLength+1)*sizeof(WCHAR),HEAP_ZERO_MEMORY);
+            char* groupedResult=AllocMem(groupedLength+1,HEAP_ZERO_MEMORY);
+            bool groupedBuffers=groupedExpected && groupedPreview && groupedResult;
+            if(groupedBuffers) for(size_t line=0;line<120000;++line) { CopyMemory(groupedExpected+line*5,L"new\r\n",5*sizeof(WCHAR)); CopyMemory(groupedResult+line*5,"new\r\n",5); }
+            GETTEXTEX groupedRead={0}; groupedRead.cb=(DWORD)((groupedLength+1)*sizeof(WCHAR)); groupedRead.flags=GT_USECRLF; groupedRead.codepage=1200;
+            LRESULT groupedCharacters=groupedBuffers ? SendMessageW(GetDlgItem(aiPanel,122),EM_GETTEXTEX,(WPARAM)&groupedRead,(LPARAM)groupedPreview) : 0;
+            _WorkspaceTestCheck(&result,groupedBuffers && groupedCharacters==(LRESULT)groupedLength && !wcscmp(groupedPreview,groupedExpected),"large AI preview retains all 120000 result lines and final newline");
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(115,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,groupedBuffers && _WorkspaceTestText(groupedResult) && IsSaveNeeded() && !IsWindowEnabled(GetDlgItem(aiPanel,115)),"large AI result applies all exact bytes only after manual confirmation");
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(115,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,groupedBuffers && _WorkspaceTestText(groupedResult),"large AI response cannot apply a second time");
+            SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText(groupedSource),"large AI confirmed replacement restores all original lines with one undo");
+            FreeMem(groupedResult); FreeMem(groupedPreview); FreeMem(groupedExpected);
             SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"large grouped preview restores fixture with original undo and saved state");
             SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(aiPanel,120),L"delay");
             SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
