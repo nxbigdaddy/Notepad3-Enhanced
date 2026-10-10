@@ -425,8 +425,23 @@ static void _WorkspaceSelfTest()
     SetWindowTextW(GetDlgItem(logPanel, 101), L"alpha"); SendMessageW(GetDlgItem(logPanel, 102), BM_SETCHECK, BST_UNCHECKED, 0);
     _LogFilterRun(); _LogFilterToggle(); _LogFilterToggle();
     logPanel = FindWindowExW(Globals.hwndMain, NULL, L"NP3LogFilterPanel", NULL); SetWindowTextW(GetDlgItem(logPanel, 101), L"alpha");
-    _LogFilterRun();
+    _WorkspaceTestLogReady(); _LogFilterRun();
     _WorkspaceTestCheck(&result, _WorkspaceTestLogReady() && ListView_GetItemCount(GetDlgItem(logPanel, 107)) == 1 && _WorkspaceTestText("alpha\r\nA"), "close during log work and reopen loads fresh results without altering editor");
+    // Cancel without pumping publication: even a worker that just finished must not publish its old rows.
+    _LogFilterRun();
+    SendMessageW(logPanel, WM_COMMAND, MAKEWPARAM(106, BN_CLICKED), (LPARAM)GetDlgItem(logPanel, 106));
+    bool cancelReady = _WorkspaceTestLogReady(); WCHAR canceledText[256], expectedCanceled[256];
+    GetWindowTextW(GetDlgItem(logPanel,108), canceledText, COUNTOF(canceledText)); GetLngString(IDS_MUI_LOG_CANCELED, expectedCanceled, COUNTOF(expectedCanceled));
+    _WorkspaceTestCheck(&result, cancelReady && ListView_GetItemCount(GetDlgItem(logPanel,107)) == 0 && wcscmp(canceledText,expectedCanceled) == 0 && IsWindowEnabled(GetDlgItem(logPanel,105)) && !IsWindowEnabled(GetDlgItem(logPanel,106)), "cancel button discards unpublished log results and restores run controls");
+    _WorkspaceTestCheck(&result, _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(), "canceling log filter preserves source text and saved state");
+    _LogFilterRun(); _WorkspaceTestLogReady();
+    _WorkspaceTestCheck(&result, ListView_GetItemCount(GetDlgItem(logPanel,107)) == 1, "log filter can rerun after cancellation");
+    FileLoad(b, FLF_DontSave, 0, 0); SetWindowTextW(GetDlgItem(logPanel,101),L"beta"); _LogFilterRun(); _WorkspaceTestLogReady();
+    HWND closedSourceList=GetDlgItem(logPanel,107); ListView_SetItemState(closedSourceList,0,LVIS_SELECTED|LVIS_FOCUSED,LVIS_SELECTED|LVIS_FOCUSED);
+    _WorkspaceCloseActive();
+    NMHDR closedLocate={closedSourceList,107,NM_RETURN}; SendMessageW(logPanel,WM_NOTIFY,0,(LPARAM)&closedLocate);
+    GetWindowTextW(GetDlgItem(logPanel,108),staleText,COUNTOF(staleText));
+    _WorkspaceTestCheck(&result, workspace->count == 1 && workspace->active == 0 && wcscmp(staleText,expectedStale) == 0 && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(), "closed log source rejects activation without changing remaining document");
     _LogFilterToggle();
     _AiToggle();
     HWND aiPanel = FindWindowExW(Globals.hwndMain, NULL, L"NP3AiPanel", NULL);

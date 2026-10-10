@@ -17,6 +17,25 @@ struct Job {
     int status = LOG_FILTER_OK;
     ~Job() { LogFilter_Free(&result); }
 };
+constexpr wchar_t JobProperty[] = L"NP3LogFilterJob";
+LRESULT CALLBACK OwnerProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR) {
+    if (message == WM_NCDESTROY) {
+        auto* holder = reinterpret_cast<std::weak_ptr<Job>*>(RemovePropW(window, JobProperty));
+        if (holder) { if (auto job = holder->lock()) job->cancel = true; delete holder; }
+        RemoveWindowSubclass(window, OwnerProc, id);
+    }
+    return DefSubclassProc(window, message, wParam, lParam);
+}
+std::weak_ptr<Job>* OwnerJob(HWND parent, bool create) {
+    auto* holder = reinterpret_cast<std::weak_ptr<Job>*>(GetPropW(parent, JobProperty));
+    if (!holder && create) {
+        auto candidate = std::make_unique<std::weak_ptr<Job>>();
+        if (!SetWindowSubclass(parent, OwnerProc, 0x359, 0)) throw std::bad_alloc();
+        if (!SetPropW(parent, JobProperty, candidate.get())) { RemoveWindowSubclass(parent, OwnerProc, 0x359); throw std::bad_alloc(); }
+        holder = candidate.release();
+    }
+    return holder;
+}
 struct Panel {
     np3::PanelTheme theme;
     HWND parent = nullptr, window = nullptr, edit = nullptr, list = nullptr, status = nullptr, run = nullptr, cancel = nullptr;
@@ -34,6 +53,7 @@ void Status(const std::shared_ptr<Panel>& panel, int label) { SetWindowTextW(pan
 void Publish(const std::shared_ptr<Panel>& panel) {
     auto job = panel->job;
     if (!job || !job->done.load() || panel->published) return;
+    if (job->cancel.load()) { LogFilter_Free(&job->result); job->status = LOG_FILTER_CANCELED; }
     panel->published = true;
     EnableWindow(panel->run, TRUE); EnableWindow(panel->cancel, FALSE);
     if (job->status == LOG_FILTER_OK) {
@@ -61,7 +81,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     if (message == WM_TIMER && panel) { Publish(panel); return 0; }
     if (message == WM_COMMAND && panel) {
         if (LOWORD(wParam) == 105) SendMessageW(panel->parent, NP3_WM_LOGFILTER_CAPTURE, 0, 0);
-        else if (LOWORD(wParam) == 106 && panel->job) panel->job->cancel = true;
+        else if (LOWORD(wParam) == 106 && panel->job && !panel->published) { panel->job->cancel = true; EnableWindow(panel->cancel, FALSE); Publish(panel); }
         return 0;
     }
     if (message == WM_SIZE && panel) {
@@ -126,7 +146,7 @@ extern "C" BOOL LogPanel_Run(HWND parent, const char* text, size_t length, unsig
         job->options.caseSensitive = SendMessageW(GetDlgItem(panel->window, 103), BM_GETCHECK, 0, 0) == BST_CHECKED;
         job->options.invert = SendMessageW(GetDlgItem(panel->window, 104), BM_GETCHECK, 0, 0) == BST_CHECKED;
         job->options.cancel = Canceled; job->options.context = job.get();
-        ListView_SetItemCountEx(panel->list, 0, 0); panel->published = false; panel->job = job;
+        ListView_SetItemCountEx(panel->list, 0, 0); panel->published = false; panel->job = job; *OwnerJob(parent, true) = job;
         std::thread([job] {
             job->status = LogFilter_Run(job->text.data(), job->text.size(), job->pattern.data(), job->pattern.size(), &job->options, &job->result);
             job->done = true;
@@ -139,6 +159,7 @@ extern "C" void LogPanel_Toggle(HWND parent, const wchar_t* const* labels) {
         if (HWND old = Find(parent)) { DestroyWindow(old); }
         else {
             auto panel = std::make_shared<Panel>(); panel->parent = parent;
+            if (auto* holder = OwnerJob(parent, false)) { panel->job = holder->lock(); if (panel->job) panel->job->cancel = true; }
             for (int i = 0; i < LP_COUNT; ++i) panel->labels[i] = labels[i];
             WNDCLASSW type = {}; type.lpfnWndProc = WindowProc; type.hInstance = GetModuleHandleW(nullptr); type.lpszClassName = ClassName; type.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1); RegisterClassW(&type);
             HWND window = CreateWindowExW(WS_EX_CLIENTEDGE, ClassName, nullptr, WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, parent, nullptr, type.hInstance, nullptr);
@@ -159,6 +180,7 @@ extern "C" void LogPanel_Toggle(HWND parent, const wchar_t* const* labels) {
             ListView_SetExtendedListViewStyle(panel->list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
             for (int i = 0; i < 2; ++i) { LVCOLUMNW column = {}; column.mask = LVCF_TEXT | LVCF_WIDTH; column.pszText = const_cast<wchar_t*>(panel->labels[LP_LINE + i].c_str()); column.cx = i ? 400 : 80; ListView_InsertColumn(panel->list, i, &column); }
             if (!SetTimer(window, 1, 50, nullptr)) throw std::bad_alloc();
+            if (panel->job) { EnableWindow(panel->run, FALSE); Status(panel, LP_RUNNING); Publish(panel); }
             panel->theme.Update(window,parent);
         }
         RECT rect; GetClientRect(parent, &rect); SendMessageW(parent, WM_SIZE, 0, MAKELPARAM(rect.right, rect.bottom));
