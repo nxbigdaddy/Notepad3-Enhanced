@@ -11,7 +11,7 @@ struct SessionDocument {
     std::vector<std::uint64_t> folds;
     std::uint32_t encoding = 0, eol = 0, flags = 0;
     std::uint64_t anchor = 0, caret = 0, firstLine = 0;
-    std::uint32_t xOffset = 0;
+    std::uint32_t xOffset = 0, codePage = 65001, tabWidth = 4, indent = 4, wrapMode = 0;
     std::int32_t zoom = 0;
 };
 struct SessionSnapshot {

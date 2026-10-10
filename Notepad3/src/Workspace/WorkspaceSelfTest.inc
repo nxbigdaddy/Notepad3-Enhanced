@@ -109,6 +109,24 @@ static void _WorkspaceSelfTest()
     _WorkspaceSwitch(0); _WorkspaceSwitch(1);
     _WorkspaceTestCheck(&result, SciCall_GetFoldExpanded(0) && SciCall_GetLineVisible(1), "expanded state remains expanded");
     _WorkspaceCloseActive(); Path_Release(folded);
+    HPATHL sessionFile = Path_Allocate(folder); Path_Append(sessionFile, L"workspace.np3session");
+    uint32_t sessionError = 0;
+    sptr_t const originalHandle = SciCall_GetDocPointer();
+    SciCall_AppendText(1, "~");
+    _WorkspaceTestCheck(&result, _WorkspaceSessionSave(sessionFile, &sessionError), "capture unsaved workspace session");
+    _WorkspaceTestCheck(&result, SciCall_GetDocPointer() == originalHandle && _WorkspaceTestText("alpha\r\nA~"), "session capture keeps active document unchanged");
+    SciCall_Undo();
+    _WorkspaceTestCheck(&result, _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(), "session capture keeps undo and savepoint");
+    _WorkspaceTestCheck(&result, _WorkspaceSessionLoad(sessionFile, &sessionError), "restore protected workspace session");
+    _WorkspaceTestCheck(&result, workspace->count == 2 && _WorkspaceTestText("alpha\r\nA~") && Encoding_GetCurrent() == CPI_UTF8SIGN && IsSaveNeeded(), "restored unsaved content and encoding");
+    _WorkspaceSwitch(0);
+    _WorkspaceTestCheck(&result, SciCall_GetDocPointer() == originalHandle && _WorkspaceTestText("alpha\r\nA"), "import retains original tab");
+    _WorkspaceReleaseDocument(&workspace->documents[1]); workspace->count = 1; _WorkspaceRefresh();
+    HANDLE brokenSession = Path_CreateFile(sessionFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    DWORD corruptWritten;
+    if (IS_VALID_HANDLE(brokenSession)) { WriteFile(brokenSession, "broken", 6, &corruptWritten, NULL); CloseHandle(brokenSession); }
+    _WorkspaceTestCheck(&result, !_WorkspaceSessionLoad(sessionFile, &sessionError) && workspace->count == 1 && SciCall_GetDocPointer() == originalHandle && _WorkspaceTestText("alpha\r\nA"), "corrupt session preserves complete current workspace");
+    Path_Release(sessionFile);
     _WorkspaceTestCheck(&result, _WorkspaceCanClose(FSF_Ask), "all saved tabs can close");
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;

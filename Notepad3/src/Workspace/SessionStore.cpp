@@ -13,7 +13,7 @@ namespace {
 constexpr size_t PayloadLimit = 64 * 1024 * 1024;
 constexpr size_t ProtectedLimit = PayloadLimit + 1024 * 1024;
 constexpr size_t DocumentLimit = 32 * 1024 * 1024;
-constexpr std::string_view Magic = "NP3SESS1";
+constexpr std::string_view Magic = "NP3SESS2";
 void Check(bool condition) { if (!condition) throw std::runtime_error("Invalid or oversized session"); }
 std::uint32_t Checksum(std::string_view bytes) {
     std::uint32_t crc = 0xFFFFFFFF;
@@ -53,6 +53,7 @@ void Validate(const SessionDocument& doc) {
     Check(doc.encoding <= 65535 && doc.eol <= 2 && doc.flags <= 7);
     Check(doc.anchor <= doc.text.size() && doc.caret <= doc.text.size());
     Check(doc.firstLine <= doc.text.size() && doc.xOffset <= INT_MAX && doc.zoom >= -10 && doc.zoom <= 20);
+    Check(doc.tabWidth > 0 && doc.tabWidth <= 1024 && doc.indent <= 1024 && doc.wrapMode <= 3);
     Check(doc.folds.size() <= doc.text.size() + 1);
     std::uint64_t previous = 0;
     for (size_t i = 0; i < doc.folds.size(); ++i) {
@@ -88,6 +89,7 @@ std::string EncodeSession(const SessionSnapshot& session) {
         Bytes(bytes, doc.text, DocumentLimit); Bytes(bytes, doc.selection, 1024 * 1024);
         Number(bytes, doc.encoding, 4); Number(bytes, doc.eol, 4); Number(bytes, doc.flags, 4);
         Number(bytes, doc.anchor, 8); Number(bytes, doc.caret, 8); Number(bytes, doc.firstLine, 8);
+        Number(bytes, doc.codePage, 4); Number(bytes, doc.tabWidth, 4); Number(bytes, doc.indent, 4); Number(bytes, doc.wrapMode, 4);
         Number(bytes, doc.xOffset, 4); Number(bytes, static_cast<std::uint32_t>(doc.zoom), 4);
         Number(bytes, doc.folds.size(), 4);
         for (auto line : doc.folds) Number(bytes, line, 8);
@@ -110,6 +112,8 @@ SessionSnapshot DecodeSession(std::string_view bytes) {
         doc.encoding = static_cast<std::uint32_t>(reader.number(4));
         doc.eol = static_cast<std::uint32_t>(reader.number(4)); doc.flags = static_cast<std::uint32_t>(reader.number(4));
         doc.anchor = reader.number(8); doc.caret = reader.number(8); doc.firstLine = reader.number(8);
+        doc.codePage = static_cast<std::uint32_t>(reader.number(4)); doc.tabWidth = static_cast<std::uint32_t>(reader.number(4));
+        doc.indent = static_cast<std::uint32_t>(reader.number(4)); doc.wrapMode = static_cast<std::uint32_t>(reader.number(4));
         doc.xOffset = static_cast<std::uint32_t>(reader.number(4));
         const auto zoom = reader.number(4); doc.zoom = zoom <= INT_MAX ? static_cast<std::int32_t>(zoom) : -1 - static_cast<std::int32_t>(UINT32_MAX - zoom);
         const auto folds = reader.number(4); Check(folds <= doc.text.size() + 1 && folds <= (reader.bytes.size() - reader.pos) / 8);
@@ -187,6 +191,7 @@ extern "C" int Session_Add(NP3_SESSION session, const NP3_SESSION_DOCUMENT* sour
         doc.encoding = source->encoding; doc.eol = source->eol; doc.flags = source->flags;
         doc.anchor = source->anchor; doc.caret = source->caret; doc.firstLine = source->firstLine;
         doc.xOffset = source->xOffset; doc.zoom = source->zoom;
+        doc.codePage = source->codePage; doc.tabWidth = source->tabWidth; doc.indent = source->indent; doc.wrapMode = source->wrapMode;
         // Validate before mutating the builder so rejected entries cannot poison it.
         np3::Validate(doc);
         snapshot.documents.push_back(std::move(doc)); return 1;
@@ -205,7 +210,7 @@ extern "C" int Session_Get(NP3_SESSION session, size_t index, NP3_SESSION_DOCUME
     const auto& snapshot = *static_cast<np3::SessionSnapshot*>(session);
     if (index >= snapshot.documents.size()) return 0;
     const auto& doc = snapshot.documents[index];
-    *output = { doc.path.c_str(), doc.text.data(), doc.text.size(), doc.selection.data(), doc.selection.size(), doc.folds.data(), doc.folds.size(), doc.encoding, doc.eol, doc.flags, doc.anchor, doc.caret, doc.firstLine, doc.xOffset, doc.zoom };
+    *output = { doc.path.c_str(), doc.text.data(), doc.text.size(), doc.selection.data(), doc.selection.size(), doc.folds.data(), doc.folds.size(), doc.encoding, doc.eol, doc.flags, doc.anchor, doc.caret, doc.firstLine, doc.xOffset, doc.codePage, doc.tabWidth, doc.indent, doc.wrapMode, doc.zoom };
     return 1;
 }
 extern "C" int Session_Save(NP3_SESSION session, const wchar_t* path, uint32_t* error) {

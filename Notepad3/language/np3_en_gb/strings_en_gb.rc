@@ -134,6 +134,8 @@ BEGIN
     IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
     IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_WORKSPACE_LIMIT "Cannot add a document: maximum 64 tabs, or insufficient memory. Existing documents remain open."
+    IDS_MUI_SESSION_ERROR "Unable to save or restore the session (error %u). Existing tabs were retained."
+    IDS_MUI_SESSION_OVERWRITE "This buffer was recovered from a session. The disk file may have changed. Save the recovered buffer to the original file?"
     IDS_MUI_ERR_DLG_FORMAT  "Error '%s', cause:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "No file browser plugin was found\nThe MiniPath file browser plugin can be downloaded from https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "No file search plugin was found\nThe grepWin Portable file search plugin can be downloaded from https://github.com/stefankueng/grepWin/releases"

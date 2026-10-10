@@ -1297,6 +1297,7 @@
     <ClCompile Include="Markdown\vendor\md4c\entity.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError></ClCompile>
     <ClInclude Include="Workspace\DocumentWorkspace.inc" />
     <ClInclude Include="Workspace\WorkspaceSelfTest.inc" />
+    <ClInclude Include="Workspace\WorkspaceSession.inc" />
     <ClInclude Include="TextTools\JsonFormat.h" />
     <ClInclude Include="Markdown\MarkdownRender.h" />
     <ClInclude Include="Markdown\MarkdownPreview.h" />

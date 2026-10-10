@@ -60,6 +60,8 @@ BEGIN
         MENUITEM "नया (&N)\tCtrl+N",                                    IDM_FILE_NEW
         MENUITEM "&खोलें (&O)...\tCtrl+O",                                IDM_FILE_OPEN
         MENUITEM "Close Tab\tCtrl+F4", IDM_FILE_CLOSE_TAB
+        MENUITEM "Save Session...", IDM_FILE_SAVE_SESSION
+        MENUITEM "Restore Session...", IDM_FILE_RESTORE_SESSION
         MENUITEM "&सहेजें (&S)\tCtrl+S",                                   IDM_FILE_SAVE
         MENUITEM "इस रूप में सहेजें (&A)...\tF6",                                 IDM_FILE_SAVEAS
         MENUITEM "प्रतिलिपि सहेजें (&C)...\tCtrl+F6",                          IDM_FILE_SAVECOPY

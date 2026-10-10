@@ -134,6 +134,8 @@ BEGIN
     IDS_MUI_JSON_SYNTAX "Invalid JSON near input byte %i. Content was not changed."
     IDS_MUI_JSON_LIMIT "JSON exceeds limits or memory is unavailable. Maximum: 8 MiB, 128 nesting levels. Content was not changed."
     IDS_MUI_WORKSPACE_LIMIT "Cannot add a document: maximum 64 tabs, or insufficient memory. Existing documents remain open."
+    IDS_MUI_SESSION_ERROR "Unable to save or restore the session (error %u). Existing tabs were retained."
+    IDS_MUI_SESSION_OVERWRITE "This buffer was recovered from a session. The disk file may have changed. Save the recovered buffer to the original file?"
     IDS_MUI_ERR_DLG_FORMAT  "Σφάλμα '%s'. Αιτία:\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "Δεν βρέθηκε το πρόσθετο περιήγησης αρχείων\nΜπορείτε να κάνετε λήψη του πρόσθετου περιήγησης αρχείων MiniPath από https://rizonesoft.com"
     IDS_MUI_ERR_GREPWIN     "Δεν βρέθηκε το πρόσθετο αναζήτησης αρχείων\nΜπορείτε να κάνετε λήψη του πρόσθετου αναζήτησης αρχείων grepWin Portable από https://github.com/stefankueng/grepWin/releases"

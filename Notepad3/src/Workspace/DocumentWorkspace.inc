@@ -6,6 +6,7 @@ typedef struct WORKSPACE_DOCUMENT {
     unsigned long long id, version;
     HPATHL path;
     void* encryption;
+    bool encryptedRecovery, recoveryConflict;
     char* selection;
     DocLn* folds;
     size_t foldCount;
@@ -150,7 +151,8 @@ static void _WorkspaceRestore(int index)
     s_NeedSavingForced = doc->forcedDirty;
     StringCchCopy(s_wchTitleExcerpt, COUNTOF(s_wchTitleExcerpt), doc->titleExcerpt);
     FocusedView.HideNonMatchedLines = false;
-    Style_SetLexer(Globals.hwndEdit, doc->lexer);
+    if (doc->lexer) Style_SetLexer(Globals.hwndEdit, doc->lexer);
+    else Style_SetLexerFromFile(Globals.hwndEdit, Paths.CurrentFile);
     SciCall_SetCodePage(doc->codePage); SciCall_SetEOLMode(doc->eol);
     SciCall_SetTabWidth(doc->tabWidth); SciCall_SetIndent(doc->indent); SciCall_SetWrapMode(doc->wrapMode);
     SciCall_SetZoom(doc->zoom); SciCall_SetReadOnly(doc->readOnly);

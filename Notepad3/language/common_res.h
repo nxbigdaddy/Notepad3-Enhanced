@@ -177,6 +177,8 @@
 #define IDS_MUI_JSON_SYNTAX             13028
 #define IDS_MUI_JSON_LIMIT              13029
 #define IDS_MUI_WORKSPACE_LIMIT         13030
+#define IDS_MUI_SESSION_ERROR           13031
+#define IDS_MUI_SESSION_OVERWRITE       13032
 
 
 #define IDS_MUI_SELRECT                 14000
@@ -641,6 +643,8 @@
 #define IDM_FILE_CLOSE_TAB              40028
 #define IDM_FILE_NEXT_TAB               40029
 #define IDM_FILE_PREVIOUS_TAB           40030
+#define IDM_FILE_SAVE_SESSION           40031
+#define IDM_FILE_RESTORE_SESSION        40032
 #define IDC_WORKSPACE_TABS              18190
 
 #define IDM_ENCODING_ANSI               40100

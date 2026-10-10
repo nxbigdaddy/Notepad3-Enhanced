@@ -60,6 +60,8 @@ BEGIN
         MENUITEM "&Új\tCtrl+N",                                        IDM_FILE_NEW
         MENUITEM "Me&gnyitás...\tCtrl+O",                              IDM_FILE_OPEN
         MENUITEM "Close Tab\tCtrl+F4", IDM_FILE_CLOSE_TAB
+        MENUITEM "Save Session...", IDM_FILE_SAVE_SESSION
+        MENUITEM "Restore Session...", IDM_FILE_RESTORE_SESSION
         MENUITEM "&Mentés\tCtrl+S",                                    IDM_FILE_SAVE
         MENUITEM "Mentés m&ásként...\tF6",                             IDM_FILE_SAVEAS
         MENUITEM "Másolat m&entése...\tCtrl+F6",                       IDM_FILE_SAVECOPY

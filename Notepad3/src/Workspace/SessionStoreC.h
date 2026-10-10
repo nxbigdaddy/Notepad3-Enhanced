@@ -20,6 +20,7 @@ typedef struct NP3_SESSION_DOCUMENT {
     uint32_t encoding, eol, flags;
     uint64_t anchor, caret, firstLine;
     uint32_t xOffset;
+    uint32_t codePage, tabWidth, indent, wrapMode;
     int32_t zoom;
 } NP3_SESSION_DOCUMENT;
 NP3_SESSION Session_Create(void);

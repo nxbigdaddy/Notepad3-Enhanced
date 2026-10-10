@@ -98,6 +98,8 @@ LRESULT WINAPI Scintilla_DirectStatusFunction(HANDLE, UINT, WPARAM, LPARAM, LPIN
 
 //=============================================================================
 
+static inline LRESULT Sci_ViewCall(HWND view, UINT message, WPARAM wParam, LPARAM lParam) { return SendMessage(view, message, wParam, lParam); }
+
 #define SciCall_SendMsg(m, w, l) SendMessage(g_hwndEditWindow, (m), (w), (l))
 #define SciCall_PostMsg(m, w, l) PostMessage(g_hwndEditWindow, (m), (w), (l))
 

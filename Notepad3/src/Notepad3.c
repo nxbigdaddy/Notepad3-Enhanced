@@ -387,6 +387,9 @@ static void _WorkspaceSelfTest();
 static bool _WorkspaceOwnsPath(const HPATHL path);
 static void _WorkspaceAutoSaveAll(FileSaveFlags flags);
 static UINT_PTR _WorkspaceActiveId();
+static void _WorkspaceSessionCommand(bool save);
+static bool _WorkspaceSessionWriteAllowed(const HPATHL destination);
+static void _WorkspaceSessionWriteDone(const HPATHL destination);
 #define NP3_WM_WORKSPACE_SELFTEST (WM_APP + 0x352)
 
 // ----------------------------------------------------------------------------
@@ -5513,6 +5516,12 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
     } break;
 
 
+    case IDM_FILE_SAVE_SESSION:
+        _WorkspaceSessionCommand(true);
+        break;
+    case IDM_FILE_RESTORE_SESSION:
+        _WorkspaceSessionCommand(false);
+        break;
     case IDM_FILE_CLOSE_TAB:
         _WorkspaceCloseActive();
         break;
@@ -12251,6 +12260,7 @@ bool FileIO(bool fLoad, const HPATHL hfile_pth, EditFileIOStatus* status,
 {
     bool bSuccess = false;
 
+    if (!fLoad && !_WorkspaceSessionWriteAllowed(hfile_pth)) return false;
     if (fLoad) {
         bSuccess = EditLoadFile(Globals.hwndEdit, hfile_pth, status, fLoadFlags, bSetSavePoint);
         SciCall_SetReadOnly(Settings.DocReadOnlyMode || FileWatching.MonitoringLog);
@@ -12273,6 +12283,7 @@ bool FileIO(bool fLoad, const HPATHL hfile_pth, EditFileIOStatus* status,
         }
         bSuccess = EditSaveFile(Globals.hwndEdit, hfile_pth, status, fSaveFlags, Flags.bPreserveFileModTime);
     }
+    if (!fLoad && bSuccess) _WorkspaceSessionWriteDone(hfile_pth);
     return bSuccess;
 }
 
@@ -12332,6 +12343,7 @@ static inline void _ResetFileWatchingMode() {
 }
 
 #include "Workspace/DocumentWorkspace.inc"
+#include "Workspace/WorkspaceSession.inc"
 #include "Workspace/WorkspaceSelfTest.inc"
 
 static bool _FileLoadSingle(const HPATHL hfile_pth, const FileLoadFlags fLoadFlags, const DocPos curPos, const DocLn visLn)

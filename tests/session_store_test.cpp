@@ -58,7 +58,7 @@ int main() {
     std::uint32_t error;
     expect(np3::SaveSession(path, session, error) && error == 0, "DPAPI atomic save");
     const auto original = disk(path);
-    expect(!original.empty() && original.find("unsaved") == std::string::npos && original.find("NP3SESS1") == std::string::npos, "no plaintext buffer on disk");
+    expect(!original.empty() && original.find("unsaved") == std::string::npos && original.find("NP3SESS2") == std::string::npos, "no plaintext buffer on disk");
     np3::SessionSnapshot restored;
     expect(np3::LoadSession(path, restored, error) && np3::EncodeSession(restored) == bytes, "DPAPI load roundtrip");
     HANDLE locked = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
