@@ -265,7 +265,7 @@ static TBBUTTON  s_tbbMainWnd[] = {
     { 0, 0, 0, BTNS_SEP, { 0 }, 0, 0 },
     { 29, IDT_GREP_WIN_TOOL, TBSTATE_ENABLED, BTNS_BUTTON, { 0 }, 0, 0 },
     { 0, 0, 0, BTNS_SEP, { 0 }, 0, 0 },
-    { I_IMAGENONE, IDT_VIEW_MARKDOWN_PREVIEW, TBSTATE_ENABLED, BTNS_CHECK | BTNS_AUTOSIZE | BTNS_SHOWTEXT, { 0 }, 0, 0 },
+    { I_IMAGENONE, IDT_VIEW_MARKDOWN_PREVIEW, TBSTATE_ENABLED, BTNS_CHECK, { 0 }, 0, 0 },
     { 11, IDT_VIEW_WORDWRAP, TBSTATE_ENABLED, BTNS_BUTTON, { 0 }, 0, 0 },
     { 0, 0, 0, BTNS_SEP, { 0 }, 0, 0 },
     { 23, IDT_VIEW_TOGGLEFOLDS, TBSTATE_ENABLED, BTNS_BUTTON, { 0 }, 0, 0 },
@@ -3360,6 +3360,38 @@ bool SelectExternalToolBar(HWND hwnd)
 //  CreateBars() - Create Toolbar and Statusbar
 //
 //
+// Append a DPI-sized M glyph without changing the legacy toolbar bitmap strip.
+static int AddMarkdownToolbarIcon(HIMAGELIST images, COLORREF color)
+{
+    if (!images) return I_IMAGENONE;
+    int width = 0, height = 0;
+    ImageList_GetIconSize(images, &width, &height);
+    HDC screen = GetDC(NULL);
+    HDC dc = CreateCompatibleDC(screen);
+    HBITMAP bitmap = CreateCompatibleBitmap(screen, width, height);
+    ReleaseDC(NULL, screen);
+    HGDIOBJ oldBitmap = SelectObject(dc, bitmap);
+    RECT bounds = { 0, 0, width, height };
+    COLORREF const mask = RGB(255, 0, 255);
+    HBRUSH brush = CreateSolidBrush(mask);
+    FillRect(dc, &bounds, brush);
+    DeleteObject(brush);
+    HFONT font = CreateFontW(-MulDiv(height, 4, 5), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, NONANTIALIASED_QUALITY,
+        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HGDIOBJ oldFont = SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, color);
+    DrawTextW(dc, L"M", 1, &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    SelectObject(dc, oldFont);
+    DeleteObject(font);
+    SelectObject(dc, oldBitmap);
+    DeleteDC(dc);
+    int const index = ImageList_AddMasked(images, bitmap, mask);
+    DeleteObject(bitmap);
+    return index;
+}
+
 void CreateBars(HWND hwnd, HINSTANCE hInstance)
 {
     DWORD dwToolbarStyle = NP3_WS_TOOLBAR /*| TBSTYLE_CUSTOMERASE */ | TBSTYLE_TRANSPARENT;
@@ -3521,6 +3553,11 @@ void CreateBars(HWND hwnd, HINSTANCE hInstance)
         hbmpCopy = NULL;
     }
 
+    int const markdownIcon = AddMarkdownToolbarIcon(
+        (HIMAGELIST)SendMessage(Globals.hwndToolbar, TB_GETIMAGELIST, 0, 0), GetSysColor(COLOR_BTNTEXT));
+    AddMarkdownToolbarIcon((HIMAGELIST)SendMessage(Globals.hwndToolbar, TB_GETHOTIMAGELIST, 0, 0), GetSysColor(COLOR_BTNTEXT));
+    AddMarkdownToolbarIcon((HIMAGELIST)SendMessage(Globals.hwndToolbar, TB_GETDISABLEDIMAGELIST, 0, 0), GetSysColor(COLOR_GRAYTEXT));
+
     // Load toolbar labels
     WCHAR tchIndex[16] = { L'\0' };
     WCHAR tchDesc[80] = { L'\0' };
@@ -3531,6 +3568,7 @@ void CreateBars(HWND hwnd, HINSTANCE hInstance)
         }
 
         if (s_tbbMainWnd[i].idCommand == IDT_VIEW_MARKDOWN_PREVIEW) {
+            s_tbbMainWnd[i].iBitmap = markdownIcon;
             GetLngString(IDT_VIEW_MARKDOWN_PREVIEW, tchDesc, COUNTOF(tchDesc));
             s_tbbMainWnd[i].iString = SendMessage(Globals.hwndToolbar, TB_ADDSTRING, 0, (LPARAM)tchDesc);
             continue;
