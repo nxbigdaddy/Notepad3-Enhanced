@@ -5,10 +5,10 @@ static HWND _WorkspaceSessionReader()
     return CreateWindowExW(0, L"Scintilla", L"", WS_CHILD, 0, 0, 0, 0,
         Globals.hwndMain, NULL, Globals.hInstance, NULL);
 }
-static bool _WorkspaceSessionSave(const HPATHL path, uint32_t* error)
+static NP3_SESSION _WorkspaceSessionCapture(uint32_t* error)
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
-    if (!workspace || workspace->transitioning) { *error = ERROR_BUSY; return false; }
+    if (!workspace || workspace->transitioning) { *error = ERROR_BUSY; return NULL; }
     _WorkspaceCapture();
     NP3_SESSION session = Session_Create();
     HWND reader = _WorkspaceSessionReader();
@@ -40,8 +40,16 @@ static bool _WorkspaceSessionSave(const HPATHL path, uint32_t* error)
     // Snapshot reading never activates another editor view or changes its undo.
     Encryption_RestoreContext(workspace->documents[workspace->active].encryption);
     if (reader) DestroyWindow(reader);
-    if (success) success = Session_SetActive(session, workspace->active) && Session_Save(session, Path_Get(path), error);
+    if (success) success = Session_SetActive(session, workspace->active) != 0;
     else *error = ERROR_INVALID_DATA;
+    if (!success) { Session_Free(session); return NULL; }
+    return session;
+}
+static bool _WorkspaceSessionSave(const HPATHL path, uint32_t* error)
+{
+    NP3_SESSION session = _WorkspaceSessionCapture(error);
+    if (!session) return false;
+    bool const success = Session_Save(session, Path_Get(path), error) != 0;
     Session_Free(session);
     return success;
 }

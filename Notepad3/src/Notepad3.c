@@ -380,6 +380,9 @@ static bool _WorkspaceSwitch(int index);
 static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
 static void _WorkspaceDispose();
+static void _WorkspaceRecoveryStart();
+static void _WorkspaceRecoveryClose();
+static void _WorkspaceRecoveryTest();
 static void _WorkspaceCycle(int direction);
 static void _WorkspaceEdited();
 static void _WorkspaceDocumentKey(WCHAR* key, size_t capacity);
@@ -391,6 +394,7 @@ static void _WorkspaceSessionCommand(bool save);
 static bool _WorkspaceSessionWriteAllowed(const HPATHL destination);
 static void _WorkspaceSessionWriteDone(const HPATHL destination);
 #define NP3_WM_WORKSPACE_SELFTEST (WM_APP + 0x352)
+#define NP3_WM_WORKSPACE_RECOVERY (WM_APP + 0x353)
 
 // ----------------------------------------------------------------------------
 
@@ -2545,6 +2549,7 @@ HWND InitInstance(const HINSTANCE hInstance, int nCmdShow)
 
     s_bInitAppDone = true;
     if (GetEnvironmentVariableW(L"NP3_WORKSPACE_SELFTEST_DIR", NULL, 0)) PostMessage(Globals.hwndMain, NP3_WM_WORKSPACE_SELFTEST, 0, 0);
+    else PostMessage(Globals.hwndMain, NP3_WM_WORKSPACE_RECOVERY, 0, 0);
 
     return Globals.hwndMain;
 }
@@ -2579,6 +2584,10 @@ static void _UpdateMarkdownPreview(HWND hwnd)
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
     switch(umsg) {
+    case NP3_WM_WORKSPACE_RECOVERY:
+        _WorkspaceRecoveryStart();
+        _WorkspaceRecoveryTest();
+        return 0;
     case NP3_WM_WORKSPACE_SELFTEST:
         _WorkspaceSelfTest();
         return 0;
@@ -2600,6 +2609,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
             ShowWindowAsync(hwnd, SW_RESTORE);
         }
         if (_WorkspaceCanClose(FSF_Ask)) {
+            _WorkspaceRecoveryClose();
             _WorkspaceDispose();
             DestroyWindow(Globals.hwndMain);
         }
@@ -3757,6 +3767,7 @@ LRESULT MsgEndSession(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 
         // call SaveAllSettings() when Globals.hwndToolbar is still valid
         SaveAllSettings(false);
+        _WorkspaceRecoveryClose();
         _WorkspaceDispose();
         CloseIniFileSaveMutex();
 
@@ -12344,7 +12355,9 @@ static inline void _ResetFileWatchingMode() {
 
 #include "Workspace/DocumentWorkspace.inc"
 #include "Workspace/WorkspaceSession.inc"
+#include "Workspace/WorkspaceRecovery.inc"
 #include "Workspace/WorkspaceSelfTest.inc"
+#include "Workspace/WorkspaceRecoveryTest.inc"
 
 static bool _FileLoadSingle(const HPATHL hfile_pth, const FileLoadFlags fLoadFlags, const DocPos curPos, const DocLn visLn)
 {
