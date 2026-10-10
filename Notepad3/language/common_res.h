@@ -120,6 +120,7 @@
 #define IDT_GREP_WIN_TOOL               11029
 #define IDT_VIEW_RESETZOOM              11030
 #define IDT_VIEW_NEW_WINDOW             11031
+#define IDT_VIEW_MARKDOWN_PREVIEW       11032
 
 #define IDS_MUI_APPTITLE_ELEVATED       12006
 #define IDS_MUI_APPTITLE_PASTEBOARD     12007

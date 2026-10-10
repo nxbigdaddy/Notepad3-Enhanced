@@ -91,6 +91,7 @@ STRINGTABLE
 BEGIN
     IDT_FILE_LAUNCH          "Mở tài liệu"
     IDT_VIEW_NEW_WINDOW      "Cửa sổ mới"
+    IDT_VIEW_MARKDOWN_PREVIEW "Markdown Preview"
     IDT_VIEW_TOGGLE_VIEW     "Chế độ tập trung"
     IDT_VIEW_CHASING_DOCTAIL "Nhật ký theo dõi (&M)"
     IDT_VIEW_PIN_ON_TOP      "Luôn ở trên cùng"

@@ -91,6 +91,7 @@ STRINGTABLE
 BEGIN
     IDT_FILE_LAUNCH          "Suorita dokumentti"
     IDT_VIEW_NEW_WINDOW      "Uusi tyhjä ikkuna"
+    IDT_VIEW_MARKDOWN_PREVIEW "Markdown Preview"
     IDT_VIEW_TOGGLE_VIEW     "Keskitetty näkymä"
     IDT_VIEW_CHASING_DOCTAIL "Seurantaloki"
     IDT_VIEW_PIN_ON_TOP      "Aina päällimmäisenä"

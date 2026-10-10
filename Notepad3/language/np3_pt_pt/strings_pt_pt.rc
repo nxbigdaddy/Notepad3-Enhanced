@@ -91,6 +91,7 @@ STRINGTABLE
 BEGIN
     IDT_FILE_LAUNCH          "Executar documento"
     IDT_VIEW_NEW_WINDOW      "Nova Janela Vazia"
+    IDT_VIEW_MARKDOWN_PREVIEW "Markdown Preview"
     IDT_VIEW_TOGGLE_VIEW     "Vista focada"
     IDT_VIEW_CHASING_DOCTAIL "Registo de monitorização"
     IDT_VIEW_PIN_ON_TOP      "Sempre visível"
