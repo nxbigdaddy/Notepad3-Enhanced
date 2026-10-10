@@ -1286,6 +1286,9 @@
     <Natvis Include="STRINGW.natvis" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Workspace\SessionStore.cpp" />
+    <ClInclude Include="Workspace\SessionStore.h" />
+    <ClInclude Include="Workspace\SessionStoreC.h" />
     <ClCompile Include="TextTools\JsonFormat.cpp" />
     <ClCompile Include="Markdown\MarkdownRender.cpp" />
     <ClCompile Include="Markdown\MarkdownPreview.cpp" />
