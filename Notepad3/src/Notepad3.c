@@ -380,6 +380,7 @@ static bool _WorkspaceSwitch(int index);
 static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
 static void _WorkspaceDispose();
+static void _MarkdownExportCommand();
 static void _WorkspaceRecoveryStart();
 static void _WorkspaceRecoveryClose();
 static void _WorkspaceRecoveryTest();
@@ -5527,6 +5528,9 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
     } break;
 
 
+    case IDM_FILE_EXPORT_MARKDOWN_HTML:
+        _MarkdownExportCommand();
+        break;
     case IDM_FILE_SAVE_SESSION:
         _WorkspaceSessionCommand(true);
         break;
@@ -12357,6 +12361,7 @@ static inline void _ResetFileWatchingMode() {
 #include "Workspace/WorkspaceSession.inc"
 #include "Workspace/WorkspaceNormalSession.inc"
 #include "Workspace/WorkspaceRecovery.inc"
+#include "Markdown/MarkdownExportCommand.inc"
 #include "Workspace/WorkspaceSelfTest.inc"
 #include "Workspace/WorkspaceRecoveryTest.inc"
 

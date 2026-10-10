@@ -180,6 +180,7 @@
 #define IDS_MUI_SESSION_ERROR           13031
 #define IDS_MUI_SESSION_OVERWRITE       13032
 #define IDS_MUI_RECOVERY_ERROR          13033
+#define IDS_MUI_MARKDOWN_EXPORT_ERROR   13034
 
 
 #define IDS_MUI_SELRECT                 14000
@@ -646,6 +647,7 @@
 #define IDM_FILE_PREVIOUS_TAB           40030
 #define IDM_FILE_SAVE_SESSION           40031
 #define IDM_FILE_RESTORE_SESSION        40032
+#define IDM_FILE_EXPORT_MARKDOWN_HTML   40033
 #define IDC_WORKSPACE_TABS              18190
 
 #define IDM_ENCODING_ANSI               40100

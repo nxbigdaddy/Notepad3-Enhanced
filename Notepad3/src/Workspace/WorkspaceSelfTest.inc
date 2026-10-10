@@ -127,6 +127,16 @@ static void _WorkspaceSelfTest()
     if (IS_VALID_HANDLE(brokenSession)) { WriteFile(brokenSession, "broken", 6, &corruptWritten, NULL); CloseHandle(brokenSession); }
     _WorkspaceTestCheck(&result, !_WorkspaceSessionLoad(sessionFile, &sessionError) && workspace->count == 1 && SciCall_GetDocPointer() == originalHandle && _WorkspaceTestText("alpha\r\nA"), "corrupt session preserves complete current workspace");
     Path_Release(sessionFile);
+    HPATHL exported = Path_Allocate(folder); Path_Append(exported, L"buffer-export.html");
+    const char* exportHeading = "\r\n# 导出验证\r\n";
+    SciCall_AppendText(strlen(exportHeading), exportHeading);
+    unsigned long long const exportVersion = workspace->documents[workspace->active].version;
+    _WorkspaceTestCheck(&result, _MarkdownExportSave(exported, &sessionError) && Path_IsExistingFile(exported), "export current unsaved buffer as Markdown HTML");
+    _WorkspaceTestCheck(&result, SciCall_GetDocPointer() == originalHandle && workspace->documents[workspace->active].version == exportVersion && IsSaveNeeded() && SciCall_CanUndo(), "export preserves document version dirty state and undo");
+    _WorkspaceTestCheck(&result, !_MarkdownExportSave(a, &sessionError) && sessionError == ERROR_SHARING_VIOLATION, "export cannot overwrite an open source document");
+    SciCall_Undo();
+    _WorkspaceTestCheck(&result, _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(), "export buffer change remains one undoable edit");
+    Path_Release(exported);
     _WorkspaceTestCheck(&result, _WorkspaceCanClose(FSF_Ask), "all saved tabs can close");
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;

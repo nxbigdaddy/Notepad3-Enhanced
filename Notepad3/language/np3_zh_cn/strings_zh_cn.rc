@@ -136,6 +136,7 @@ BEGIN
     IDS_MUI_WORKSPACE_LIMIT "无法添加文档：最多支持 64 个标签，或内存不足。已有文档未关闭。"
     IDS_MUI_SESSION_ERROR "无法保存或恢复会话（错误 %u）。已有标签保留。"
     IDS_MUI_RECOVERY_ERROR "Automatic workspace recovery failed (error %u). Existing documents and earlier recovery files are retained. Save important changes and use File > Save Session for a separate backup."
+    IDS_MUI_MARKDOWN_EXPORT_ERROR "Unable to export Markdown HTML (error %u). Use a separate destination from open documents. Export supports up to 8 MiB of UTF-8 input and 32 MiB of HTML output."
     IDS_MUI_SESSION_OVERWRITE "这是从会话恢复的内容，磁盘文件可能已经改变。确定将恢复内容保存到原文件吗？"
     IDS_MUI_ERR_DLG_FORMAT  "错误“%s”，原因：\n%s(ID:%d)\n"
     IDS_MUI_ERR_BROWSE      "无可用文件浏览器插件\nMiniPath 插件可以从 https://rizonesoft.com 下载。"

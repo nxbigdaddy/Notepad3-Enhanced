@@ -62,6 +62,7 @@ BEGIN
         MENUITEM "Close Tab\tCtrl+F4", IDM_FILE_CLOSE_TAB
         MENUITEM "Save Session...", IDM_FILE_SAVE_SESSION
         MENUITEM "Restore Session...", IDM_FILE_RESTORE_SESSION
+        MENUITEM "Export Markdown HTML...", IDM_FILE_EXPORT_MARKDOWN_HTML
         MENUITEM "&Salvar\tCtrl+S",                                         IDM_FILE_SAVE
         MENUITEM "Salvar &Como...\tF6",                                     IDM_FILE_SAVEAS
         MENUITEM "Salvar &Cópia...\tCtrl+F6",                               IDM_FILE_SAVECOPY

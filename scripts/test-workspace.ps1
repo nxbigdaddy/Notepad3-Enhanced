@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/workspace-tabs-test/Notepad3.exe')
+param([string]$Executable = 'artifacts/markdown-export-x64-v13/Notepad3.exe')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -31,3 +31,6 @@ foreach ($taskPair in @(@('a.txt', $taskExpectedA), @('b.txt', $taskExpectedB)))
     if ([Convert]::ToBase64String($taskActual) -ne [Convert]::ToBase64String($taskPair[1])) { throw "Saved bytes differ for $($taskPair[0]): $taskFolder" }
 }
 Write-Output "Saved UTF-8 BOM / UTF-16 LE bytes independently verified. Evidence: $taskFolder"
+$taskExportedHtml = [IO.File]::ReadAllText((Join-Path $taskFolder 'buffer-export.html'), [Text.Encoding]::UTF8)
+if (!$taskExportedHtml.Contains('<h1>导出验证</h1>') -or $taskExportedHtml.Contains('np3-preview.invalid')) { throw 'Exported unsaved buffer HTML content incorrect' }
+Write-Output 'Unsaved buffer Markdown HTML independently verified.'
