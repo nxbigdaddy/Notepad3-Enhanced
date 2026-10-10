@@ -42,6 +42,7 @@ typedef struct DOCUMENT_WORKSPACE {
     RECT splitArea;
     void* recovery;
     void* ai;
+    void* batch;
     void* pdfTest;
     WORKSPACE_DOCUMENT documents[WORKSPACE_DOCUMENT_LIMIT];
 } DOCUMENT_WORKSPACE;
@@ -440,6 +441,7 @@ static void _WorkspaceDispose()
     if (!workspace) return;
     if (workspace->splitView) _SplitToggle();
     AiPanel_Destroy(workspace->ai); workspace->ai = NULL;
+    BatchPanel_Destroy(workspace->batch); workspace->batch = NULL;
     for (int i = 0; i < workspace->count; ++i) _WorkspaceReleaseDocument(&workspace->documents[i]);
     Globals.workspace = NULL; FreeMem(workspace);
 }

@@ -1291,6 +1291,7 @@
     <ClInclude Include="Workspace\SessionStoreC.h" />
     <ClCompile Include="TextTools\JsonFormat.cpp" />
     <ClCompile Include="TextTools\BatchTransform.cpp" />
+    <ClCompile Include="TextTools\BatchPanel.cpp" />
     <ClCompile Include="TextTools\ConfigValidate.cpp" />
     <ClCompile Include="TextTools\LogFilter.cpp" />
     <ClCompile Include="TextTools\LogFilterPanel.cpp" />
@@ -1315,6 +1316,8 @@
     <ClInclude Include="Workspace\WorkspaceRecoveryTest.inc" />
     <ClInclude Include="TextTools\JsonFormat.h" />
     <ClInclude Include="TextTools\BatchTransform.h" />
+    <ClInclude Include="TextTools\BatchPanel.h" />
+    <ClInclude Include="TextTools\BatchWorkspace.inc" />
     <ClInclude Include="TextTools\ConfigValidate.h" />
     <ClInclude Include="TextTools\LogFilter.h" />
     <ClInclude Include="TextTools\LogFilterPanel.h" />

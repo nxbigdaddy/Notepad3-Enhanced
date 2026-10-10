@@ -367,6 +367,7 @@ BEGIN
         MENUITEM "Split Editor", IDM_VIEW_EDITOR_SPLIT
         MENUITEM "Log Filter", IDM_VIEW_LOG_FILTER
         MENUITEM "AI Assistant", IDM_VIEW_AI_PANEL
+        MENUITEM "Batch Text Tools", IDM_VIEW_BATCH_PANEL
         MENUITEM "&Marcatore linea lunga\tCtrl+Alt+L",                  IDM_VIEW_LONGLINEMARKER
         MENUITEM "&Guide indentazione\tCtrl+Maiusc+G",                  IDM_VIEW_SHOWINDENTGUIDES
         MENUITEM SEPARATOR

@@ -71,5 +71,18 @@ int main() {
     auto expanded = Prepare({changed, other}, options);
     Check(expanded[0].status == Status::Ready && expanded[1].status == Status::Limit);
     Check(expanded[1].result.empty());
+    Options lineOptions; lineOptions.operation = Operation::TrimTrailing;
+    Source crlf{1, 1, L"CRLF", "a \r\n", false, "\r\n"};
+    Source lf{2, 1, L"LF", "b \n", false, "\n"};
+    auto mixed = Prepare({crlf, lf}, lineOptions);
+    Check(mixed[0].result == "a\r\n" && mixed[1].result == "b\n");
+    lf.eol = "bad"; Check(Prepare({lf}, lineOptions).front().status == Status::InvalidOptions);
+    auto canceled = Prepare({crlf}, lineOptions, [] { return true; });
+    Check(canceled.size() == 1 && canceled[0].status == Status::Canceled && canceled[0].result.empty());
+    int polls = 0;
+    options.find = "a"; options.replacement = "b";
+    auto partial = Prepare({changed, other}, options, [&polls] { return ++polls >= 5; });
+    Check(partial.size() == 2 && partial[0].status == Status::Canceled && partial[1].status == Status::Canceled);
+    Check(partial[0].result.empty() && partial[1].result.empty());
     std::printf("%d batch transform checks passed\n", checks);
 }

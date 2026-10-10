@@ -50,6 +50,7 @@
 #include "Markdown/MarkdownPreview.h"
 #include "Workspace/FileTree.h"
 #include "TextTools/LogFilterPanel.h"
+#include "TextTools/BatchPanel.h"
 #include "AI/AiPanel.h"
 #include "Markdown/MarkdownPdf.h"
 #include "TextTools/JsonFormat.h"
@@ -398,6 +399,11 @@ static bool _AiApply(const AI_PANEL_APPLY* request);
 static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey);
 static int _AiLayout(int x, int y, int width, int height);
 static void* _WorkspaceAi(void);
+static void* _WorkspaceBatch(void);
+static void _BatchToggle(void);
+static bool _BatchRun(void);
+static LRESULT _BatchApply(const BATCH_APPLY* request);
+static int _BatchLayout(int x, int y, int width, int height);
 static bool _LogFilterRun(void);
 static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location);
 static int _ConfigCheck(int kind, bool showMessage);
@@ -2620,6 +2626,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
         }
         return 0;
     case NP3_WM_AI_CAPTURE: return _AiRun((const AI_PANEL_CAPTURE*)lParam);
+    case NP3_WM_BATCH_CAPTURE: return _BatchRun();
+    case NP3_WM_BATCH_APPLY: return _BatchApply((const BATCH_APPLY*)lParam);
     case NP3_WM_AI_APPLY: return _AiApply((const AI_PANEL_APPLY*)lParam);
     case NP3_WM_AI_SAVE: return _AiSave((const AI_PANEL_SAVE*)lParam, wParam != 0);
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
@@ -3986,6 +3994,7 @@ LRESULT MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam)
     x += treeWidth; cx -= treeWidth;
     cy -= LogPanel_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
     cy -= _AiLayout(x, y, max_i(0, cx), max_i(0, cy));
+    cy -= _BatchLayout(x, y, max_i(0, cx), max_i(0, cy));
     cx -= MarkdownPreview_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
 
     cx -= _SplitLayout(x, y, max_i(0, cx), max_i(0, cy));
@@ -5262,6 +5271,7 @@ LRESULT MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam)
     CheckCmd(hmenu, IDM_VIEW_FILETREE, FileTree_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_LOG_FILTER, LogPanel_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_AI_PANEL, AiPanel_IsOpen(_WorkspaceAi()));
+    CheckCmd(hmenu, IDM_VIEW_BATCH_PANEL, BatchPanel_IsOpen(_WorkspaceBatch()));
     CheckCmd(hmenu, IDM_VIEW_EDITOR_SPLIT, _SplitIsOpen());
     CheckCmd(hmenu, IDM_VIEW_MARKDOWN_PREVIEW, MarkdownPreview_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_LONGLINEMARKER, Settings.MarkLongLines);
@@ -7260,6 +7270,9 @@ static bool _HandleViewAndSettingsCommands(HWND hwnd, UINT umsg, WPARAM wParam, 
         break;
     case IDM_VIEW_AI_PANEL:
         _AiToggle();
+        break;
+    case IDM_VIEW_BATCH_PANEL:
+        _BatchToggle();
         break;
     case IDM_VIEW_LOG_FILTER:
         _LogFilterToggle();
@@ -12439,6 +12452,7 @@ static inline void _ResetFileWatchingMode() {
 
 #include "Workspace/DocumentWorkspace.inc"
 #include "Workspace/WorkspaceSession.inc"
+#include "TextTools/BatchWorkspace.inc"
 #include "Workspace/WorkspaceNormalSession.inc"
 #include "Workspace/WorkspaceRecovery.inc"
 #include "Markdown/MarkdownExportCommand.inc"

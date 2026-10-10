@@ -35,6 +35,15 @@ static bool _WorkspaceTestAiReady(void)
     }
     return !AiPanel_IsBusy(_WorkspaceAi());
 }
+static bool _WorkspaceTestBatchReady(void)
+{
+    DWORD start = GetTickCount();
+    while (BatchPanel_IsBusy(_WorkspaceBatch()) && GetTickCount() - start < 5000) {
+        MsgWaitForMultipleObjectsEx(0, NULL, 50, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        MSG message; while (PeekMessageW(&message, NULL, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+    }
+    return !BatchPanel_IsBusy(_WorkspaceBatch());
+}
 static bool _WorkspaceTestPreviewReady(bool capture)
 {
     DWORD start=GetTickCount();
@@ -472,6 +481,61 @@ static void _WorkspaceSelfTest()
         MarkdownPreview_Toggle(Globals.hwndMain); SciCall_Undo();
         _WorkspaceTestCheck(&result,!MarkdownPreview_IsOpen(Globals.hwndMain) && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"advanced preview and capture preserve source undo and saved state");
     }
+    // Batch UI commands use only the isolated documents created by this runner.
+    _WorkspaceTestCheck(&result, FileLoad(b, FLF_None, 0, 0) && workspace->count == 2 && _WorkspaceTestText("beta\r\nB"), "batch fixture opens second saved document");
+    unsigned long long batchAId = workspace->documents[0].id, batchBId = workspace->documents[1].id;
+    _BatchToggle(); HWND batchPanel = FindWindowExW(Globals.hwndMain, NULL, L"NP3BatchPanel", NULL);
+    _WorkspaceTestCheck(&result, batchPanel && BatchPanel_IsOpen(workspace->batch) && GetDlgItem(batchPanel,120) && GetDlgItem(batchPanel,121) && GetDlgItem(batchPanel,122), "batch native document list and result controls exist");
+    SetWindowTextW(GetDlgItem(batchPanel,102),L"a"); SetWindowTextW(GetDlgItem(batchPanel,103),L"X");
+    unsigned long long batchVersion = workspace->documents[1].version;
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestBatchReady() && ListView_GetItemCount(GetDlgItem(batchPanel,120))==2,"batch background preview publishes both document rows");
+    _WorkspaceTestCheck(&result,_WorkspaceTestText("beta\r\nB") && workspace->active==1 && workspace->documents[1].version==batchVersion && !IsSaveNeeded(),"batch preview preserves active document, text, version and saved state");
+    WCHAR batchOriginal[128]={0},batchProposed[128]={0};
+    GetWindowTextW(GetDlgItem(batchPanel,121),batchOriginal,COUNTOF(batchOriginal)); GetWindowTextW(GetDlgItem(batchPanel,122),batchProposed,COUNTOF(batchProposed));
+    _WorkspaceTestCheck(&result,wcsstr(batchOriginal,L"alpha") && wcsstr(batchProposed,L"XlphX"),"batch actual result controls show original and transformed text");
+    _WorkspaceTestCheck(&result,ListView_GetCheckState(GetDlgItem(batchPanel,120),0) && ListView_GetCheckState(GetDlgItem(batchPanel,120),1),"batch changed documents are checked for explicit confirmation");
+    ListView_SetCheckState(GetDlgItem(batchPanel,120),0,FALSE);
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestText("betX\r\nB") && IsSaveNeeded() && workspace->active==1,"batch applies only checked document and restores active tab");
+    _WorkspaceSwitch(0); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"batch unchecked document remains unchanged"); _WorkspaceSwitch(1);
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+    _WorkspaceTestCheck(&result,!IsWindowEnabled(GetDlgItem(batchPanel,112)) && _WorkspaceTestText("betX\r\nB"),"batch UI refuses repeated application");
+    SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("beta\r\nB") && !IsSaveNeeded(),"batch replacement is one undo and restores save point");
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0); _WorkspaceTestBatchReady();
+    _WorkspaceSwitch(0); SciCall_AppendText(1,"~"); _WorkspaceSwitch(1);
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestText("beta\r\nB") && !IsSaveNeeded(),"batch stale inactive source rejects whole transaction before editing other documents");
+    _WorkspaceSwitch(0); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA~"),"batch preserves independent edit made after preview"); SciCall_Undo(); _WorkspaceSwitch(1);
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0); _WorkspaceTestBatchReady();
+    SciCall_SetReadOnly(TRUE); SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestText("beta\r\nB") && !IsSaveNeeded(),"batch apply rechecks current read-only status for entire selection"); SciCall_SetReadOnly(FALSE);
+    SetWindowTextW(GetDlgItem(batchPanel,103),L"Y");
+    _WorkspaceTestCheck(&result,!IsWindowEnabled(GetDlgItem(batchPanel,112)),"changing batch options invalidates earlier confirmation");
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0); _WorkspaceTestBatchReady();
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestText("betY\r\nB") && IsSaveNeeded(),"batch confirms replacement in second document");
+    _WorkspaceSwitch(0); _WorkspaceTestCheck(&result,_WorkspaceTestText("YlphY\r\nA") && IsSaveNeeded(),"batch confirms replacement in first document");
+    SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"batch first document has independent single undo"); _WorkspaceSwitch(1);
+    SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("beta\r\nB") && !IsSaveNeeded(),"batch second document has independent single undo");
+    BATCH_CHANGE rollbackChanges[2]={{batchAId,workspace->documents[0].version,"alpha\r\nA",8,"changed A",9},{batchBId,workspace->documents[1].version,"beta\r\nB",7,"changed B",9}};
+    BATCH_APPLY rollbackRequest={rollbackChanges,2};
+    _WorkspaceTestCheck(&result,_BatchApplyTransaction(&rollbackRequest,1)==-1 && _WorkspaceTestText("beta\r\nB") && workspace->active==1 && !IsSaveNeeded(),"batch injected mid-transaction failure rolls back and restores active document");
+    _WorkspaceSwitch(0); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"batch rollback independently restores original bytes and save point"); _WorkspaceSwitch(1);
+    BATCH_CHANGE emptyChange={batchBId,workspace->documents[1].version,"beta\r\nB",7,"",0}; BATCH_APPLY emptyRequest={&emptyChange,1};
+    _WorkspaceTestCheck(&result,_BatchApply(&emptyRequest)==1 && SciCall_GetLength()==0 && IsSaveNeeded(),"batch permits confirmed empty replacement without truncation ambiguity");
+    SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("beta\r\nB") && !IsSaveNeeded(),"batch empty replacement restores all bytes with one undo");
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0); _WorkspaceTestBatchReady();
+    _WorkspaceTestCheck(&result,_WorkspaceCloseActive() && workspace->count==1,"batch source tab may close after preview");
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"batch closed source rejects whole application without editing remaining document");
+    _WorkspaceTestCheck(&result,FileLoad(b,FLF_None,0,0) && _WorkspaceTestText("beta\r\nB"),"batch fixture reopens unchanged saved source");
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0); SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(111,BN_CLICKED),0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestBatchReady() && _WorkspaceTestText("beta\r\nB") && !IsWindowEnabled(GetDlgItem(batchPanel,112)),"batch cancellation discards proposals without applying");
+    _BatchToggle(); _BatchToggle();
+    _WorkspaceTestCheck(&result,BatchPanel_IsOpen(workspace->batch) && _WorkspaceTestText("beta\r\nB"),"batch panel closes and reopens without changing editor");
+    _BatchToggle(); _WorkspaceCloseActive();
+    _WorkspaceTestCheck(&result,workspace->count==1 && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"batch regression preserves original saved workspace");
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;
     StringCchPrintfA(summary, COUNTOF(summary), "RESULT checks=%i failures=%i\r\n", result.checks, result.failures);
