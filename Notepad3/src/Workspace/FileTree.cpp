@@ -17,6 +17,7 @@ constexpr UINT Ready = WM_APP + 1;
 struct FindHandle { HANDLE value; ~FindHandle() { if (value != INVALID_HANDLE_VALUE) FindClose(value); } };
 struct Entry { std::wstring name; bool directory, reparse; };
 struct Result { unsigned long long generation; HTREEITEM item; std::wstring path; std::vector<Entry> entries; DWORD error = 0; };
+struct Work { unsigned long long generation; HTREEITEM item; std::wstring path; };
 struct Node { std::wstring path; bool directory, reparse, loaded = false, pending = false; };
 struct Tree {
     std::atomic<HWND> window{nullptr};
@@ -26,6 +27,8 @@ struct Tree {
     UINT_PTR cookie = 0;
     std::mutex mutex;
     std::deque<Result> results;
+    std::deque<Work> queued; // UI thread only
+    std::atomic<unsigned> workers{0};
     unsigned pending = 0;
 };
 std::shared_ptr<Tree> State(HWND window) {
@@ -48,42 +51,63 @@ HTREEITEM Insert(const std::shared_ptr<Tree>& state, HTREEITEM parent, const std
     value.item.lParam = reinterpret_cast<LPARAM>(node); value.item.cChildren = node && node->directory && !node->reparse ? 1 : 0;
     return TreeView_InsertItem(state->tree, &value);
 }
+void Schedule(const std::shared_ptr<Tree>& state) {
+    while (state->workers.load() < 4 && !state->queued.empty()) {
+        Work work = std::move(state->queued.front()); state->queued.pop_front();
+        if (work.generation != state->generation.load()) continue;
+        Node* node = Data(state->tree, work.item);
+        if (!node || node->path != work.path) continue;
+        ++state->workers;
+        try {
+            std::thread([state, work = std::move(work)] {
+                const auto generation = work.generation;
+                const auto item = work.item;
+                const auto& path = work.path;
+                // Even allocation failures and canceled generations release the slot and wake the queue.
+                bool failed = false;
+                try {
+                    Result result = { generation, item, path, {}, 0 };
+                    try {
+                        WIN32_FIND_DATAW found; HANDLE search = FindFirstFileW(Native(Join(path, L"*")).c_str(), &found);
+                        FindHandle owner{search};
+                        if (search == INVALID_HANDLE_VALUE) {
+                            result.error = GetLastError();
+                            if (result.error == ERROR_FILE_NOT_FOUND) result.error = 0;
+                        } else {
+                            do {
+                                if (!state->window.load() || state->generation.load() != generation) break;
+                                if (!wcscmp(found.cFileName, L".") || !wcscmp(found.cFileName, L"..")) continue;
+                                if (result.entries.size() == 5000) { result.error = ERROR_MORE_DATA; break; }
+                                result.entries.push_back({ found.cFileName, (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, (found.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 });
+                            } while (FindNextFileW(search, &found));
+                            DWORD error = GetLastError(); if (!result.error && error != ERROR_NO_MORE_FILES) result.error = error;
+                        }
+                        std::sort(result.entries.begin(), result.entries.end(), [](const Entry& left, const Entry& right) {
+                            if (left.directory != right.directory) return left.directory;
+                            return CompareStringOrdinal(left.name.c_str(), -1, right.name.c_str(), -1, TRUE) == CSTR_LESS_THAN;
+                        });
+                        } catch (...) { result.error = ERROR_NOT_ENOUGH_MEMORY; result.entries.clear(); }
+                    if (state->window.load() && state->generation.load() == generation) {
+                        std::lock_guard<std::mutex> guard(state->mutex);
+                        state->results.push_back(std::move(result));
+                    }
+                } catch (...) { failed = true; }
+                --state->workers;
+                HWND window = state->window.load();
+                if (window) PostMessageW(window, Ready, state->cookie, failed ? ERROR_NOT_ENOUGH_MEMORY : 0);
+            }).detach();
+        } catch (...) {
+            --state->workers; node->pending = false; --state->pending;
+            PostMessageW(state->parent, NP3_WM_FILETREE_ERROR, ERROR_NOT_ENOUGH_MEMORY, 0);
+        }
+    }
+}
 void Request(const std::shared_ptr<Tree>& state, HTREEITEM item) {
     Node* node = Data(state->tree, item);
     if (!node || !node->directory || node->reparse || node->loaded || node->pending) return;
+    state->queued.push_back({state->generation.load(), item, node->path});
     node->pending = true; ++state->pending;
-    const auto generation = state->generation.load(); const auto path = node->path;
-    try {
-        std::thread([state, generation, path, item] {
-            Result result = { generation, item, path, {}, 0 };
-            try {
-            WIN32_FIND_DATAW found; HANDLE search = FindFirstFileW(Native(Join(path, L"*")).c_str(), &found);
-            FindHandle owner{search};
-            if (search == INVALID_HANDLE_VALUE) {
-                result.error = GetLastError();
-                if (result.error == ERROR_FILE_NOT_FOUND) result.error = 0;
-            } else {
-                do {
-                    if (!state->window.load() || state->generation.load() != generation) break;
-                    if (!wcscmp(found.cFileName, L".") || !wcscmp(found.cFileName, L"..")) continue;
-                    if (result.entries.size() == 5000) { result.error = ERROR_MORE_DATA; break; }
-                    result.entries.push_back({ found.cFileName, (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, (found.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 });
-                } while (FindNextFileW(search, &found));
-                DWORD error = GetLastError(); if (!result.error && error != ERROR_NO_MORE_FILES) result.error = error;
-            }
-            std::sort(result.entries.begin(), result.entries.end(), [](const Entry& left, const Entry& right) {
-                if (left.directory != right.directory) return left.directory;
-                return CompareStringOrdinal(left.name.c_str(), -1, right.name.c_str(), -1, TRUE) == CSTR_LESS_THAN;
-            });
-            } catch (...) { result.error = ERROR_NOT_ENOUGH_MEMORY; result.entries.clear(); }
-            if (state->window.load() && state->generation.load() == generation) {
-                try {
-                    std::lock_guard<std::mutex> guard(state->mutex); state->results.push_back(std::move(result));
-                    HWND window = state->window.load(); if (window) PostMessageW(window, Ready, state->cookie, 0);
-                } catch (...) { PostMessageW(state->parent, NP3_WM_FILETREE_ERROR, ERROR_NOT_ENOUGH_MEMORY, 0); }
-            }
-        }).detach();
-    } catch (...) { node->pending = false; --state->pending; PostMessageW(state->parent, NP3_WM_FILETREE_ERROR, ERROR_NOT_ENOUGH_MEMORY, 0); }
+    Schedule(state);
 }
 bool Root(const std::shared_ptr<Tree>& state, const wchar_t* directory) {
     if (!directory || !directory[0]) return false;
@@ -92,7 +116,7 @@ bool Root(const std::shared_ptr<Tree>& state, const wchar_t* directory) {
     if (!written || written >= size) return false; full.resize(written);
     DWORD attributes = GetFileAttributesW(Native(full).c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) return false;
-    ++state->generation; state->pending = 0;
+    ++state->generation; state->pending = 0; state->queued.clear();
     TreeView_DeleteAllItems(state->tree); state->root = full;
     auto* node = new Node{full, true, false};
     HTREEITEM root = Insert(state, TVI_ROOT, full, node);
@@ -120,6 +144,7 @@ void Drain(const std::shared_ptr<Tree>& state) {
         TVITEMW count = {}; count.mask = TVIF_CHILDREN; count.hItem = result.item; count.cChildren = TreeView_GetChild(state->tree, result.item) ? 1 : 0; TreeView_SetItem(state->tree, &count);
         SendMessageW(state->tree, WM_SETREDRAW, TRUE, 0); InvalidateRect(state->tree, nullptr, TRUE);
     }
+    Schedule(state);
 }
 void Choose(const std::shared_ptr<Tree>& state) {
     Microsoft::WRL::ComPtr<IFileOpenDialog> dialog;
@@ -135,7 +160,14 @@ void Choose(const std::shared_ptr<Tree>& state) {
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     auto state = State(window);
     try {
-    if (message == Ready && state && wParam == state->cookie) { Drain(state); return 0; }
+    if (message == Ready && state && wParam == state->cookie) {
+        if (lParam) {
+            // A lost result cannot leave a directory permanently pending: rebuild so it can be retried.
+            Root(state, state->root.c_str());
+            PostMessageW(state->parent, NP3_WM_FILETREE_ERROR, lParam, 0);
+        }
+        Drain(state); return 0;
+    }
     if (message == WM_SIZE && state) {
         int width = LOWORD(lParam), height = HIWORD(lParam); int top = MulDiv(30, GetDpiForWindow(window), 96);
         MoveWindow(state->choose, 0, 0, width * 2 / 3, top, TRUE); MoveWindow(state->refresh, width * 2 / 3, 0, width - width * 2 / 3, top, TRUE);
@@ -153,7 +185,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         return 0;
     }
     if (message == WM_NCDESTROY && state) {
-        state->window = nullptr; ++state->generation;
+        state->window = nullptr; ++state->generation; state->queued.clear();
         auto* holder = reinterpret_cast<std::shared_ptr<Tree>*>(GetWindowLongPtrW(window, GWLP_USERDATA));
         SetWindowLongPtrW(window, GWLP_USERDATA, 0); delete holder;
     }

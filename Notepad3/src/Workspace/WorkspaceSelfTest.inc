@@ -182,6 +182,15 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result, folderItem && !TreeView_GetChild(tree, folderItem), "directory children remain lazy before expansion");
     TreeView_Expand(tree, folderItem, TVE_EXPAND);
     _WorkspaceTestCheck(&result, _WorkspaceTestTreeReady() && _WorkspaceTestTreeChild(tree, folderItem, L"child.txt"), "expanding directory loads its children");
+    HTREEITEM queuedFolders[12] = {0};
+    for (int i = 0; i < 12; ++i) {
+        wchar_t queuedLabel[32]; StringCchPrintfW(queuedLabel, COUNTOF(queuedLabel), L"queued-%02i", i);
+        queuedFolders[i] = _WorkspaceTestTreeChild(tree, root, queuedLabel);
+        TreeView_Expand(tree, queuedFolders[i], TVE_EXPAND);
+    }
+    bool queuedComplete = _WorkspaceTestTreeReady();
+    for (int i = 0; i < 12; ++i) queuedComplete = queuedComplete && queuedFolders[i] && _WorkspaceTestTreeChild(tree, queuedFolders[i], L"child.txt");
+    _WorkspaceTestCheck(&result, queuedComplete, "all concurrent directory expansions eventually populate");
     HTREEITEM fileItem = _WorkspaceTestTreeChild(tree, root, L"b.txt");
     SciCall_AppendText(1, "+");
     TreeView_SelectItem(tree, fileItem);
@@ -193,6 +202,16 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result, !FileTree_SetRoot(Globals.hwndMain, L"?:\\invalid") && TreeView_GetRoot(tree) == root, "invalid folder leaves current tree intact");
     _FileTreeToggle();
     _WorkspaceTestCheck(&result, !FileTree_IsOpen(Globals.hwndMain), "file tree closes independently of documents");
+    _FileTreeToggle();
+    bool refreshed = FileTree_SetRoot(Globals.hwndMain, folder) && FileTree_SetRoot(Globals.hwndMain, folder) && _WorkspaceTestTreeReady();
+    panel = FindWindowExW(Globals.hwndMain, NULL, L"NP3WorkspaceFileTree", NULL);
+    tree = FindWindowExW(panel, NULL, WC_TREEVIEWW, NULL);
+    _WorkspaceTestCheck(&result, refreshed && _WorkspaceTestTreeChild(tree, TreeView_GetRoot(tree), L"nested"), "repeated root refresh discards stale work and loads replacement");
+    FileTree_SetRoot(Globals.hwndMain, folder);
+    _FileTreeToggle(); // Close before dispatching the pending read result.
+    _FileTreeToggle();
+    _WorkspaceTestCheck(&result, _WorkspaceTestTreeReady() && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(), "close during read and reopen preserves editor and loads fresh tree");
+    _FileTreeToggle();
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;
     StringCchPrintfA(summary, COUNTOF(summary), "RESULT checks=%i failures=%i\r\n", result.checks, result.failures);

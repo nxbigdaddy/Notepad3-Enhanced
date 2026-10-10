@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/file-tree-x64-v17/Notepad3.exe')
+param([string]$Executable = 'artifacts/file-tree-queue-x64-v18/Notepad3.exe')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -8,6 +8,11 @@ New-Item -ItemType Directory -Path $taskFolder | Out-Null
 [IO.File]::WriteAllText((Join-Path $taskFolder 'workspace-test.marker'), 'isolated native workspace regression', [Text.UTF8Encoding]::new($false))
 New-Item -ItemType Directory -Path (Join-Path $taskFolder 'nested') | Out-Null
 [IO.File]::WriteAllText((Join-Path $taskFolder 'nested/child.txt'), 'nested fixture', [Text.UTF8Encoding]::new($false))
+for ($taskIndex = 0; $taskIndex -lt 12; ++$taskIndex) {
+    $taskDirectory = Join-Path $taskFolder ('queued-{0:00}' -f $taskIndex)
+    New-Item -ItemType Directory -Path $taskDirectory | Out-Null
+    [IO.File]::WriteAllText((Join-Path $taskDirectory 'child.txt'), 'queued fixture', [Text.UTF8Encoding]::new($false))
+}
 [IO.File]::WriteAllText((Join-Path $taskFolder 'a.txt'), "alpha`r`n", [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $taskFolder 'b.txt'), "beta`r`n", [Text.UnicodeEncoding]::new($false, $true))
 [IO.File]::WriteAllText((Join-Path $taskFolder 'c.txt'), "gamma`r`n", [Text.UTF8Encoding]::new($false))
