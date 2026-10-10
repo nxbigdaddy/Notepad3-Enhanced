@@ -47,6 +47,7 @@
 #include "Config/Config.h"
 #include "DarkMode/DarkMode.h"
 #include "Notepad3Util.h"
+#include "Markdown/MarkdownPreview.h"
 #include "StyleLexers/EditLexer.h"
 
 #if (defined(_DEBUG) || defined(DEBUG)) && !defined(NDEBUG)
@@ -2531,9 +2532,31 @@ HWND InitInstance(const HINSTANCE hInstance, int nCmdShow)
 //
 //  Messages are distributed to the MsgXXX-handlers
 //
+static void _UpdateMarkdownPreview(HWND hwnd)
+{
+    if (!MarkdownPreview_IsOpen(hwnd)) { return; }
+    DocPos const length = SciCall_GetLength();
+    if (length > 2 * 1024 * 1024) {
+        MarkdownPreview_Update(hwnd, "", (size_t)length, NULL);
+        return;
+    }
+    char* const text = AllocMem((size_t)length + 1, HEAP_ZERO_MEMORY);
+    if (!text) { return; }
+    SciCall_GetText(length + 1, text);
+    HPATHL directory = Path_Copy(Paths.CurrentFile);
+    if (directory) { Path_RemoveFileSpec(directory); }
+    MarkdownPreview_Update(hwnd, text, (size_t)length, directory ? Path_Get(directory) : NULL);
+    Path_Release(directory);
+    FreeMem(text);
+}
+
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
     switch(umsg) {
+    case NP3_WM_MARKDOWN_REFRESH:
+        _UpdateMarkdownPreview(hwnd);
+        return 0;
+
     case WM_CREATE:
         return MsgCreate(hwnd, wParam, lParam);
 
@@ -3816,6 +3839,8 @@ LRESULT MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam)
     }
 
 
+    cx -= MarkdownPreview_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
+
     HDWP const hdwp = BeginDeferWindowPos(2);
 
     DeferWindowPos(hdwp,s_hwndEditFrame,NULL,x,y,cx,cy, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -5087,6 +5112,7 @@ LRESULT MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam)
 
     CheckCmd(hmenu, IDM_VIEW_READONLY, ro);
     CheckCmd(hmenu, IDM_VIEW_WORDWRAP, Globals.fvCurFile.bWordWrap);
+    CheckCmd(hmenu, IDM_VIEW_MARKDOWN_PREVIEW, MarkdownPreview_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_LONGLINEMARKER, Settings.MarkLongLines);
     CheckCmd(hmenu, IDM_VIEW_SHOWINDENTGUIDES, Settings.ShowIndentGuides);
     CheckCmd(hmenu, IDM_VIEW_LINENUMBERS, SciCall_GetMarginWidthN(MARGIN_SCI_LINENUM) > 0);
@@ -7014,6 +7040,10 @@ static bool _HandleViewAndSettingsCommands(HWND hwnd, UINT umsg, WPARAM wParam, 
         break;
 
 
+    case IDM_VIEW_MARKDOWN_PREVIEW:
+        MarkdownPreview_Toggle(hwnd);
+        return true;
+
     case IDM_VIEW_WORDWRAP:
         Globals.fvCurFile.bWordWrap = Settings.WordWrap = !Settings.WordWrap;
         NP3Util_SetWrapIndentMode();
@@ -8598,7 +8628,7 @@ LRESULT MsgCommand(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
         break;
     }
 
-    if (_HandleFileCommands(hwnd, umsg, wParam, lParam)) { return FALSE; }
+    if (_HandleFileCommands(hwnd, umsg, wParam, lParam)) { MarkdownPreview_Changed(hwnd); return FALSE; }
     if (_HandleEncodingCommands(hwnd, umsg, wParam, lParam)) { return FALSE; }
     if (_HandleEditBasicCommands(hwnd, umsg, wParam, lParam)) { return FALSE; }
     if (_HandleEditLineManipulation(hwnd, umsg, wParam, lParam)) { return FALSE; }
@@ -9837,6 +9867,7 @@ inline static LRESULT _MsgNotifyLean(const SCNotification* const scn, bool* bMod
             *bModified = true;
         }
         if (*bModified) {
+            MarkdownPreview_Changed(Globals.hwndMain);
             LONG64 const timeout = Settings2.UndoTransactionTimeout;
             if (timeout != 0LL) {
                 if (!bInUndoRedoStep) {

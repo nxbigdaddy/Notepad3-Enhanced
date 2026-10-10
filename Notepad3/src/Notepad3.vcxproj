@@ -1285,6 +1285,19 @@
   <ItemGroup>
     <Natvis Include="STRINGW.natvis" />
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Markdown\MarkdownRender.cpp" />
+    <ClCompile Include="Markdown\MarkdownPreview.cpp" />
+    <ClCompile Include="Markdown\vendor\md4c\md4c.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="Markdown\vendor\md4c\md4c-html.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="Markdown\vendor\md4c\entity.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError></ClCompile>
+    <ClInclude Include="Markdown\MarkdownRender.h" />
+    <ClInclude Include="Markdown\MarkdownPreview.h" />
+  </ItemGroup>
+  <Target Name="CopyMarkdownRuntime" AfterTargets="Build">
+    <PropertyGroup><MarkdownRuntimeArch Condition="'$(Platform)'=='Win32'">x86</MarkdownRuntimeArch><MarkdownRuntimeArch Condition="'$(Platform)'!='Win32'">$(Platform)</MarkdownRuntimeArch></PropertyGroup>
+    <Copy SourceFiles="$(ProjectDir)Markdown\vendor\webview2\$(MarkdownRuntimeArch)\WebView2Loader.dll" DestinationFolder="$(OutDir)" />
+  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

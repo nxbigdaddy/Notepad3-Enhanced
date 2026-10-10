@@ -1,6 +1,7 @@
 param(
     [ValidateSet('Release', 'Debug')][string]$Configuration = 'Release',
-    [string]$Toolset = 'v143'
+    [string]$Toolset = 'v143',
+    [switch]$SkipVersion
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
@@ -14,8 +15,10 @@ $taskArtifacts = Join-Path $taskRoot 'artifacts'
 New-Item -ItemType Directory -Force $taskArtifacts | Out-Null
 Push-Location $taskSource
 try {
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File .\Version.ps1
-    if ($LASTEXITCODE -ne 0) { throw 'Version generation failed.' }
-    & $taskMSBuild Notepad3.sln /m /restore "/p:Configuration=$Configuration" /p:Platform=x64 "/p:PlatformToolset=$Toolset" /v:minimal "/flp:logfile=$taskArtifacts\build-$Configuration.log;verbosity=normal"
+    if (-not $SkipVersion) {
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File .\Version.ps1
+        if ($LASTEXITCODE -ne 0) { throw 'Version generation failed.' }
+    }
+    & $taskMSBuild Notepad3.sln /m /restore "/p:Configuration=$Configuration" /p:Platform=x64 "/p:PlatformToolset=$Toolset" /v:quiet /clp:ErrorsOnly "/flp:logfile=$taskArtifacts\build-$Configuration.log;verbosity=normal"
     if ($LASTEXITCODE -ne 0) { throw "Build failed. See artifacts/build-$Configuration.log." }
 } finally { Pop-Location }

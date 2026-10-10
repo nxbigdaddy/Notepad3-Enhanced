@@ -416,6 +416,7 @@ BEGIN
     VK_F11,         CMD_INITIALWINPOS,                VIRTKEY, CONTROL, NOINVERT
     //~VK_F11,         CMD_LEXHTML,                      VIRTKEY, CONTROL, NOINVERT
     VK_F11,         CMD_LEXDEFAULT,                   VIRTKEY, SHIFT, NOINVERT
+    VK_F12,         IDM_VIEW_MARKDOWN_PREVIEW,         VIRTKEY, CONTROL, SHIFT, NOINVERT
     VK_F12,         IDM_VIEW_SCHEME,                  VIRTKEY, NOINVERT
     VK_F12,         IDM_VIEW_SCHEMECONFIG,            VIRTKEY, CONTROL, NOINVERT
     VK_F12,         IDM_VIEW_FONT,                    VIRTKEY, ALT, NOINVERT
