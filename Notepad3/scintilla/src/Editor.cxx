@@ -7505,6 +7505,20 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		else
 			return 0;
 
+	case Message::MarkerGetForeTranslucent:
+		return wParam <= MarkerMax ? vs.markers[wParam].fore.AsInteger() : 0;
+	case Message::MarkerGetBackTranslucent:
+		return wParam <= MarkerMax ? vs.markers[wParam].back.AsInteger() : 0;
+	case Message::MarkerGetBackSelectedTranslucent:
+		return wParam <= MarkerMax ? vs.markers[wParam].backSelected.AsInteger() : 0;
+	case Message::MarkerGetAlpha:
+		return wParam <= MarkerMax ? static_cast<sptr_t>(vs.markers[wParam].alpha) : 0;
+	case Message::MarkerGetStrokeWidth:
+		return wParam <= MarkerMax ? static_cast<sptr_t>(vs.markers[wParam].strokeWidth * 100.0f) : 0;
+	case Message::GetFoldMarginColour:
+		return vs.foldmarginColour ? vs.foldmarginColour->OpaqueRGB() : -1;
+	case Message::GetFoldMarginHiColour:
+		return vs.foldmarginHighlightColour ? vs.foldmarginHighlightColour->OpaqueRGB() : -1;
 	case Message::MarkerSetFore:
 		if (wParam <= MarkerMax)
 			vs.markers[wParam].fore = ColourRGBA::FromIpRGB(lParam);

@@ -101,6 +101,20 @@ static void _SplitRestoreView(HWND view, const SPLIT_VIEW_STATE* state, const WO
     Sci_ViewCall(view, SCI_SETFIRSTVISIBLELINE, state->valid ? state->firstLine : doc->firstLine, 0);
     Sci_ViewCall(view, SCI_SETXOFFSET, state->valid ? state->xOffset : doc->xOffset, 0);
 }
+static void _SplitThemeState(bool capture)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace || workspace->transitioning || !workspace->splitView || workspace->active < 0 || workspace->active >= workspace->count) return;
+    WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
+    if (Sci_ViewCall(workspace->primaryView, SCI_GETDOCPOINTER, 0, 0) != doc->handle || Sci_ViewCall(workspace->splitView, SCI_GETDOCPOINTER, 0, 0) != doc->handle) return;
+    if (capture) {
+        _SplitCaptureView(workspace->primaryView, &doc->views[0]);
+        _SplitCaptureView(workspace->splitView, &doc->views[1]);
+    } else {
+        _SplitRestoreView(workspace->primaryView, &doc->views[0], doc);
+        _SplitRestoreView(workspace->splitView, &doc->views[1], doc);
+    }
+}
 static void _SplitSyncStyles(void)
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
@@ -124,6 +138,26 @@ static void _SplitSyncStyles(void)
         }
         for (size_t i=0;i<COUNTOF(styles);++i) Sci_ViewCall(other,styles[i][1],style,SciCall(styles[i][0],style,0));
     }
+    const UINT indicators[][2]={{SCI_INDICGETSTYLE,SCI_INDICSETSTYLE},{SCI_INDICGETFORE,SCI_INDICSETFORE},
+        {SCI_INDICGETUNDER,SCI_INDICSETUNDER},{SCI_INDICGETHOVERSTYLE,SCI_INDICSETHOVERSTYLE},{SCI_INDICGETHOVERFORE,SCI_INDICSETHOVERFORE},
+        {SCI_INDICGETFLAGS,SCI_INDICSETFLAGS},{SCI_INDICGETSTROKEWIDTH,SCI_INDICSETSTROKEWIDTH},
+        {SCI_INDICGETALPHA,SCI_INDICSETALPHA},{SCI_INDICGETOUTLINEALPHA,SCI_INDICSETOUTLINEALPHA}};
+    for (int indicator=0;indicator<=INDIC_MAX;++indicator)
+        for (size_t i=0;i<COUNTOF(indicators);++i) Sci_ViewCall(other,indicators[i][1],indicator,SciCall(indicators[i][0],indicator,0));
+    const UINT markers[][2]={{SCI_MARKERGETFORETRANSLUCENT,SCI_MARKERSETFORETRANSLUCENT},
+        {SCI_MARKERGETBACKTRANSLUCENT,SCI_MARKERSETBACKTRANSLUCENT},{SCI_MARKERGETBACKSELECTEDTRANSLUCENT,SCI_MARKERSETBACKSELECTEDTRANSLUCENT},
+        {SCI_MARKERGETALPHA,SCI_MARKERSETALPHA},{SCI_MARKERGETLAYER,SCI_MARKERSETLAYER},{SCI_MARKERGETSTROKEWIDTH,SCI_MARKERSETSTROKEWIDTH}};
+    for (int marker=0;marker<=MARKER_MAX;++marker) {
+        // Native shapes only: defining pixmap/image symbols would discard the target image without copying its pixels.
+        sptr_t const symbol=SciCall(SCI_MARKERSYMBOLDEFINED,marker,0);
+        if (symbol!=SC_MARK_PIXMAP && symbol!=SC_MARK_RGBAIMAGE) Sci_ViewCall(other,SCI_MARKERDEFINE,marker,symbol);
+        for (size_t i=0;i<COUNTOF(markers);++i) Sci_ViewCall(other,markers[i][1],marker,SciCall(markers[i][0],marker,0));
+    }
+    for (int margin=0;margin<SciCall(SCI_GETMARGINS,0,0);++margin)
+        Sci_ViewCall(other,SCI_SETMARGINBACKN,margin,SciCall(SCI_GETMARGINBACKN,margin,0));
+    sptr_t const foldColor=SciCall(SCI_GETFOLDMARGINCOLOUR,0,0), foldHiColor=SciCall(SCI_GETFOLDMARGINHICOLOUR,0,0);
+    Sci_ViewCall(other,SCI_SETFOLDMARGINCOLOUR,foldColor!=-1,foldColor==-1?0:foldColor);
+    Sci_ViewCall(other,SCI_SETFOLDMARGINHICOLOUR,foldHiColor!=-1,foldHiColor==-1?0:foldHiColor);
     const int elements[]={SC_ELEMENT_LIST,SC_ELEMENT_LIST_BACK,SC_ELEMENT_LIST_SELECTED,SC_ELEMENT_LIST_SELECTED_BACK,
         SC_ELEMENT_SELECTION_TEXT,SC_ELEMENT_SELECTION_BACK,SC_ELEMENT_SELECTION_ADDITIONAL_TEXT,SC_ELEMENT_SELECTION_ADDITIONAL_BACK,
         SC_ELEMENT_SELECTION_SECONDARY_TEXT,SC_ELEMENT_SELECTION_SECONDARY_BACK,SC_ELEMENT_SELECTION_INACTIVE_TEXT,SC_ELEMENT_SELECTION_INACTIVE_BACK,

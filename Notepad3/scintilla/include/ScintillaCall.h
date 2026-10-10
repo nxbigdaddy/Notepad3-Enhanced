@@ -150,6 +150,13 @@ public:
 	void MarkerSetBackTranslucent(int markerNumber, ColourAlpha back);
 	void MarkerSetBackSelectedTranslucent(int markerNumber, ColourAlpha back);
 	void MarkerSetStrokeWidth(int markerNumber, Pixels hundredths);
+	ColourAlpha MarkerGetForeTranslucent(int markerNumber);
+	ColourAlpha MarkerGetBackTranslucent(int markerNumber);
+	ColourAlpha MarkerGetBackSelectedTranslucent(int markerNumber);
+	int MarkerGetAlpha(int markerNumber);
+	Scintilla::Pixels MarkerGetStrokeWidth(int markerNumber);
+	int FoldMarginColour();
+	int FoldMarginHiColour();
 	void MarkerEnableHighlight(bool enabled);
 	int MarkerAdd(Line line, int markerNumber);
 	void MarkerDelete(Line line, int markerNumber);

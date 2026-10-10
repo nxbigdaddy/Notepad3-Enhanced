@@ -390,6 +390,7 @@ static int _SplitLayout(int x, int y, int width, int height);
 static void _SplitSync(void);
 static void _SplitSyncStyles(void);
 static void _SplitStylesChanged(HWND view);
+static void _SplitThemeState(bool capture);
 static bool _WorkspaceSwitch(int index);
 static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
@@ -3919,6 +3920,8 @@ LRESULT MsgThemeChanged(HWND hwnd, WPARAM wParam,LPARAM lParam)
 
     if (Globals.hwndMain) {
 
+        _SplitThemeState(true);
+
         // suppress intermediate redraws during heavy theme update to prevent flickering
         SendMessage(hwnd, WM_SETREDRAW, FALSE, 0);
 
@@ -3954,6 +3957,7 @@ LRESULT MsgThemeChanged(HWND hwnd, WPARAM wParam,LPARAM lParam)
 
         UpdateUI(hwnd);
         _SplitSyncStyles();
+        _SplitThemeState(false);
 
         // re-enable drawing and force a single
         SendMessage(hwnd, WM_SETREDRAW, TRUE, 0);

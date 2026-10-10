@@ -419,6 +419,34 @@ void ScintillaCall::MarkerSetStrokeWidth(int markerNumber, Pixels hundredths) {
 	Call(Message::MarkerSetStrokeWidth, markerNumber, static_cast<intptr_t>(hundredths));
 }
 
+ColourAlpha ScintillaCall::MarkerGetForeTranslucent(int markerNumber) {
+	return static_cast<ColourAlpha>(Call(Message::MarkerGetForeTranslucent, markerNumber));
+}
+
+ColourAlpha ScintillaCall::MarkerGetBackTranslucent(int markerNumber) {
+	return static_cast<ColourAlpha>(Call(Message::MarkerGetBackTranslucent, markerNumber));
+}
+
+ColourAlpha ScintillaCall::MarkerGetBackSelectedTranslucent(int markerNumber) {
+	return static_cast<ColourAlpha>(Call(Message::MarkerGetBackSelectedTranslucent, markerNumber));
+}
+
+int ScintillaCall::MarkerGetAlpha(int markerNumber) {
+	return static_cast<int>(Call(Message::MarkerGetAlpha, markerNumber));
+}
+
+Pixels ScintillaCall::MarkerGetStrokeWidth(int markerNumber) {
+	return static_cast<Scintilla::Pixels>(Call(Message::MarkerGetStrokeWidth, markerNumber));
+}
+
+int ScintillaCall::FoldMarginColour() {
+	return static_cast<int>(Call(Message::GetFoldMarginColour));
+}
+
+int ScintillaCall::FoldMarginHiColour() {
+	return static_cast<int>(Call(Message::GetFoldMarginHiColour));
+}
+
 void ScintillaCall::MarkerEnableHighlight(bool enabled) {
 	Call(Message::MarkerEnableHighlight, enabled);
 }

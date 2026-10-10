@@ -445,6 +445,17 @@ set void MarkerSetBackSelectedTranslucent=2296(int markerNumber, colouralpha bac
 # Set the width of strokes used in .01 pixels so 50  = 1/2 pixel width.
 set void MarkerSetStrokeWidth=2297(int markerNumber, pixels hundredths)
 
+# Notepad3 view appearance readback for independent split editors.
+get colouralpha MarkerGetForeTranslucent=6010(int markerNumber,)
+get colouralpha MarkerGetBackTranslucent=6011(int markerNumber,)
+get colouralpha MarkerGetBackSelectedTranslucent=6012(int markerNumber,)
+get int MarkerGetAlpha=6013(int markerNumber,)
+get pixels MarkerGetStrokeWidth=6014(int markerNumber,)
+# Returns -1 when the optional fold margin override is absent.
+get int GetFoldMarginColour=6015(,)
+get int GetFoldMarginHiColour=6016(,)
+
+
 # Enable/disable highlight for current folding block (smallest one that contains the caret)
 fun void MarkerEnableHighlight=2293(bool enabled,)
 
