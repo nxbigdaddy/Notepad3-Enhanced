@@ -9,7 +9,7 @@ typedef struct WORKSPACE_RECOVERY_JOB {
     bool success;
 } WORKSPACE_RECOVERY_JOB;
 typedef struct WORKSPACE_RECOVERY {
-    HPATHL directory, file, lockPath, closedPath;
+    HPATHL directory, file, lockPath, closedPath, normalPath;
     HANDLE lock;
     WORKSPACE_RECOVERY_JOB* job;
     uint32_t lastError;
@@ -76,6 +76,8 @@ static void _WorkspaceRecoveryClose()
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace || !workspace->recovery) return;
     WORKSPACE_RECOVERY* recovery = workspace->recovery;
+    uint32_t normalError = 0;
+    if (!_WorkspaceNormalSave(recovery->normalPath, &normalError)) _WorkspaceRecoveryReport(recovery, normalError);
     recovery->closing = true;
     KillTimer(Globals.hwndMain, WORKSPACE_RECOVERY_TIMER);
     // The marker is created before releasing ownership. An unfinished worker
@@ -94,7 +96,33 @@ static void _WorkspaceRecoveryClose()
     // references this immutable job, never the workspace or editor window.
     Path_Release(recovery->directory); Path_Release(recovery->file);
     Path_Release(recovery->lockPath); Path_Release(recovery->closedPath);
+    Path_Release(recovery->normalPath);
     FreeMem(recovery); workspace->recovery = NULL;
+}
+static void _WorkspaceNormalRestoreLatest(WORKSPACE_RECOVERY* recovery)
+{
+    HPATHL pattern = Path_Copy(recovery->directory); Path_Append(pattern, L"np3-*.np3workspace");
+    WIN32_FIND_DATAW found; HANDLE search = Path_FindFirstFile(pattern, &found); Path_Release(pattern);
+    if (!IS_VALID_HANDLE(search)) return;
+    HPATHL latest = NULL; HANDLE held = INVALID_HANDLE_VALUE; FILETIME stamp = { 0 };
+    do {
+        if (found.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) continue;
+        if (latest && CompareFileTime(&found.ftLastWriteTime, &stamp) <= 0) continue;
+        HPATHL path = Path_Copy(recovery->directory); Path_Append(path, found.cFileName);
+        HPATHL lock = Path_Copy(path); Path_RenameExtension(lock, L".lock");
+        HANDLE claim = Path_CreateFile(lock, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        Path_Release(lock);
+        if (IS_VALID_HANDLE(claim)) {
+            if (IS_VALID_HANDLE(held)) CloseHandle(held);
+            Path_Release(latest); latest = path; held = claim; stamp = found.ftLastWriteTime;
+        } else Path_Release(path);
+    } while (FindNextFileW(search, &found));
+    FindClose(search);
+    if (latest) {
+        uint32_t error = 0;
+        if (!_WorkspaceNormalLoad(latest, &error)) _WorkspaceRecoveryReport(recovery, error);
+        Path_Release(latest); CloseHandle(held);
+    }
 }
 static void _WorkspaceRecoveryStart()
 {
@@ -129,11 +157,13 @@ static void _WorkspaceRecoveryStart()
     recovery->isolatedTest = length != 0;
     recovery->lockPath = Path_Copy(recovery->file); Path_RenameExtension(recovery->lockPath, L".lock");
     recovery->closedPath = Path_Copy(recovery->file); Path_RenameExtension(recovery->closedPath, L".closed");
+    recovery->normalPath = Path_Copy(recovery->file); Path_RenameExtension(recovery->normalPath, L".np3workspace");
     recovery->lock = Path_CreateFile(recovery->lockPath, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (!IS_VALID_HANDLE(recovery->lock)) {
-        Path_Release(directory); Path_Release(recovery->file); Path_Release(recovery->lockPath); Path_Release(recovery->closedPath); FreeMem(recovery); return;
+        Path_Release(directory); Path_Release(recovery->file); Path_Release(recovery->lockPath); Path_Release(recovery->closedPath); Path_Release(recovery->normalPath); FreeMem(recovery); return;
     }
     _Workspace()->recovery = recovery;
+    bool recovered = false;
     HPATHL pattern = Path_Copy(directory); Path_Append(pattern, L"np3-*.np3recovery");
     WIN32_FIND_DATAW found; HANDLE search = Path_FindFirstFile(pattern, &found); Path_Release(pattern);
     if (IS_VALID_HANDLE(search)) {
@@ -146,7 +176,9 @@ static void _WorkspaceRecoveryStart()
             if (IS_VALID_HANDLE(claim)) {
                 uint32_t error = 0;
                 bool const discarded = Path_IsExistingFile(closed);
-                bool const transferred = !discarded && _WorkspaceSessionLoad(source, &error) && _WorkspaceSessionSave(recovery->file, &error);
+                bool const imported = !discarded && _WorkspaceSessionLoad(source, &error);
+                recovered |= imported;
+                bool const transferred = imported && _WorkspaceSessionSave(recovery->file, &error);
                 if (!discarded && !transferred) _WorkspaceRecoveryReport(recovery, error);
                 bool const removed = (discarded || transferred) && Path_DeleteFile(source);
                 CloseHandle(claim);
@@ -156,6 +188,7 @@ static void _WorkspaceRecoveryStart()
         } while (FindNextFileW(search, &found));
         FindClose(search);
     }
+    if (!recovered) _WorkspaceNormalRestoreLatest(recovery);
     SetTimer(Globals.hwndMain, WORKSPACE_RECOVERY_TIMER, 30000, _WorkspaceRecoveryTimer);
     _WorkspaceRecoveryTimer(NULL, 0, 0, 0);
 }

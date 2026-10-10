@@ -13,7 +13,7 @@ namespace {
 constexpr size_t PayloadLimit = 64 * 1024 * 1024;
 constexpr size_t ProtectedLimit = PayloadLimit + 1024 * 1024;
 constexpr size_t DocumentLimit = 32 * 1024 * 1024;
-constexpr std::string_view Magic = "NP3SESS2";
+constexpr std::string_view Magic = "NP3SESS3";
 void Check(bool condition) { if (!condition) throw std::runtime_error("Invalid or oversized session"); }
 std::uint32_t Checksum(std::string_view bytes) {
     std::uint32_t crc = 0xFFFFFFFF;
@@ -50,14 +50,17 @@ struct Reader {
 void Validate(const SessionDocument& doc) {
     Check(doc.path.size() <= 32767 && doc.path.find(L'\0') == std::wstring::npos);
     Check(doc.text.size() <= DocumentLimit && doc.selection.size() <= 1024 * 1024);
-    Check(doc.encoding <= 65535 && doc.eol <= 2 && doc.flags <= 7);
-    Check(doc.anchor <= doc.text.size() && doc.caret <= doc.text.size());
-    Check(doc.firstLine <= doc.text.size() && doc.xOffset <= INT_MAX && doc.zoom >= -10 && doc.zoom <= 20);
+    Check(doc.encoding <= 65535 && doc.eol <= 2 && doc.flags <= 15);
+    const bool disk = (doc.flags & NP3_SESSION_DISK_BACKED) != 0;
+    if (disk) Check(!doc.path.empty() && doc.text.empty() && !(doc.flags & NP3_SESSION_MODIFIED));
+    const auto positionLimit = disk ? static_cast<std::uint64_t>(UINT32_MAX) : doc.text.size();
+    Check(doc.anchor <= positionLimit && doc.caret <= positionLimit);
+    Check(doc.firstLine <= positionLimit && doc.xOffset <= INT_MAX && doc.zoom >= -10 && doc.zoom <= 20);
     Check(doc.tabWidth > 0 && doc.tabWidth <= 1024 && doc.indent <= 1024 && doc.wrapMode <= 3);
-    Check(doc.folds.size() <= doc.text.size() + 1);
+    Check(doc.folds.size() <= (disk ? 131072 : doc.text.size() + 1));
     std::uint64_t previous = 0;
     for (size_t i = 0; i < doc.folds.size(); ++i) {
-        Check(doc.folds[i] <= doc.text.size() && (!i || doc.folds[i] > previous)); previous = doc.folds[i];
+        Check(doc.folds[i] <= positionLimit && (!i || doc.folds[i] > previous)); previous = doc.folds[i];
     }
 }
 std::wstring Absolute(const std::wstring& path) {
@@ -97,7 +100,7 @@ std::string EncodeSession(const SessionSnapshot& session) {
     Number(bytes, Checksum(bytes), 4); return bytes;
 }
 SessionSnapshot DecodeSession(std::string_view bytes) {
-    Check(bytes.size() >= 20 && bytes.size() <= PayloadLimit && bytes.substr(0, Magic.size()) == Magic);
+    Check(bytes.size() >= 20 && bytes.size() <= PayloadLimit && (bytes.substr(0, Magic.size()) == Magic || bytes.substr(0, Magic.size()) == "NP3SESS2"));
     Reader checksum{bytes.substr(bytes.size() - 4)};
     Check(Checksum(bytes.substr(0, bytes.size() - 4)) == checksum.number(4));
     Reader reader{bytes.substr(0, bytes.size() - 4), Magic.size()};
@@ -116,7 +119,7 @@ SessionSnapshot DecodeSession(std::string_view bytes) {
         doc.indent = static_cast<std::uint32_t>(reader.number(4)); doc.wrapMode = static_cast<std::uint32_t>(reader.number(4));
         doc.xOffset = static_cast<std::uint32_t>(reader.number(4));
         const auto zoom = reader.number(4); doc.zoom = zoom <= INT_MAX ? static_cast<std::int32_t>(zoom) : -1 - static_cast<std::int32_t>(UINT32_MAX - zoom);
-        const auto folds = reader.number(4); Check(folds <= doc.text.size() + 1 && folds <= (reader.bytes.size() - reader.pos) / 8);
+        const auto folds = reader.number(4); Check(folds <= ((doc.flags & NP3_SESSION_DISK_BACKED) ? 131072 : doc.text.size() + 1) && folds <= (reader.bytes.size() - reader.pos) / 8);
         for (std::uint64_t j = 0; j < folds; ++j) doc.folds.push_back(reader.number(8));
         Validate(doc); session.documents.push_back(std::move(doc));
     }

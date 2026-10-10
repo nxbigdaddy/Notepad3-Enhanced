@@ -35,6 +35,24 @@ int main() {
     expect(decoded.documents[1].path.empty() && decoded.documents[1].encoding == 2 && decoded.documents[1].flags == 3, "untitled and encoding flags");
     expect(decoded.documents[0].anchor == 2 && decoded.documents[0].caret == 7 && decoded.documents[0].selection == first.selection && decoded.documents[0].folds == first.folds && decoded.documents[0].zoom == -2, "selection fold and zoom metadata");
     expect(np3::EncodeSession(decoded) == bytes, "deterministic roundtrip");
+    auto legacy = bytes; legacy[7] = '2';
+    std::uint32_t legacyCrc = 0xFFFFFFFF;
+    for (size_t i = 0; i < legacy.size() - 4; ++i) {
+        legacyCrc ^= static_cast<unsigned char>(legacy[i]);
+        for (int bit = 0; bit < 8; ++bit) legacyCrc = (legacyCrc >> 1) ^ (0xEDB88320u & (0u - (legacyCrc & 1u)));
+    }
+    legacyCrc = ~legacyCrc;
+    for (unsigned i = 0; i < 4; ++i) legacy[legacy.size() - 4 + i] = static_cast<char>((legacyCrc >> (i * 8)) & 255);
+    expect(np3::DecodeSession(legacy).documents[0].text == first.text, "NP3SESS2 remains readable after metadata format extension");
+    auto metadata = session; metadata.documents.resize(1); metadata.active = 0;
+    auto& diskDocument = metadata.documents[0]; diskDocument.text.clear(); diskDocument.flags = NP3_SESSION_DISK_BACKED;
+    diskDocument.anchor = 100; diskDocument.caret = 200; diskDocument.firstLine = 20; diskDocument.folds = { 1, 30 };
+    auto diskDecoded = np3::DecodeSession(np3::EncodeSession(metadata));
+    expect(diskDecoded.documents[0].text.empty() && diskDecoded.documents[0].caret == 200 && diskDecoded.documents[0].folds == diskDocument.folds, "disk-backed metadata without discarded text");
+    auto badMetadata = metadata; badMetadata.documents[0].path.clear(); rejected([&] { np3::EncodeSession(badMetadata); });
+    badMetadata = metadata; badMetadata.documents[0].text = "discarded"; rejected([&] { np3::EncodeSession(badMetadata); });
+    badMetadata = metadata; badMetadata.documents[0].flags |= NP3_SESSION_MODIFIED; rejected([&] { np3::EncodeSession(badMetadata); });
+    badMetadata = metadata; badMetadata.documents[0].caret = static_cast<std::uint64_t>(UINT32_MAX) + 1; rejected([&] { np3::EncodeSession(badMetadata); });
     for (size_t length = 0; length < bytes.size(); ++length) rejected([&] { np3::DecodeSession(std::string_view(bytes.data(), length)); });
     auto corrupt = bytes; corrupt[24] ^= 1; rejected([&] { np3::DecodeSession(corrupt); });
     rejected([&] { np3::DecodeSession(bytes + "suffix"); });
@@ -58,7 +76,7 @@ int main() {
     std::uint32_t error;
     expect(np3::SaveSession(path, session, error) && error == 0, "DPAPI atomic save");
     const auto original = disk(path);
-    expect(!original.empty() && original.find("unsaved") == std::string::npos && original.find("NP3SESS2") == std::string::npos, "no plaintext buffer on disk");
+    expect(!original.empty() && original.find("unsaved") == std::string::npos && original.find("NP3SESS2") == std::string::npos && original.find("NP3SESS3") == std::string::npos, "no plaintext buffer on disk");
     np3::SessionSnapshot restored;
     expect(np3::LoadSession(path, restored, error) && np3::EncodeSession(restored) == bytes, "DPAPI load roundtrip");
     HANDLE locked = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);

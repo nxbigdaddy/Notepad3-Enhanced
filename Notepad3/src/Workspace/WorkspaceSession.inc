@@ -68,7 +68,7 @@ static bool _WorkspaceSessionLoad(const HPATHL path, uint32_t* error)
     bool success = candidates && reader;
     for (int i = 0; success && i < count; ++i) {
         NP3_SESSION_DOCUMENT entry = { 0 };
-        success = Session_Get(session, i, &entry) && Encoding_IsValid((cpi_enc_t)entry.encoding);
+        success = Session_Get(session, i, &entry) && !(entry.flags & NP3_SESSION_DISK_BACKED) && Encoding_IsValid((cpi_enc_t)entry.encoding);
         if (!success) break;
         success = entry.codePage == 0 || entry.codePage == SC_CP_UTF8 || entry.codePage == 932 || entry.codePage == 936 || entry.codePage == 949 || entry.codePage == 950 || entry.codePage == 1361;
         if (!success) break;

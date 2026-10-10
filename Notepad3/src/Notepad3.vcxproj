@@ -1298,6 +1298,7 @@
     <ClInclude Include="Workspace\DocumentWorkspace.inc" />
     <ClInclude Include="Workspace\WorkspaceSelfTest.inc" />
     <ClInclude Include="Workspace\WorkspaceSession.inc" />
+    <ClInclude Include="Workspace\WorkspaceNormalSession.inc" />
     <ClInclude Include="Workspace\WorkspaceRecovery.inc" />
     <ClInclude Include="Workspace\WorkspaceRecoveryTest.inc" />
     <ClInclude Include="TextTools\JsonFormat.h" />

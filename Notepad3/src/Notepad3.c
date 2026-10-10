@@ -12355,6 +12355,7 @@ static inline void _ResetFileWatchingMode() {
 
 #include "Workspace/DocumentWorkspace.inc"
 #include "Workspace/WorkspaceSession.inc"
+#include "Workspace/WorkspaceNormalSession.inc"
 #include "Workspace/WorkspaceRecovery.inc"
 #include "Workspace/WorkspaceSelfTest.inc"
 #include "Workspace/WorkspaceRecoveryTest.inc"

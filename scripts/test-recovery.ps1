@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/workspace-recovery-x64-v11/Notepad3.exe')
+param([string]$Executable = 'artifacts/workspace-session-x64-v12/Notepad3.exe')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -8,13 +8,18 @@ New-Item -ItemType Directory -Path $taskFolder | Out-Null
 [IO.File]::WriteAllText((Join-Path $taskFolder 'recovery-test.marker'), 'isolated process recovery regression')
 $taskCorrupt = Join-Path $taskFolder 'np3-corrupt.np3recovery'
 [IO.File]::WriteAllBytes($taskCorrupt, [byte[]](1, 2, 3, 4))
-function Start-RecoveryTest([string]$Mode) {
+[IO.File]::WriteAllText((Join-Path $taskFolder 'normal-a.txt'), "alpha`r`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $taskFolder 'normal-b.txt'), "beta`r`n", [Text.UnicodeEncoding]::new($false, $true))
+[IO.File]::WriteAllText((Join-Path $taskFolder 'incoming.txt'), "incoming`r`n", [Text.UTF8Encoding]::new($false))
+function Start-RecoveryTest([string]$Mode, [string]$Incoming = '') {
     $taskPreviousRoot = $env:NP3_RECOVERY_TEST_DIR
     $taskPreviousMode = $env:NP3_RECOVERY_TEST_MODE
     try {
         $env:NP3_RECOVERY_TEST_DIR = $taskFolder
         $env:NP3_RECOVERY_TEST_MODE = $Mode
-        Start-Process -FilePath $taskExe -ArgumentList @('/n', '/f0') -WindowStyle Hidden -PassThru
+        $taskArguments = @('/n', '/f0')
+        if ($Incoming) { $taskArguments += ('"' + $Incoming + '"') }
+        Start-Process -FilePath $taskExe -ArgumentList $taskArguments -WindowStyle Hidden -PassThru
     } finally {
         if ($null -eq $taskPreviousRoot) { Remove-Item Env:NP3_RECOVERY_TEST_DIR -ErrorAction SilentlyContinue } else { $env:NP3_RECOVERY_TEST_DIR = $taskPreviousRoot }
         if ($null -eq $taskPreviousMode) { Remove-Item Env:NP3_RECOVERY_TEST_MODE -ErrorAction SilentlyContinue } else { $env:NP3_RECOVERY_TEST_MODE = $taskPreviousMode }
@@ -55,5 +60,18 @@ Read-RecoveryResult 'clean'
 $taskFailure = Start-RecoveryTest 'failure'
 if (!$taskFailure.WaitForExit(30000)) { throw "Write failure test still running: PID $($taskFailure.Id)" }
 Read-RecoveryResult 'failure'
+foreach ($taskMode in @('normal-seed', 'normal-verify', 'normal-explicit')) {
+    $taskIncoming = if ($taskMode -eq 'normal-explicit') { Join-Path $taskFolder 'incoming.txt' } else { '' }
+    $taskNormal = Start-RecoveryTest $taskMode $taskIncoming
+    if (!$taskNormal.WaitForExit(30000)) { throw "Normal session test still running: PID $($taskNormal.Id), mode $taskMode" }
+    Read-RecoveryResult $taskMode
+}
+if ([IO.File]::ReadAllText((Join-Path $taskFolder 'normal-a.txt')) -ne "alpha`r`nSAVED") { throw 'Saved A disk content changed unexpectedly' }
+if ([IO.File]::ReadAllText((Join-Path $taskFolder 'normal-b.txt')) -ne "beta`r`n") { throw 'Discarded B modified its original disk file' }
+[IO.File]::WriteAllText((Join-Path $taskFolder 'normal-a.txt'), 'x', [Text.UTF8Encoding]::new($false))
+Remove-Item -LiteralPath (Join-Path $taskFolder 'normal-b.txt')
+$taskMissing = Start-RecoveryTest 'normal-missing'
+if (!$taskMissing.WaitForExit(30000)) { throw "Missing file test still running: PID $($taskMissing.Id)" }
+Read-RecoveryResult 'normal-missing'
 if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($taskCorrupt)) -ne 'AQIDBA==') { throw 'Invalid recovery source was changed' }
 Write-Output "Live isolation, protected bytes, crash recovery, normal discard and corrupt-source preservation verified. Evidence: $taskFolder"

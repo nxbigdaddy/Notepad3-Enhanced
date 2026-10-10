@@ -9,6 +9,7 @@ typedef void* NP3_SESSION;
 #define NP3_SESSION_MODIFIED 1u
 #define NP3_SESSION_READONLY 2u
 #define NP3_SESSION_ENCRYPTED_SOURCE 4u
+#define NP3_SESSION_DISK_BACKED 8u
 typedef struct NP3_SESSION_DOCUMENT {
     const wchar_t* path;
     const char* text;
