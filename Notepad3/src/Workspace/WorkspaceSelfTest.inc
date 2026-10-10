@@ -413,18 +413,38 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result,root && treeFile && rootIcon.iImage==0 && rootIcon.iSelectedImage==0 && fileIcon.iImage==1 && fileIcon.iSelectedImage==1,"file tree distinguishes folder and file nodes with stable icons");
 
     HTREEITEM folderItem = _WorkspaceTestTreeChild(tree, root, L"nested");
-    _WorkspaceTestCheck(&result, folderItem && !TreeView_GetChild(tree, folderItem), "directory children remain lazy before expansion");
+    HTREEITEM lazyPlaceholder=TreeView_GetChild(tree,folderItem); TVITEMW lazyItem={0}; lazyItem.mask=TVIF_PARAM; lazyItem.hItem=lazyPlaceholder; TreeView_GetItem(tree,&lazyItem);
+    _WorkspaceTestCheck(&result, folderItem && lazyPlaceholder && !lazyItem.lParam && !TreeView_GetNextSibling(tree,lazyPlaceholder) && !_WorkspaceTestTreeChild(tree,folderItem,L"child.txt"), "directory children remain lazy with only a loading placeholder before expansion");
     TreeView_Expand(tree, folderItem, TVE_EXPAND);
     _WorkspaceTestCheck(&result, _WorkspaceTestTreeReady() && _WorkspaceTestTreeChild(tree, folderItem, L"child.txt"), "expanding directory loads its children");
+    _WorkspaceTestCheck(&result,(TreeView_GetItemState(tree,root,TVIS_EXPANDED)&TVIS_EXPANDED) && (TreeView_GetItemState(tree,folderItem,TVIS_EXPANDED)&TVIS_EXPANDED),"asynchronous root and first directory load retain requested expansion");
+    TreeView_SelectItem(tree,treeFile); DWORD treeGdiBefore=GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS);
+    SendMessageW(panel,NP3_WM_PANEL_REFRESH,0,0); HIMAGELIST refreshedIcons=TreeView_GetImageList(tree,TVSIL_NORMAL);
+    _WorkspaceTestCheck(&result,refreshedIcons && refreshedIcons!=treeIcons && TreeView_GetRoot(tree)==root && TreeView_GetSelection(tree)==treeFile && (TreeView_GetItemState(tree,folderItem,TVIS_EXPANDED)&TVIS_EXPANDED),"tree theme and DPI resource refresh preserves root selection and expanded nodes");
+    treeGdiBefore=GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS);
+    for(int refresh=0;refresh<40;++refresh) SendMessageW(panel,NP3_WM_PANEL_REFRESH,0,0);
+    refreshedIcons=TreeView_GetImageList(tree,TVSIL_NORMAL); treeIconWidth=treeIconHeight=0; if(refreshedIcons) ImageList_GetIconSize(refreshedIcons,&treeIconWidth,&treeIconHeight);
+    DWORD treeGdiAfter=GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS);
+    char treeRefreshNote[256]; DWORD treeRefreshWritten;
+    StringCchPrintfA(treeRefreshNote,COUNTOF(treeRefreshNote),"TREE_REFRESH root=%i selected=%i expanded=%i images=%i size=%ix%i expected=%ix%i GDI=%lu/%lu\r\n",TreeView_GetRoot(tree)==root,TreeView_GetSelection(tree)==treeFile,(TreeView_GetItemState(tree,folderItem,TVIS_EXPANDED)&TVIS_EXPANDED)!=0,refreshedIcons?ImageList_GetImageCount(refreshedIcons):-1,treeIconWidth,treeIconHeight,GetSystemMetricsForDpi(SM_CXSMICON,GetDpiForWindow(panel)),GetSystemMetricsForDpi(SM_CYSMICON,GetDpiForWindow(panel)),(unsigned long)treeGdiBefore,(unsigned long)treeGdiAfter);
+    WriteFile(result.log,treeRefreshNote,(DWORD)strlen(treeRefreshNote),&treeRefreshWritten,NULL);
+    _WorkspaceTestCheck(&result,treeGdiBefore && treeGdiAfter<=treeGdiBefore+2 && refreshedIcons && ImageList_GetImageCount(refreshedIcons)==2 && treeIconWidth==GetSystemMetricsForDpi(SM_CXSMICON,GetDpiForWindow(panel)) && treeIconHeight==GetSystemMetricsForDpi(SM_CYSMICON,GetDpiForWindow(panel)),"repeated tree resource refresh matches current DPI and releases old image lists");
     HTREEITEM queuedFolders[12] = {0};
     for (int i = 0; i < 12; ++i) {
         wchar_t queuedLabel[32]; StringCchPrintfW(queuedLabel, COUNTOF(queuedLabel), L"queued-%02i", i);
         queuedFolders[i] = _WorkspaceTestTreeChild(tree, root, queuedLabel);
         TreeView_Expand(tree, queuedFolders[i], TVE_EXPAND);
     }
+    UINT pendingBefore=TreeView_GetItemState(tree,queuedFolders[0],TVIS_EXPANDED);
+    BOOL pendingCollapsed=TreeView_Expand(tree,queuedFolders[0],TVE_COLLAPSE);
+    UINT pendingAfter=TreeView_GetItemState(tree,queuedFolders[0],TVIS_EXPANDED);
+    StringCchPrintfA(treeRefreshNote,COUNTOF(treeRefreshNote),"TREE_PENDING before=%u collapsed=%i after=%u\r\n",pendingBefore,pendingCollapsed,pendingAfter); WriteFile(result.log,treeRefreshNote,(DWORD)strlen(treeRefreshNote),&treeRefreshWritten,NULL);
     bool queuedComplete = _WorkspaceTestTreeReady();
     for (int i = 0; i < 12; ++i) queuedComplete = queuedComplete && queuedFolders[i] && _WorkspaceTestTreeChild(tree, queuedFolders[i], L"child.txt");
     _WorkspaceTestCheck(&result, queuedComplete, "all concurrent directory expansions eventually populate");
+    _WorkspaceTestCheck(&result,!(TreeView_GetItemState(tree,queuedFolders[0],TVIS_EXPANDED)&TVIS_EXPANDED),"collapsing pending directory prevents async completion from reopening it");
+    TreeView_Expand(tree,queuedFolders[0],TVE_EXPAND);
+    _WorkspaceTestCheck(&result,(TreeView_GetItemState(tree,queuedFolders[0],TVIS_EXPANDED)&TVIS_EXPANDED)!=0,"completed directory expands normally after pending collapse");
     HTREEITEM largeItem = _WorkspaceTestTreeChild(tree, root, L"large");
     TreeView_Expand(tree, largeItem, TVE_EXPAND);
     bool firstPageReady = _WorkspaceTestTreeReady();

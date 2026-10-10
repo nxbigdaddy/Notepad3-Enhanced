@@ -82,11 +82,30 @@ void Icons(const std::shared_ptr<Tree>& state, HWND window) {
     if(!images) return;
     for(SHSTOCKICONID id:{SIID_FOLDER,SIID_DOCNOASSOC}) {
         SHSTOCKICONINFO icon={}; icon.cbSize=sizeof(icon);
-        if(FAILED(SHGetStockIconInfo(id,SHGSI_ICON|SHGSI_SMALLICON,&icon))) { ImageList_Destroy(images); return; }
+        UINT flags=SHGSI_ICON | (width>GetSystemMetrics(SM_CXSMICON)?SHGSI_LARGEICON:SHGSI_SMALLICON);
+        if(FAILED(SHGetStockIconInfo(id,flags,&icon))) { ImageList_Destroy(images); return; }
         int index=ImageList_AddIcon(images,icon.hIcon); DestroyIcon(icon.hIcon);
         if(index<0) { ImageList_Destroy(images); return; }
     }
+    HIMAGELIST old=state->images;
     state->images=images; TreeView_SetImageList(state->tree,images,TVSIL_NORMAL);
+    // Keep node handles, expansion and selection while replacing DPI-dependent resources.
+    for(HTREEITEM item=TreeView_GetRoot(state->tree);item;) {
+        TVITEMW value{}; value.mask=TVIF_PARAM; value.hItem=item;
+        if(TreeView_GetItem(state->tree,&value)) {
+            auto* node=reinterpret_cast<Node*>(value.lParam);
+            value.mask=TVIF_IMAGE|TVIF_SELECTEDIMAGE;
+            value.iImage=value.iSelectedImage=node && !node->more?(node->directory?0:1):I_IMAGENONE;
+            TreeView_SetItem(state->tree,&value);
+        }
+        if(HTREEITEM child=TreeView_GetChild(state->tree,item)) item=child;
+        else {
+            HTREEITEM next=TreeView_GetNextSibling(state->tree,item);
+            while(!next && (item=TreeView_GetParent(state->tree,item))) next=TreeView_GetNextSibling(state->tree,item);
+            item=next;
+        }
+    }
+    if(old) ImageList_Destroy(old);
 }
 void Relayout(const std::shared_ptr<Tree>& state) {
     RECT bounds; GetClientRect(state->parent,&bounds);
@@ -138,7 +157,11 @@ HTREEITEM Insert(const std::shared_ptr<Tree>& state, HTREEITEM parent, const std
     value.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_CHILDREN | TVIF_IMAGE | TVIF_SELECTEDIMAGE;
     value.item.iImage=value.item.iSelectedImage=state->images && node && !node->more ? (node->directory ? 0 : 1) : I_IMAGENONE; value.item.pszText = const_cast<wchar_t*>(label.c_str());
     value.item.lParam = reinterpret_cast<LPARAM>(node); value.item.cChildren = node && node->directory && !node->reparse ? 1 : 0;
-    return TreeView_InsertItem(state->tree, &value);
+    HTREEITEM item=TreeView_InsertItem(state->tree, &value);
+    // Native TreeView needs a real child during expansion, before its notification.
+    // This placeholder performs no directory I/O and lets pending loads be collapsed.
+    if(item && node && node->directory && !node->reparse) Insert(state,item,state->loading,nullptr);
+    return item;
 }
 void Schedule(const std::shared_ptr<Tree>& state) {
     while (state->workers.load() < 4 && !state->queued.empty()) {
@@ -205,6 +228,7 @@ void Request(const std::shared_ptr<Tree>& state, HTREEITEM item, bool more = fal
     if (more && !node->cursor) return;
     if (!node->cursor) node->cursor = std::make_shared<Cursor>();
     state->queued.push_back({state->generation.load(), item, node->path, node->cursor, node->loaded});
+    if(!node->loaded && !TreeView_GetChild(state->tree,item)) Insert(state,item,state->loading,nullptr);
     node->pending = true; ++state->pending;
     Schedule(state);
 }
@@ -220,7 +244,7 @@ bool Root(const std::shared_ptr<Tree>& state, const wchar_t* directory) {
     auto* node = new Node{full, true, false};
     HTREEITEM root = Insert(state, TVI_ROOT, full, node);
     if (!root) { delete node; return false; }
-    Insert(state, root, state->loading, nullptr); Request(state, root); TreeView_Expand(state->tree, root, TVE_EXPAND);
+    Request(state, root); TreeView_Expand(state->tree, root, TVE_EXPAND);
     Publish(state);
     return true;
 }
@@ -231,6 +255,7 @@ void Drain(const std::shared_ptr<Tree>& state) {
         if (result.generation != state->generation.load()) continue;
         Node* node = Data(state->tree, result.item);
         if (!node || node->path != result.path) continue;
+        bool const expand=(TreeView_GetItemState(state->tree,result.item,TVIS_EXPANDED)&TVIS_EXPANDED)!=0;
         node->pending = false; node->loaded = result.error == 0 || result.error == ERROR_MORE_DATA;
         if (state->pending) --state->pending;
         SendMessageW(state->tree, WM_SETREDRAW, FALSE, 0);
@@ -256,6 +281,7 @@ void Drain(const std::shared_ptr<Tree>& state) {
             if (result.error) PostMessageW(state->parent, NP3_WM_FILETREE_ERROR, result.error, 0);
         }
         TVITEMW count = {}; count.mask = TVIF_CHILDREN; count.hItem = result.item; count.cChildren = TreeView_GetChild(state->tree, result.item) ? 1 : 0; TreeView_SetItem(state->tree, &count);
+        if(expand && node->loaded) TreeView_Expand(state->tree,result.item,TVE_EXPAND);
         SendMessageW(state->tree, WM_SETREDRAW, TRUE, 0); InvalidateRect(state->tree, nullptr, TRUE);
     }
     Schedule(state);
@@ -274,7 +300,10 @@ void Choose(const std::shared_ptr<Tree>& state) {
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     auto state = State(window);
     try {
-    if (message == NP3_WM_PANEL_REFRESH && state) { state->theme.Update(window,state->parent); return 0; }
+    if (message == NP3_WM_PANEL_REFRESH && state) {
+        state->theme.Update(window,state->parent); Icons(state,window);
+        Relayout(state); InvalidateRect(state->grip,nullptr,TRUE); return 0;
+    }
     LRESULT themed = 0;
     if (state && state->theme.Handle(window,message,wParam,lParam,themed)) return themed;
     if (message == Ready && state && wParam == state->cookie) {
@@ -296,7 +325,10 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     if (message == WM_NOTIFY && state) {
         auto* notify = reinterpret_cast<NMHDR*>(lParam);
         if (notify->code == TVN_DELETEITEMW) { delete reinterpret_cast<Node*>(reinterpret_cast<NMTREEVIEWW*>(lParam)->itemOld.lParam); }
-        else if (notify->code == TVN_ITEMEXPANDINGW) Request(state, reinterpret_cast<NMTREEVIEWW*>(lParam)->itemNew.hItem);
+        else if (notify->code == TVN_ITEMEXPANDINGW) {
+            auto* change=reinterpret_cast<NMTREEVIEWW*>(lParam);
+            if(change->action==TVE_EXPAND) Request(state,change->itemNew.hItem);
+        }
         else if (notify->code == NM_DBLCLK || notify->code == NM_RETURN) {
             auto* node = Data(state->tree, TreeView_GetSelection(state->tree));
             if (node && node->more) Request(state, TreeView_GetParent(state->tree, TreeView_GetSelection(state->tree)), true);
