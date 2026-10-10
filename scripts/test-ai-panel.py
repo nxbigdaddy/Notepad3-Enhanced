@@ -10,10 +10,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             assert self.headers.get('Authorization') == 'Bearer fake-panel-test-key'
             assert self.headers.get('Cookie') is None
             content = body['messages'][1]['content']
-            assert content in ('alpha', '生成中文')
+            assert content in ('alpha', '生成中文', 'old\r\nkeep\r\nsecond')
             with self.server.lock: self.server.requests.append(body)
             if 'delay' in body['messages'][0]['content']: time.sleep(2)
-            data = json.dumps({'choices': [{'message': {'content': '模拟结果'}, 'finish_reason': 'stop'}]}).encode()
+            answer = 'new\r\nkeep\r\nthird' if content == 'old\r\nkeep\r\nsecond' else '模拟结果'
+            data = json.dumps({'choices': [{'message': {'content': answer}, 'finish_reason': 'stop'}]}).encode()
             self.send_response(200); self.send_header('Content-Length', str(len(data))); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(data)
         except (BrokenPipeError, ConnectionResetError): pass
         except Exception as exc:
@@ -32,8 +33,9 @@ try:
     (folder/'server-verification.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
     print(process.stdout); print(process.stderr)
     assert process.returncode == 0, 'native panel checks failed'
-    assert not server.errors and len(server.requests) == 5, 'expected four actions and one canceled request'
+    assert not server.errors and len(server.requests) == 6, 'expected four actions, multi-hunk rewrite and canceled request'
     assert server.requests[3]['messages'][1]['content'] == '生成中文'
+    assert server.requests[4]['messages'][1]['content'] == 'old\r\nkeep\r\nsecond'
     match = re.search(r'Evidence: (.+workspace-test-[a-f0-9]+)', process.stdout)
     assert match, 'workspace evidence path missing'
     settings = (pathlib.Path(match.group(1).strip()) / 'test.ini').read_text(encoding='utf-8-sig')

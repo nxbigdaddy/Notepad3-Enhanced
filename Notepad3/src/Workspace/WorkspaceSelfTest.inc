@@ -560,6 +560,27 @@ static void _WorkspaceSelfTest()
                     SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"actual AI response replacement undoes in one step");
                 }
             }
+            UndoTransActionBegin(); SciCall_SetTargetRange(0,SciCall_GetLength()); Sci_ReplaceTargetTestChgHist(17,"old\r\nkeep\r\nsecond"); EndUndoTransAction();
+            SciCall_SetSel(0,17); SetWindowTextW(GetDlgItem(aiPanel,120),L"");
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestAiReady() && _WorkspaceTestText("old\r\nkeep\r\nsecond"),"multi-hunk AI response arrives without editing source");
+            PANEL_COLORS multiColors; _PanelColors(&multiColors);
+            for(int side=0;side<2;++side) {
+                HWND preview=GetDlgItem(aiPanel,121+side); CHARFORMAT2W format={0}; format.cbSize=sizeof(format);
+                SendMessageW(preview,EM_SETSEL,0,1); SendMessageW(preview,EM_GETCHARFORMAT,SCF_SELECTION,(LPARAM)&format);
+                bool firstChanged=format.crBackColor==(side ? multiColors.added : multiColors.removed);
+                SendMessageW(preview,EM_SETSEL,4,5); SendMessageW(preview,EM_GETCHARFORMAT,SCF_SELECTION,(LPARAM)&format);
+                bool middlePlain=format.crBackColor==multiColors.field && format.crTextColor==multiColors.text;
+                SendMessageW(preview,EM_SETSEL,9,10); SendMessageW(preview,EM_GETCHARFORMAT,SCF_SELECTION,(LPARAM)&format);
+                _WorkspaceTestCheck(&result,firstChanged && middlePlain && format.crBackColor==(side ? multiColors.added : multiColors.removed),side ? "AI result highlights separate changes and preserves middle paragraph color" : "AI source highlights separate changes and preserves middle paragraph color");
+            }
+            SendMessageW(GetDlgItem(aiPanel,122),EM_SETSEL,4,5); SendMessageW(aiPanel,NP3_WM_PANEL_REFRESH,0,0);
+            CHARFORMAT2W middleFormat={0}; middleFormat.cbSize=sizeof(middleFormat); SendMessageW(GetDlgItem(aiPanel,122),EM_GETCHARFORMAT,SCF_SELECTION,(LPARAM)&middleFormat);
+            _WorkspaceTestCheck(&result,middleFormat.crBackColor==multiColors.field,"multi-hunk theme refresh keeps unchanged context unhighlighted");
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(115,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestText("new\r\nkeep\r\nthird"),"multi-hunk preview applies exact response bytes only after confirmation");
+            SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("old\r\nkeep\r\nsecond"),"multi-hunk response is one undoable edit");
+            SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"multi-hunk fixture restores original saved document");
             SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(aiPanel,120),L"delay");
             SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
             _WorkspaceTestCheck(&result,AiPanel_IsBusy(workspace->ai) && !IsWindowEnabled(GetDlgItem(aiPanel,105)),"AI running request disables configuration changes");
