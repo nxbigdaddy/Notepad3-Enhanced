@@ -113,6 +113,7 @@ static void _SplitThemeState(bool capture)
     } else {
         _SplitRestoreView(workspace->primaryView, &doc->views[0], doc);
         _SplitRestoreView(workspace->splitView, &doc->views[1], doc);
+        InvalidateRect(workspace->splitGutter, NULL, FALSE);
     }
 }
 static void _SplitSyncStyles(void)
@@ -202,6 +203,20 @@ static void _SplitRelayout(void)
     RECT rect; GetClientRect(Globals.hwndMain, &rect);
     SendMessageW(Globals.hwndMain, WM_SIZE, 0, MAKELPARAM(rect.right, rect.bottom));
 }
+static void _SplitPaintGutter(HWND window, HDC dc)
+{
+    if (!dc) return;
+    RECT bounds; GetClientRect(window, &bounds);
+    PANEL_COLORS colors; _PanelColors(&colors);
+    HBRUSH brush = (HBRUSH)GetStockObject(DC_BRUSH);
+    COLORREF previous = SetDCBrushColor(dc, colors.panel);
+    FillRect(dc, &bounds, brush);
+    int width = max_i(1, MulDiv(1, GetDpiForWindow(window), 96));
+    int center = (bounds.right - bounds.left) / 2;
+    RECT line = {center, bounds.top, min_i(bounds.right, center + width), bounds.bottom};
+    SetDCBrushColor(dc, colors.disabled); FillRect(dc, &line, brush);
+    SetDCBrushColor(dc, previous);
+}
 static LRESULT CALLBACK _SplitGutterProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data)
 {
     UNREFERENCED_PARAMETER(id); UNREFERENCED_PARAMETER(data);
@@ -233,10 +248,11 @@ static LRESULT CALLBACK _SplitGutterProc(HWND window, UINT message, WPARAM wPara
         }
         return 0;
     case WM_CAPTURECHANGED: workspace->splitDragging = false; return 0;
+    case WM_ERASEBKGND: _SplitPaintGutter(window, (HDC)wParam); return TRUE;
+    case WM_PRINTCLIENT: _SplitPaintGutter(window, (HDC)wParam); return 0;
     case WM_PAINT: {
         PAINTSTRUCT paint; HDC dc = BeginPaint(window, &paint);
-        HBRUSH brush = CreateSolidBrush((COLORREF)SciCall(SCI_STYLEGETBACK, STYLE_DEFAULT, 0));
-        FillRect(dc, &paint.rcPaint, brush); DeleteObject(brush); EndPaint(window, &paint); return 0;
+        _SplitPaintGutter(window, dc); EndPaint(window, &paint); return 0;
     }
     case WM_NCDESTROY: RemoveWindowSubclass(window, _SplitGutterProc, 0); break;
     }
