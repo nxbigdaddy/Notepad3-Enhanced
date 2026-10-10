@@ -12553,7 +12553,7 @@ static void _AiToggle(void)
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace->ai) workspace->ai = AiPanel_Create();
     WCHAR strings[AP_COUNT][256]; const WCHAR* labels[AP_COUNT];
-    for (int i = 0; i < AP_COUNT; ++i) { GetLngString(IDS_MUI_AI_ENDPOINT + i, strings[i], COUNTOF(strings[i])); labels[i] = strings[i]; }
+    for (int i = 0; i < AP_COUNT; ++i) { GetLngString(i == AP_GROUPED ? IDS_MUI_AI_GROUPED : IDS_MUI_AI_ENDPOINT + i, strings[i], COUNTOF(strings[i])); labels[i] = strings[i]; }
     AI_PANEL_SETTINGS settings = _AiSettings(); AiPanel_Toggle(workspace->ai, Globals.hwndMain, &settings, labels);
 }
 static bool _AiRun(const AI_PANEL_CAPTURE* request)

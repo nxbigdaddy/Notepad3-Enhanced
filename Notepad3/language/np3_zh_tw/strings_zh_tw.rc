@@ -461,6 +461,7 @@ BEGIN
     IDS_MUI_AI_ERROR "AI request or configuration failed."
     IDS_MUI_AI_STALE "Return to the original document and selection; modified documents require a new request."
     IDS_MUI_AI_SAVED "Saved."
+    IDS_MUI_AI_GROUPED "部分變更合併顯示，請核對完整結果後再套用。"
     IDS_MUI_BATCH_REPLACE "Replace literal text"
     IDS_MUI_BATCH_SORT "Sort lines"
     IDS_MUI_BATCH_UNIQUE "Remove duplicate lines"

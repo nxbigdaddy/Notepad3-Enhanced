@@ -461,6 +461,7 @@ BEGIN
     IDS_MUI_AI_ERROR "AI 请求或配置失败。"
     IDS_MUI_AI_STALE "请回到原文档和选区；内容已修改时需重新请求。"
     IDS_MUI_AI_SAVED "已保存。"
+    IDS_MUI_AI_GROUPED "部分改动合并显示，请核对完整结果后再应用。"
     IDS_MUI_BATCH_REPLACE "字面文本替换"
     IDS_MUI_BATCH_SORT "逐行排序"
     IDS_MUI_BATCH_UNIQUE "删除重复行"

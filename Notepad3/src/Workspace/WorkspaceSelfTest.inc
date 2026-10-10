@@ -12,9 +12,11 @@ static void _WorkspaceTestCheck(WORKSPACE_TEST_RESULT* result, bool condition, c
 }
 static bool _WorkspaceTestText(const char* expected)
 {
-    char text[128] = { 0 };
-    SciCall_GetText(COUNTOF(text), text);
-    return strcmp(text, expected) == 0;
+    size_t const length = strlen(expected);
+    if (SciCall_GetLength() != (DocPos)length) return false;
+    if (!length) return true;
+    const char* text = SciCall_GetRangePointer(0, (DocPos)length);
+    return text && memcmp(text, expected, length) == 0;
 }
 static bool _WorkspaceTestPanelBrush(HWND panel, HWND child, COLORREF background, COLORREF foreground)
 {
@@ -581,6 +583,15 @@ static void _WorkspaceSelfTest()
             _WorkspaceTestCheck(&result,_WorkspaceTestText("new\r\nkeep\r\nthird"),"multi-hunk preview applies exact response bytes only after confirmation");
             SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("old\r\nkeep\r\nsecond"),"multi-hunk response is one undoable edit");
             SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"multi-hunk fixture restores original saved document");
+            char groupedSource[6001]={0}; for(int line=0;line<1200;++line) CopyMemory(groupedSource+line*5,"old\r\n",5);
+            UndoTransActionBegin(); SciCall_SetTargetRange(0,SciCall_GetLength()); Sci_ReplaceTargetTestChgHist(6000,groupedSource); EndUndoTransAction();
+            SciCall_SetSel(0,6000); SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+            bool groupedReady=_WorkspaceTestAiReady(); WCHAR groupedStatus[256],expectedGrouped[256];
+            GetWindowTextW(GetDlgItem(aiPanel,130),groupedStatus,COUNTOF(groupedStatus)); GetLngString(IDS_MUI_AI_GROUPED,expectedGrouped,COUNTOF(expectedGrouped));
+            _WorkspaceTestCheck(&result,groupedReady && !wcscmp(groupedStatus,expectedGrouped) && _WorkspaceTestText(groupedSource),"AI large grouped difference explicitly warns before any source edit");
+            SendMessageW(aiPanel,NP3_WM_PANEL_REFRESH,0,0); GetWindowTextW(GetDlgItem(aiPanel,130),groupedStatus,COUNTOF(groupedStatus));
+            _WorkspaceTestCheck(&result,!wcscmp(groupedStatus,expectedGrouped),"grouped difference warning survives theme refresh");
+            SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"large grouped preview restores fixture with original undo and saved state");
             SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(aiPanel,120),L"delay");
             SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
             _WorkspaceTestCheck(&result,AiPanel_IsBusy(workspace->ai) && !IsWindowEnabled(GetDlgItem(aiPanel,105)),"AI running request disables configuration changes");

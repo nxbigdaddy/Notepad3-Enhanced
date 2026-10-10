@@ -8,7 +8,7 @@ typedef struct AI_PANEL_SAVE { AI_PANEL_SETTINGS settings; const char* secret; }
 typedef struct AI_PANEL_CAPTURE { int action; const char* instruction; } AI_PANEL_CAPTURE;
 typedef struct AI_PANEL_SOURCE { unsigned long long id, version; long long start, end, anchor, caret; } AI_PANEL_SOURCE;
 typedef struct AI_PANEL_APPLY { AI_PANEL_SOURCE source; const char* original; size_t originalLength; const char* result; size_t resultLength; } AI_PANEL_APPLY;
-enum AI_PANEL_LABEL { AP_ENDPOINT, AP_MODEL, AP_KEY, AP_TIMEOUT, AP_SAVE, AP_DELETE, AP_EXPLAIN, AP_TRANSLATE, AP_REWRITE, AP_GENERATE, AP_CANCEL, AP_APPLY, AP_ORIGINAL, AP_RESULT, AP_INSTRUCTION, AP_READY, AP_RUNNING, AP_DONE, AP_CANCELED, AP_ERROR, AP_STALE, AP_SAVED, AP_COUNT };
+enum AI_PANEL_LABEL { AP_ENDPOINT, AP_MODEL, AP_KEY, AP_TIMEOUT, AP_SAVE, AP_DELETE, AP_EXPLAIN, AP_TRANSLATE, AP_REWRITE, AP_GENERATE, AP_CANCEL, AP_APPLY, AP_ORIGINAL, AP_RESULT, AP_INSTRUCTION, AP_READY, AP_RUNNING, AP_DONE, AP_CANCELED, AP_ERROR, AP_STALE, AP_SAVED, AP_GROUPED, AP_COUNT };
 #ifdef __cplusplus
 extern "C" {
 #endif

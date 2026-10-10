@@ -70,7 +70,7 @@ std::wstring Paragraphs(const std::wstring& text) {
     }
     return result;
 }
-void Difference(const Owner& panel, const std::wstring& source, const std::wstring& output) {
+bool Difference(const Owner& panel, const std::wstring& source, const std::wstring& output) {
     const auto before=Paragraphs(source), after=Paragraphs(output);
     const auto difference=np3::AiDifference(before,after);
     const auto colors=panel->theme.Colors();
@@ -80,13 +80,14 @@ void Difference(const Owner& panel, const std::wstring& source, const std::wstri
         Highlight(GetDlgItem(panel->window,121),range.beforeStart,range.beforeEnd,colors.removed,colors.highlightText);
         Highlight(GetDlgItem(panel->window,122),range.afterStart,range.afterEnd,colors.added,colors.highlightText);
     }
+    return difference.precise;
 }
 void Publish(const Owner& panel) {
     auto job = panel->job;
     if (!job || !job->done.load() || panel->published) return;
     panel->published = true;
     if (job->status == AI_HTTP_OK) {
-        auto output = Wide(job->result.text, job->result.length); SetWindowTextW(GetDlgItem(panel->window,122), output.c_str()); Difference(panel,Wide(job->original.data(),job->original.size()),output); Status(panel, AP_DONE);
+        auto output = Wide(job->result.text, job->result.length); SetWindowTextW(GetDlgItem(panel->window,122), output.c_str()); bool precise=Difference(panel,Wide(job->original.data(),job->original.size()),output); Status(panel, precise ? AP_DONE : AP_GROUPED);
     } else {
         Status(panel, job->status == AI_HTTP_CANCELED ? AP_CANCELED : AP_ERROR);
         if (job->status != AI_HTTP_CANCELED) {
