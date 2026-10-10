@@ -1,6 +1,10 @@
 #include "MarkdownPreview.h"
 #include "MarkdownRender.h"
 #include "NavigationPolicy.h"
+#include "PreviewLayout.h"
+#include <windowsx.h>
+#include <cmath>
+#include <cwchar>
 #include "vendor/webview2/WebView2.h"
 #include <wrl.h>
 #include <memory>
@@ -34,6 +38,13 @@ struct Preview {
     ComPtr<ICoreWebView2Controller> controller;
     ComPtr<ICoreWebView2> web;
     unsigned pendingRenderNavigations = 0;
+    int widthRatio = 5000;
+    int layoutX = 0, layoutWidth = 0;
+    bool dragging = false;
+    unsigned long long renderVersion = 0, navigationVersion = 0, navigationId = 0;
+    double scrollToRestore = 0;
+    bool loaded = false;
+    std::wstring documentKey;
     std::wstring message = L"Starting Markdown preview...";
     ~Preview() { if (loader) FreeLibrary(loader); }
 };
@@ -65,6 +76,7 @@ void Resize(const std::shared_ptr<Preview>& state)
     if (!state->window || !state->controller) return;
     RECT bounds;
     GetClientRect(state->window, &bounds);
+    bounds.left = (std::min)(bounds.right, static_cast<LONG>(MulDiv(6, GetDpiForWindow(state->window), 96)));
     state->controller->put_Bounds(bounds);
 }
 void Start(const std::shared_ptr<Preview>& state)
@@ -117,16 +129,34 @@ void Start(const std::shared_ptr<Preview>& state)
                                 settings->put_IsWebMessageEnabled(FALSE);
                             }
                             EventRegistrationToken token;
+                            const std::weak_ptr<Preview> weakState = state;
                             state->web->add_NavigationCompleted(Callback<ICoreWebView2NavigationCompletedEventHandler>(
-                                [](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
+                                [weakState](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
                                     BOOL success = FALSE;
                                     args->get_IsSuccess(&success);
                                     Trace("navigation-completed", success ? S_OK : E_FAIL);
+                                    auto live = weakState.lock();
+                                    UINT64 id = 0; args->get_NavigationId(&id);
+                                    if (live && live->window && live->web && id == live->navigationId && live->navigationVersion == live->renderVersion) {
+                                        live->loaded = success != FALSE;
+                                        if (success) {
+                                            wchar_t script[160];
+                                            swprintf_s(script, L"window.scrollTo(0,%.0f)", live->scrollToRestore);
+                                            const auto version = live->renderVersion;
+                                            const HRESULT scrollResult = live->web->ExecuteScript(script,
+                                                Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+                                                    [weakState, version](HRESULT status, LPCWSTR) -> HRESULT {
+                                                        auto active = weakState.lock();
+                                                        if (active && active->window && active->renderVersion == version) Trace("scroll-restore-completed", status);
+                                                        return S_OK;
+                                                    }).Get());
+                                            if (FAILED(scrollResult)) Trace("scroll-restore-start", scrollResult);
+                                        }
+                                    }
                                     COREWEBVIEW2_WEB_ERROR_STATUS error;
                                     if (!success && SUCCEEDED(args->get_WebErrorStatus(&error))) Trace("navigation-error-status", static_cast<HRESULT>(error));
                                     return S_OK;
                                 }).Get(), &token);
-                            const std::weak_ptr<Preview> weakState = state;
                             state->web->add_NavigationStarting(Callback<ICoreWebView2NavigationStartingEventHandler>(
                                 [weakState](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
                                     LPWSTR uri = nullptr;
@@ -139,7 +169,12 @@ void Start(const std::shared_ptr<Preview>& state)
                                     // Only host-issued renders can consume a pending navigation.
                                     const bool render = live && uri && np3::IsHostRenderNavigation(
                                         uri, userInitiated != FALSE, live->pendingRenderNavigations);
-                                    if (render) --live->pendingRenderNavigations;
+                                    if (render) {
+                                        --live->pendingRenderNavigations;
+                                        args->get_NavigationId(&live->navigationId);
+                                        live->navigationVersion = live->renderVersion;
+                                        live->loaded = false;
+                                    }
                                     if (!render && (!uri || std::wstring(uri) != L"about:blank")) args->put_Cancel(TRUE);
                                     CoTaskMemFree(uri);
                                     return S_OK;
@@ -174,6 +209,34 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     switch (message) {
     case WM_CREATE: Start(state); return 0;
     case WM_SIZE: Resize(state); return 0;
+    case WM_SETCURSOR: {
+        POINT point; GetCursorPos(&point); ScreenToClient(window, &point);
+        if (point.x < MulDiv(6, GetDpiForWindow(window), 96)) {
+            SetCursor(LoadCursorW(nullptr, IDC_SIZEWE)); return TRUE;
+        }
+        break;
+    }
+    case WM_LBUTTONDOWN:
+        if (GET_X_LPARAM(lParam) < MulDiv(6, GetDpiForWindow(window), 96)) {
+            state->dragging = true; SetCapture(window); return 0;
+        }
+        break;
+    case WM_MOUSEMOVE:
+        if (state->dragging && state->layoutWidth > 0) {
+            POINT point; GetCursorPos(&point); ScreenToClient(state->parent, &point);
+            state->widthRatio = np3::PreviewRatio(state->layoutWidth, state->layoutX + state->layoutWidth - point.x);
+            RECT bounds; GetClientRect(state->parent, &bounds);
+            SendMessageW(state->parent, WM_SIZE, SIZE_RESTORED, MAKELPARAM(bounds.right, bounds.bottom));
+            return 0;
+        }
+        break;
+    case WM_LBUTTONUP:
+        if (state->dragging) { state->dragging = false; ReleaseCapture(); return 0; }
+        break;
+    case WM_CANCELMODE:
+        if (GetCapture() == window) ReleaseCapture();
+        [[fallthrough]];
+    case WM_CAPTURECHANGED: state->dragging = false; break;
     case WM_TIMER:
         if (wParam == RefreshTimer) {
             KillTimer(window, RefreshTimer);
@@ -185,6 +248,9 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         HDC dc = BeginPaint(window, &paint);
         RECT bounds;
         GetClientRect(window, &bounds);
+        RECT divider = bounds;
+        divider.right = MulDiv(6, GetDpiForWindow(window), 96);
+        FillRect(dc, &divider, GetSysColorBrush(COLOR_3DFACE));
         bounds.left += 12; bounds.top += 12; bounds.right -= 12;
         SetBkMode(dc, TRANSPARENT);
         DrawTextW(dc, state->message.c_str(), -1, &bounds, DT_WORDBREAK);
@@ -228,7 +294,10 @@ extern "C" int MarkdownPreview_Layout(HWND parent, int x, int y, int width, int 
 {
     HWND window = Find(parent);
     if (!window) return 0;
-    const int reserved = width >= 320 ? width / 2 : width / 3;
+    auto state = State(window);
+    if (!state) return 0;
+    state->layoutX = x; state->layoutWidth = width;
+    const int reserved = np3::PreviewWidth(width, state->widthRatio);
     MoveWindow(window, x + width - reserved, y, reserved, height, TRUE);
     return reserved;
 }
@@ -236,24 +305,51 @@ extern "C" void MarkdownPreview_Changed(HWND parent)
 {
     if (HWND window = Find(parent)) SetTimer(window, RefreshTimer, 350, nullptr);
 }
-extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t length, const WCHAR* directory)
+extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t length, const WCHAR* directory, const WCHAR* documentKey)
 {
     auto state = State(Find(parent));
     if (!state || !state->web) return;
     try {
-        ComPtr<ICoreWebView2_3> mapping;
-        if (SUCCEEDED(state->web.As(&mapping))) {
-            mapping->ClearVirtualHostNameToFolderMapping(L"np3-preview.invalid");
-            if (directory && *directory) mapping->SetVirtualHostNameToFolderMapping(
-                L"np3-preview.invalid", directory, COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
-        }
         std::string html = length <= 2 * 1024 * 1024 ? np3::RenderMarkdown(std::string_view(text, length))
             : np3::RenderMarkdown("# Preview paused\n\nThis document exceeds the 2 MiB live preview limit.");
         const std::wstring wide = Wide(html);
-        if (!wide.empty()) ++state->pendingRenderNavigations;
-        if (wide.empty() || FAILED(state->web->NavigateToString(wide.c_str()))) {
-            if (!wide.empty()) --state->pendingRenderNavigations;
-            Failed(state, L"Cannot display Markdown preview.");
-        }
+        if (wide.empty()) { Failed(state, L"Cannot render Markdown preview."); return; }
+        const std::wstring folder = directory ? directory : L"";
+        const std::wstring key = documentKey ? documentKey : L"";
+        const bool sameDocument = key == state->documentKey;
+        const bool preserveScroll = state->loaded && sameDocument;
+        state->documentKey = key;
+        const auto version = ++state->renderVersion;
+        const std::weak_ptr<Preview> weakState = state;
+        auto navigate = [weakState, version, wide, folder](double scroll) {
+            auto live = weakState.lock();
+            if (!live || !live->window || !live->web || live->renderVersion != version) return;
+            ComPtr<ICoreWebView2_3> mapping;
+            if (SUCCEEDED(live->web.As(&mapping))) {
+                mapping->ClearVirtualHostNameToFolderMapping(L"np3-preview.invalid");
+                if (!folder.empty()) mapping->SetVirtualHostNameToFolderMapping(
+                    L"np3-preview.invalid", folder.c_str(), COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
+            }
+            live->scrollToRestore = scroll;
+            ++live->pendingRenderNavigations;
+            if (FAILED(live->web->NavigateToString(wide.c_str()))) {
+                --live->pendingRenderNavigations;
+                Failed(live, L"Cannot display Markdown preview.");
+            }
+        };
+        if (preserveScroll) {
+            const HRESULT result = state->web->ExecuteScript(L"window.scrollY", Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+                [navigate, previous = state->scrollToRestore](HRESULT status, LPCWSTR json) -> HRESULT {
+                    double scroll = previous;
+                    if (SUCCEEDED(status) && json) {
+                        wchar_t* end = nullptr;
+                        const double value = std::wcstod(json, &end);
+                        if (end != json && *end == 0 && std::isfinite(value) && value >= 0 && value <= 1e9) scroll = value;
+                    }
+                    navigate(scroll);
+                    return S_OK;
+                }).Get());
+            if (FAILED(result)) navigate(state->scrollToRestore);
+        } else navigate(sameDocument ? state->scrollToRestore : 0);
     } catch (...) { Failed(state, L"Cannot render Markdown preview."); }
 }

@@ -2543,7 +2543,7 @@ static void _UpdateMarkdownPreview(HWND hwnd)
     if (!MarkdownPreview_IsOpen(hwnd)) { return; }
     DocPos const length = SciCall_GetLength();
     if (length > 2 * 1024 * 1024) {
-        MarkdownPreview_Update(hwnd, "", (size_t)length, NULL);
+        MarkdownPreview_Update(hwnd, "", (size_t)length, NULL, Path_Get(Paths.CurrentFile));
         return;
     }
     char* const text = AllocMem((size_t)length + 1, HEAP_ZERO_MEMORY);
@@ -2551,7 +2551,7 @@ static void _UpdateMarkdownPreview(HWND hwnd)
     SciCall_GetText(length + 1, text);
     HPATHL directory = Path_Copy(Paths.CurrentFile);
     if (directory) { Path_RemoveFileSpec(directory); }
-    MarkdownPreview_Update(hwnd, text, (size_t)length, directory ? Path_Get(directory) : NULL);
+    MarkdownPreview_Update(hwnd, text, (size_t)length, directory ? Path_Get(directory) : NULL, Path_Get(Paths.CurrentFile));
     Path_Release(directory);
     FreeMem(text);
 }

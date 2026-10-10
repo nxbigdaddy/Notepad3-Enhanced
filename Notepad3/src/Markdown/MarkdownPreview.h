@@ -10,7 +10,7 @@ BOOL MarkdownPreview_IsOpen(HWND parent);
 // Return width reserved for preview; zero while hidden.
 int MarkdownPreview_Layout(HWND parent, int x, int y, int width, int height);
 void MarkdownPreview_Changed(HWND parent);
-void MarkdownPreview_Update(HWND parent, const char* text, size_t length, const WCHAR* directory);
+void MarkdownPreview_Update(HWND parent, const char* text, size_t length, const WCHAR* directory, const WCHAR* documentKey);
 #ifdef __cplusplus
 }
 #endif

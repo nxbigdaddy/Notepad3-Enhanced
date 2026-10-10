@@ -1,3 +1,4 @@
+#include "../Notepad3/src/Markdown/PreviewLayout.h"
 #include "../Notepad3/src/Markdown/MarkdownRender.h"
 #include "../Notepad3/src/Markdown/NavigationPolicy.h"
 #include <iostream>
@@ -35,6 +36,15 @@ int main()
         require(!np3::IsHostRenderNavigation(L"data:text/html,external", false, 0), "unsolicited data navigation blocked");
         require(!np3::IsHostRenderNavigation(L"https://example.com", false, 1), "external navigation blocked");
         require(!np3::IsHostRenderNavigation(L"javascript:alert(1)", true, 1), "script navigation blocked");
+        require(np3::PreviewWidth(1000, 5000) == 500, "initial equal split");
+        require(np3::PreviewWidth(1000, 9500) == 840, "editor minimum width");
+        require(np3::PreviewWidth(1000, 500) == 160, "preview minimum width");
+        require(np3::PreviewWidth(319, 5000) == 106, "narrow window split");
+        require(np3::PreviewWidth(0, 5000) == 0, "minimized window");
+        require(np3::PreviewRatio(1000, 750) == 7500, "drag ratio");
+        require(np3::PreviewRatio(1000, -200) == 500, "drag outside left bound");
+        require(np3::PreviewRatio(1000, 2000) == 9500, "drag outside right bound");
+        require(np3::PreviewRatio(0, 0) == 5000, "zero layout ratio");
         std::cout << checks << " Markdown regression checks passed\n";
         return 0;
     } catch (const std::exception& error) {
