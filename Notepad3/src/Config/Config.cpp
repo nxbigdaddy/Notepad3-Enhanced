@@ -1490,6 +1490,7 @@ void LoadSettings()
     Settings2.LexerSQLNumberSignAsComment = IniSectionGetBool(IniSecSettings2, L"LexerSQLNumberSignAsComment", true);
 
     Settings2.AtomicFileSave = IniSectionGetBool(IniSecSettings2, L"AtomicFileSave", true);
+    Settings2.ReopenWorkspace = IniSectionGetBool(IniSecSettings2, L"ReopenWorkspace", true);
 
     Settings2.ExitOnESCSkipLevel = clampi(IniSectionGetInt(IniSecSettings2, L"ExitOnESCSkipLevel", Default_ExitOnESCSkipLevel), 0, 2);
 

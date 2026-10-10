@@ -496,6 +496,10 @@ Bias added to confidence when the system's ANSI code page matches the detected e
 
 Enable `#` as a line-comment character in MySQL-dialect SQL. Set to `0` to disable.
 
+#### `ReopenWorkspace=true`
+
+Controls automatic reopening of the last normally closed workspace. Set to `false` under `[Settings2]` to skip automatic normal-session loading and saving. Crash recovery remains enabled independently. This setting does not delete existing normal-session archives; enabling it again may reopen the latest retained archive. Normal sessions contain named file paths and view state, not discarded buffer text.
+
 #### `AtomicFileSave=true`
 
 When `true` (default), `Save` writes to a temporary file alongside the target and then atomically replaces the original via `ReplaceFileW`. This preserves the original file's ACLs, alternate data streams, and attributes on failure (nothing is lost if the write is interrupted). Set to `false` to write in-place, which is faster on very large files but offers no rollback if the write fails mid-way. During Windows session end (`WM_ENDSESSION`) the atomic path is bypassed regardless of this setting.

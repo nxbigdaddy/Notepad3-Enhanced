@@ -77,7 +77,7 @@ static void _WorkspaceRecoveryClose()
     if (!workspace || !workspace->recovery) return;
     WORKSPACE_RECOVERY* recovery = workspace->recovery;
     uint32_t normalError = 0;
-    if (!_WorkspaceNormalSave(recovery->normalPath, &normalError)) _WorkspaceRecoveryReport(recovery, normalError);
+    if (Settings2.ReopenWorkspace && !_WorkspaceNormalSave(recovery->normalPath, &normalError)) _WorkspaceRecoveryReport(recovery, normalError);
     recovery->closing = true;
     KillTimer(Globals.hwndMain, WORKSPACE_RECOVERY_TIMER);
     // The marker is created before releasing ownership. An unfinished worker
@@ -188,7 +188,7 @@ static void _WorkspaceRecoveryStart()
         } while (FindNextFileW(search, &found));
         FindClose(search);
     }
-    if (!recovered) _WorkspaceNormalRestoreLatest(recovery);
+    if (!recovered && Settings2.ReopenWorkspace) _WorkspaceNormalRestoreLatest(recovery);
     SetTimer(Globals.hwndMain, WORKSPACE_RECOVERY_TIMER, 30000, _WorkspaceRecoveryTimer);
     _WorkspaceRecoveryTimer(NULL, 0, 0, 0);
 }

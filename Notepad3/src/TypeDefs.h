@@ -832,6 +832,7 @@ typedef struct SETTINGS2_T {
     bool    SubWrappedLineSelectOnMarginClick;
     bool    LexerSQLNumberSignAsComment;
     bool    AtomicFileSave;
+    bool    ReopenWorkspace;
     bool    DiscardOnClosingUntitledPasteBoard;
     int     ExitOnESCSkipLevel;
     int     ZoomTooltipTimeout;

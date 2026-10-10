@@ -24,7 +24,8 @@ static void _WorkspaceRecoveryTest()
     bool const normalVerify = wcscmp(mode, L"normal-verify") == 0;
     bool const normalExplicit = wcscmp(mode, L"normal-explicit") == 0;
     bool const normalMissing = wcscmp(mode, L"normal-missing") == 0;
-    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || normalSeed || normalVerify || normalExplicit || normalMissing, "recognized recovery test mode");
+    bool const normalDisabled = wcscmp(mode, L"normal-disabled") == 0;
+    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || normalSeed || normalVerify || normalExplicit || normalMissing || normalDisabled, "recognized recovery test mode");
     if (seeded) {
         _WorkspaceTestCheck(&result, workspace->count == 1 && SciCall_GetLength() == 0, "seed starts isolated");
         SciCall_AppendText(15, "unsaved alpha\r\n"); Encoding_Current(CPI_UTF8SIGN);
@@ -62,6 +63,10 @@ static void _WorkspaceRecoveryTest()
         _WorkspaceTestCheck(&result, entry.textLength == 0 && (entry.flags & NP3_SESSION_DISK_BACKED), "discarded named buffer text absent from archive");
         _WorkspaceTestCheck(&result, !_WorkspaceSessionLoad(recovery->normalPath, &error) && workspace->count == 3 && _WorkspaceTestText("alpha\r\nSAVED"), "metadata archive cannot import as empty recovered buffers");
         Session_Free(normal); Path_Release(a); Path_Release(b);
+    } else if (normalDisabled) {
+        _WorkspaceTestCheck(&result, !Settings2.ReopenWorkspace, "reopen setting loaded from isolated INI");
+        _WorkspaceTestCheck(&result, workspace->count == 1 && SciCall_GetLength() == 0, "disabled reopening leaves empty workspace despite earlier archive");
+        _WorkspaceTestCheck(&result, workspace->recovery != NULL, "disabled normal reopening retains crash backup service");
     } else if (normalMissing) {
         _WorkspaceTestCheck(&result, workspace->count == 2 && recovery->errorReports > 0, "missing normal-session file reported while available files reopen");
         _WorkspaceTestCheck(&result, _WorkspaceSwitch(1) && _WorkspaceTestText("x") && !IsSaveNeeded(), "externally shortened disk file loaded without stale buffer text");

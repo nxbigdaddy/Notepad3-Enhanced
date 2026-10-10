@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/workspace-session-x64-v12/Notepad3.exe')
+param([string]$Executable = 'artifacts/workspace-options-x64-v16/Notepad3.exe')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -18,6 +18,7 @@ function Start-RecoveryTest([string]$Mode, [string]$Incoming = '') {
         $env:NP3_RECOVERY_TEST_DIR = $taskFolder
         $env:NP3_RECOVERY_TEST_MODE = $Mode
         $taskArguments = @('/n', '/f0')
+        if ($Mode -eq 'normal-disabled') { $taskArguments = @('/n', '/f', ('"' + (Join-Path $taskFolder 'disabled.ini') + '"')) }
         if ($Incoming) { $taskArguments += ('"' + $Incoming + '"') }
         Start-Process -FilePath $taskExe -ArgumentList $taskArguments -WindowStyle Hidden -PassThru
     } finally {
@@ -73,5 +74,12 @@ Remove-Item -LiteralPath (Join-Path $taskFolder 'normal-b.txt')
 $taskMissing = Start-RecoveryTest 'normal-missing'
 if (!$taskMissing.WaitForExit(30000)) { throw "Missing file test still running: PID $($taskMissing.Id)" }
 Read-RecoveryResult 'normal-missing'
+[IO.File]::WriteAllText((Join-Path $taskFolder 'disabled.ini'), "[Settings2]`r`nReopenWorkspace=false`r`n", [Text.UTF8Encoding]::new($true))
+$taskArchiveBefore = @(Get-ChildItem -LiteralPath $taskFolder -Filter '*.np3workspace' | Sort-Object Name | ForEach-Object Name)
+$taskDisabled = Start-RecoveryTest 'normal-disabled'
+if (!$taskDisabled.WaitForExit(30000)) { throw "Disabled reopening test still running: PID $($taskDisabled.Id)" }
+Read-RecoveryResult 'normal-disabled'
+$taskArchiveAfter = @(Get-ChildItem -LiteralPath $taskFolder -Filter '*.np3workspace' | Sort-Object Name | ForEach-Object Name)
+if (($taskArchiveBefore -join '|') -ne ($taskArchiveAfter -join '|')) { throw 'Disabled reopening changed normal-session archives' }
 if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($taskCorrupt)) -ne 'AQIDBA==') { throw 'Invalid recovery source was changed' }
 Write-Output "Live isolation, protected bytes, crash recovery, normal discard and corrupt-source preservation verified. Evidence: $taskFolder"
