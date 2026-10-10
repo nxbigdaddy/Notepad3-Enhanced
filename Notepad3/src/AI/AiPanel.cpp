@@ -1,4 +1,5 @@
 #include "AiPanel.h"
+#include "../UI/PanelTheme.h"
 #include <richedit.h>
 #include <algorithm>
 #include <atomic>
@@ -22,6 +23,7 @@ struct Job {
     ~Job() { AiCredential_Free(secret); AiHttp_Free(&result); }
 };
 struct Panel {
+    np3::PanelTheme theme;
     HMODULE richEdit = nullptr;
     ~Panel() { if (richEdit) FreeLibrary(richEdit); }
     HWND window = nullptr, parent = nullptr;
@@ -51,11 +53,13 @@ void Busy(const Owner& panel, bool busy) {
     EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN);
 }
 int Canceled(void* context) { return static_cast<Job*>(context)->cancel.load() ? 1 : 0; }
-void Highlight(HWND edit, size_t start, size_t end, COLORREF color) {
+void Highlight(HWND edit, size_t start, size_t end, COLORREF color, COLORREF foreground) {
+    CHARRANGE selection{}; POINT scroll{};
+    SendMessageW(edit,EM_EXGETSEL,0,reinterpret_cast<LPARAM>(&selection)); SendMessageW(edit,EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&scroll));
     SendMessageW(edit, EM_SETSEL, static_cast<WPARAM>(start), static_cast<LPARAM>(end));
-    CHARFORMAT2W format{}; format.cbSize=sizeof(format); format.dwMask=CFM_BACKCOLOR; format.crBackColor=color;
+    CHARFORMAT2W format{}; format.cbSize=sizeof(format); format.dwMask=CFM_BACKCOLOR|CFM_COLOR; format.crBackColor=color; format.crTextColor=foreground;
     SendMessageW(edit, EM_SETCHARFORMAT, SCF_SELECTION, reinterpret_cast<LPARAM>(&format));
-    SendMessageW(edit, EM_SETSEL, 0, 0);
+    SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&selection)); SendMessageW(edit,EM_SETSCROLLPOS,0,reinterpret_cast<LPARAM>(&scroll));
 }
 std::wstring Paragraphs(const std::wstring& text) {
     std::wstring result; result.reserve(text.size());
@@ -72,8 +76,9 @@ void Difference(const Owner& panel, const std::wstring& source, const std::wstri
     if(prefix && prefix<before.size() && before[prefix]>=0xdc00 && before[prefix]<=0xdfff) --prefix;
     while(suffix<before.size()-prefix && suffix<after.size()-prefix && before[before.size()-1-suffix]==after[after.size()-1-suffix]) ++suffix;
     if(suffix && before.size()>suffix && before[before.size()-suffix]>=0xdc00 && before[before.size()-suffix]<=0xdfff) --suffix;
-    Highlight(GetDlgItem(panel->window,121),prefix,before.size()-suffix,RGB(255,220,220));
-    Highlight(GetDlgItem(panel->window,122),prefix,after.size()-suffix,RGB(215,245,215));
+    const auto& colors=panel->theme.Colors();
+    Highlight(GetDlgItem(panel->window,121),prefix,before.size()-suffix,colors.removed,colors.highlightText);
+    Highlight(GetDlgItem(panel->window,122),prefix,after.size()-suffix,colors.added,colors.highlightText);
 }
 void Publish(const Owner& panel) {
     auto job = panel->job;
@@ -93,6 +98,13 @@ void Publish(const Owner& panel) {
 LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     auto panel = WindowState(window);
     try {
+    if(message==NP3_WM_PANEL_REFRESH && panel) {
+        panel->theme.Update(window,panel->parent);
+        if(panel->job && panel->published && panel->job->status==AI_HTTP_OK) Difference(panel,Wide(panel->job->original.data(),panel->job->original.size()),Wide(panel->job->result.text,panel->job->result.length));
+        return 0;
+    }
+    LRESULT themed=0;
+    if(panel && panel->theme.Handle(window,message,wParam,lParam,themed)) return themed;
     if (message == WM_TIMER && panel) { Publish(panel); return 0; }
     if (message == WM_SIZE && panel) {
         int width = LOWORD(lParam), height = HIWORD(lParam), row = MulDiv(28, GetDpiForWindow(window), 96);
@@ -161,8 +173,9 @@ extern "C" BOOL AiPanel_Run(void* context,const AI_PANEL_SETTINGS* settings,cons
         DWORD loaded=AiCredential_Load(profile,&job->secret); if(loaded!=ERROR_SUCCESS && loaded!=ERROR_NOT_FOUND) return FALSE;
         if(!panel->client || panel->endpoint!=settings->endpoint) { panel->client=std::make_shared<Client>(settings->endpoint); panel->endpoint=settings->endpoint; }
         job->client=panel->client;
-        Highlight(GetDlgItem(panel->window,121),0,static_cast<size_t>(GetWindowTextLengthW(GetDlgItem(panel->window,121))),GetSysColor(COLOR_WINDOW));
-        Highlight(GetDlgItem(panel->window,122),0,static_cast<size_t>(GetWindowTextLengthW(GetDlgItem(panel->window,122))),GetSysColor(COLOR_WINDOW));
+        const auto& colors=panel->theme.Colors();
+        Highlight(GetDlgItem(panel->window,121),0,static_cast<size_t>(GetWindowTextLengthW(GetDlgItem(panel->window,121))),colors.field,colors.text);
+        Highlight(GetDlgItem(panel->window,122),0,static_cast<size_t>(GetWindowTextLengthW(GetDlgItem(panel->window,122))),colors.field,colors.text);
         auto before=Wide(original?original:"",length); SetWindowTextW(GetDlgItem(panel->window,121),before.c_str()); SetWindowTextW(GetDlgItem(panel->window,122),L"");
         panel->job=job; panel->published=false;
         std::thread([job] {
@@ -197,6 +210,7 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             control(L"STATIC",labels[AP_ORIGINAL],0,206); control(L"STATIC",labels[AP_RESULT],0,207);
             for(int id:{121,122}) { HWND edit=control(L"RICHEDIT50W",L"",WS_BORDER|WS_VSCROLL|WS_HSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|ES_AUTOHSCROLL|WS_TABSTOP,id); SendMessageW(edit,EM_EXLIMITTEXT,0,2*1024*1024); }
             control(L"STATIC",labels[AP_READY],0,130); Busy(panel,false); if(!SetTimer(window,1,50,nullptr)) throw std::bad_alloc();
+            panel->theme.Update(window,parent);
         }
         RECT rect{}; GetClientRect(parent,&rect); SendMessageW(parent,WM_SIZE,0,MAKELPARAM(rect.right,rect.bottom));
     } catch(...) { if(panel->window) DestroyWindow(panel->window); }

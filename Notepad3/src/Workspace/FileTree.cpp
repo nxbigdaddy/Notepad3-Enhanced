@@ -1,4 +1,5 @@
 #include "FileTree.h"
+#include "../UI/PanelTheme.h"
 #include <commctrl.h>
 #include <shobjidl.h>
 #include <wrl.h>
@@ -25,6 +26,7 @@ struct Result { unsigned long long generation; HTREEITEM item; std::wstring path
 struct Work { unsigned long long generation; HTREEITEM item; std::wstring path; std::shared_ptr<Cursor> cursor; bool append; };
 struct Node { std::wstring path; bool directory, reparse, loaded = false, pending = false; std::shared_ptr<Cursor> cursor; bool more = false; };
 struct Tree {
+    np3::PanelTheme theme;
     std::atomic<HWND> window{nullptr};
     std::atomic<unsigned long long> generation{0};
     HWND parent = nullptr, tree = nullptr, choose = nullptr, refresh = nullptr;
@@ -189,6 +191,9 @@ void Choose(const std::shared_ptr<Tree>& state) {
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     auto state = State(window);
     try {
+    if (message == NP3_WM_PANEL_REFRESH && state) { state->theme.Update(window,state->parent); return 0; }
+    LRESULT themed = 0;
+    if (state && state->theme.Handle(window,message,wParam,lParam,themed)) return themed;
     if (message == Ready && state && wParam == state->cookie) {
         if (lParam) {
             // A lost result cannot leave a directory permanently pending: rebuild so it can be retried.
@@ -247,6 +252,7 @@ extern "C" void FileTree_Toggle(HWND parent, const wchar_t* directory, const FIL
         state->tree = CreateWindowExW(0, WC_TREEVIEWW, L"", WS_CHILD | WS_VISIBLE | TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS, 0, 30, 240, 270, window, nullptr, cls.hInstance, nullptr);
         for (HWND control : {state->choose, state->refresh, state->tree}) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
         Root(state, directory);
+        state->theme.Update(window,parent);
     }
     RECT bounds; GetClientRect(parent, &bounds); SendMessageW(parent, WM_SIZE, SIZE_RESTORED, MAKELPARAM(bounds.right, bounds.bottom));
     } catch (...) { if (HWND window = Find(parent)) DestroyWindow(window); PostMessageW(parent, NP3_WM_FILETREE_ERROR, ERROR_NOT_ENOUGH_MEMORY, 0); }

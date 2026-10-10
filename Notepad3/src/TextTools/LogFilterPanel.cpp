@@ -1,4 +1,5 @@
 #include "LogFilterPanel.h"
+#include "../UI/PanelTheme.h"
 #include <commctrl.h>
 #include <algorithm>
 #include <atomic>
@@ -17,6 +18,7 @@ struct Job {
     ~Job() { LogFilter_Free(&result); }
 };
 struct Panel {
+    np3::PanelTheme theme;
     HWND parent = nullptr, window = nullptr, edit = nullptr, list = nullptr, status = nullptr, run = nullptr, cancel = nullptr;
     std::wstring labels[LP_COUNT];
     std::shared_ptr<Job> job;
@@ -53,6 +55,9 @@ void Activate(const std::shared_ptr<Panel>& panel) {
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     auto panel = State(window);
     try {
+    if (message == NP3_WM_PANEL_REFRESH && panel) { panel->theme.Update(window,panel->parent); return 0; }
+    LRESULT themed = 0;
+    if (panel && panel->theme.Handle(window,message,wParam,lParam,themed)) return themed;
     if (message == WM_TIMER && panel) { Publish(panel); return 0; }
     if (message == WM_COMMAND && panel) {
         if (LOWORD(wParam) == 105) SendMessageW(panel->parent, NP3_WM_LOGFILTER_CAPTURE, 0, 0);
@@ -154,6 +159,7 @@ extern "C" void LogPanel_Toggle(HWND parent, const wchar_t* const* labels) {
             ListView_SetExtendedListViewStyle(panel->list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
             for (int i = 0; i < 2; ++i) { LVCOLUMNW column = {}; column.mask = LVCF_TEXT | LVCF_WIDTH; column.pszText = const_cast<wchar_t*>(panel->labels[LP_LINE + i].c_str()); column.cx = i ? 400 : 80; ListView_InsertColumn(panel->list, i, &column); }
             if (!SetTimer(window, 1, 50, nullptr)) throw std::bad_alloc();
+            panel->theme.Update(window,parent);
         }
         RECT rect; GetClientRect(parent, &rect); SendMessageW(parent, WM_SIZE, 0, MAKELPARAM(rect.right, rect.bottom));
     } catch (...) { if (HWND window = Find(parent)) DestroyWindow(window); }

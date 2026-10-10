@@ -51,6 +51,7 @@
 #include "Workspace/FileTree.h"
 #include "TextTools/LogFilterPanel.h"
 #include "TextTools/BatchPanel.h"
+#include "UI/PanelTheme.h"
 #include "AI/AiPanel.h"
 #include "Markdown/MarkdownPdf.h"
 #include "TextTools/JsonFormat.h"
@@ -405,6 +406,23 @@ static bool _BatchRun(void);
 static LRESULT _BatchOpenFiles(const BATCH_FILES* request);
 static LRESULT _BatchApply(const BATCH_APPLY* request);
 static int _BatchLayout(int x, int y, int width, int height);
+static void _PanelColors(PANEL_COLORS* colors)
+{
+    bool dark = UseDarkMode();
+    bool highContrast = false;
+#ifdef D_NP3_WIN10_DARK_MODE
+    highContrast = IsHighContrast();
+#endif
+    if (highContrast) dark = false;
+    colors->dark = dark;
+    colors->panel = dark ? Settings2.DarkModeBkgColor : GetSysColor(COLOR_BTNFACE);
+    colors->field = dark ? RGB(GetRValue(colors->panel)*4/5,GetGValue(colors->panel)*4/5,GetBValue(colors->panel)*4/5) : GetSysColor(COLOR_WINDOW);
+    colors->text = dark ? Settings2.DarkModeTxtColor : GetSysColor(COLOR_WINDOWTEXT);
+    colors->disabled = dark ? RGB((GetRValue(colors->panel)+GetRValue(colors->text))/2,(GetGValue(colors->panel)+GetGValue(colors->text))/2,(GetBValue(colors->panel)+GetBValue(colors->text))/2) : GetSysColor(COLOR_GRAYTEXT);
+    colors->added = highContrast ? GetSysColor(COLOR_HIGHLIGHT) : dark ? RGB(34,79,49) : RGB(215,245,215);
+    colors->removed = highContrast ? GetSysColor(COLOR_HIGHLIGHT) : dark ? RGB(96,42,42) : RGB(255,220,220);
+    colors->highlightText = highContrast ? GetSysColor(COLOR_HIGHLIGHTTEXT) : colors->text;
+}
 static bool _LogFilterRun(void);
 static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location);
 static int _ConfigCheck(int kind, bool showMessage);
@@ -2630,6 +2648,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     case NP3_WM_BATCH_CAPTURE: return _BatchRun();
     case NP3_WM_BATCH_APPLY: return _BatchApply((const BATCH_APPLY*)lParam);
     case NP3_WM_BATCH_OPEN: return _BatchOpenFiles((const BATCH_FILES*)lParam);
+    case NP3_WM_PANEL_COLORS:
+        if (!lParam) return FALSE;
+        _PanelColors((PANEL_COLORS*)lParam); return TRUE;
     case NP3_WM_AI_APPLY: return _AiApply((const AI_PANEL_APPLY*)lParam);
     case NP3_WM_AI_SAVE: return _AiSave((const AI_PANEL_SAVE*)lParam, wParam != 0);
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
@@ -3924,6 +3945,8 @@ LRESULT MsgThemeChanged(HWND hwnd, WPARAM wParam,LPARAM lParam)
         Sci_ColouriseAll();
 
         EditUpdateVisibleIndicators();
+
+        PanelTheme_RefreshChildren(hwnd);
 
         UpdateUI(hwnd);
 

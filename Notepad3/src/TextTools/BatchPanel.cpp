@@ -1,5 +1,6 @@
 #include "BatchPanel.h"
 #include "BatchTransform.h"
+#include "../UI/PanelTheme.h"
 #include <commctrl.h>
 #include <richedit.h>
 #include <algorithm>
@@ -21,6 +22,7 @@ struct Job {
     bool error = false;
 };
 struct Panel {
+    np3::PanelTheme theme;
     HWND window = nullptr, parent = nullptr;
     HMODULE richEdit = nullptr;
     std::wstring labels[BP_COUNT];
@@ -143,6 +145,9 @@ void ChooseFiles(const Owner& panel) {
 LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     auto panel = WindowState(window);
     try {
+        if (panel && message == NP3_WM_PANEL_REFRESH) { panel->theme.Update(window,panel->parent); return 0; }
+        LRESULT themed = 0;
+        if (panel && panel->theme.Handle(window,message,wParam,lParam,themed)) return themed;
         if (panel && message == WM_TIMER) { Publish(panel); return 0; }
         if (panel && message == WM_SIZE) {
             const int dpi = static_cast<int>(GetDpiForWindow(panel->parent));
@@ -266,6 +271,7 @@ extern "C" void BatchPanel_Toggle(void* context, HWND parent, const wchar_t* con
             control(L"STATIC", labels[BP_ORIGINAL], 0, 201); control(L"STATIC", labels[BP_RESULT], 0, 202);
             for (int id : {121, 122}) { HWND edit = control(L"RICHEDIT50W", L"", WS_BORDER | WS_VSCROLL | WS_HSCROLL | WS_TABSTOP | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL, id); SendMessageW(edit, EM_EXLIMITTEXT, 0, 32 * 1024 * 1024); }
             control(L"STATIC", labels[BP_READY], 0, 130);
+            panel->theme.Update(panel->window,parent);
             panel->published = false; panel->applied = false; Enable(panel);
             if (!SetTimer(panel->window, 1, 50, nullptr)) throw std::bad_alloc();
         }

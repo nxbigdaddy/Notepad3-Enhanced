@@ -16,6 +16,14 @@ static bool _WorkspaceTestText(const char* expected)
     SciCall_GetText(COUNTOF(text), text);
     return strcmp(text, expected) == 0;
 }
+static bool _WorkspaceTestPanelBrush(HWND panel, HWND child, COLORREF background, COLORREF foreground)
+{
+    HDC dc=CreateCompatibleDC(NULL); if (!dc) return false;
+    HBRUSH brush=(HBRUSH)SendMessageW(panel,WM_CTLCOLORSTATIC,(WPARAM)dc,(LPARAM)child);
+    LOGBRUSH info={0};
+    bool matches=brush && GetObjectW(brush,sizeof(info),&info)==sizeof(info) && info.lbColor==background && GetTextColor(dc)==foreground;
+    DeleteDC(dc); return matches;
+}
 static bool _WorkspaceTestTreeReady()
 {
     DWORD const start = GetTickCount();
@@ -448,11 +456,20 @@ static void _WorkspaceSelfTest()
                 _WorkspaceTestCheck(&result,ready && !wcscmp(output,L"模拟结果") && _WorkspaceTestText("alpha\r\nA"),"AI action reaches local service and previews result without editing");
                 _WorkspaceTestCheck(&result,IsWindowEnabled(GetDlgItem(aiPanel,115)) == (action != AI_EXPLAIN),"AI explain remains view-only while edit results allow manual apply");
                 if(action==AI_REWRITE) {
+                    PANEL_COLORS aiColors={0}; _PanelColors(&aiColors);
                     CHARFORMAT2W originalFormat = {0}, resultFormat = {0}; originalFormat.cbSize=sizeof(originalFormat); resultFormat.cbSize=sizeof(resultFormat);
                     SendMessageW(GetDlgItem(aiPanel,121),EM_SETSEL,0,1); SendMessageW(GetDlgItem(aiPanel,121),EM_GETCHARFORMAT,SCF_SELECTION,(LPARAM)&originalFormat);
                     SendMessageW(GetDlgItem(aiPanel,122),EM_SETSEL,0,1); SendMessageW(GetDlgItem(aiPanel,122),EM_GETCHARFORMAT,SCF_SELECTION,(LPARAM)&resultFormat);
-                    _WorkspaceTestCheck(&result,(originalFormat.dwMask & CFM_BACKCOLOR) && originalFormat.crBackColor==RGB(255,220,220),"AI original changed range has red difference highlighting");
-                    _WorkspaceTestCheck(&result,(resultFormat.dwMask & CFM_BACKCOLOR) && resultFormat.crBackColor==RGB(215,245,215),"AI result changed range has green difference highlighting");
+                    _WorkspaceTestCheck(&result,(originalFormat.dwMask & CFM_BACKCOLOR) && originalFormat.crBackColor==aiColors.removed,"AI original changed range has themed difference highlighting");
+                    _WorkspaceTestCheck(&result,(resultFormat.dwMask & CFM_BACKCOLOR) && resultFormat.crBackColor==aiColors.added,"AI result changed range has themed difference highlighting");
+                    CHARRANGE diffSelection={0}; SendMessageW(GetDlgItem(aiPanel,122),EM_EXGETSEL,0,(LPARAM)&diffSelection);
+                    unsigned long long themeSourceVersion=workspace->documents[workspace->active].version;
+                    SendMessageW(aiPanel,NP3_WM_PANEL_REFRESH,0,0);
+                    CHARRANGE afterThemeSelection={0}; SendMessageW(GetDlgItem(aiPanel,122),EM_EXGETSEL,0,(LPARAM)&afterThemeSelection);
+                    SendMessageW(GetDlgItem(aiPanel,122),EM_GETCHARFORMAT,SCF_SELECTION,(LPARAM)&resultFormat);
+                    GetWindowTextW(GetDlgItem(aiPanel,122),output,COUNTOF(output));
+                    _WorkspaceTestCheck(&result,!wcscmp(output,L"模拟结果") && diffSelection.cpMin==afterThemeSelection.cpMin && diffSelection.cpMax==afterThemeSelection.cpMax && resultFormat.crBackColor==aiColors.added && resultFormat.crTextColor==aiColors.highlightText,"AI theme refresh retains result selection and themed difference colors");
+                    _WorkspaceTestCheck(&result,workspace->documents[workspace->active].version==themeSourceVersion && _WorkspaceTestText("alpha\r\nA"),"AI theme refresh does not edit source document");
 
                     SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(115,BN_CLICKED),0);
                     _WorkspaceTestCheck(&result,_WorkspaceTestText("模拟结果\r\nA") && !IsWindowEnabled(GetDlgItem(aiPanel,115)),"AI preview apply button changes original selection once");
@@ -552,7 +569,37 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result,selectedBatchTab && _WorkspaceTestText("beta\r\nB") && Encoding_GetCurrent()==CPI_UNICODEBOM && !IsSaveNeeded(),"batch selected UTF16 file retains native decoding and encoding");
     if (selectedBatchTab) _WorkspaceCloseActive(); SciCall_Undo();
     _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"batch file admission leaves existing text edit independently undoable");
-    _BatchToggle();
+    PANEL_COLORS themeColors={0}; _PanelColors(&themeColors);
+    HWND batchList=GetDlgItem(batchPanel,120);
+    _WorkspaceTestCheck(&result,ListView_GetBkColor(batchList)==themeColors.field && ListView_GetTextColor(batchList)==themeColors.text,"batch list uses current panel palette");
+    _WorkspaceTestCheck(&result,_WorkspaceTestPanelBrush(batchPanel,GetDlgItem(batchPanel,121),themeColors.field,themeColors.text),"batch read-only preview brush and foreground use current palette");
+    SetWindowTextW(GetDlgItem(batchPanel,102),L"a"); SetWindowTextW(GetDlgItem(batchPanel,103),L"主题");
+    SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0); _WorkspaceTestBatchReady();
+    CHARRANGE batchThemeSelection={0}; batchThemeSelection.cpMin=1; batchThemeSelection.cpMax=3;
+    SendMessageW(GetDlgItem(batchPanel,121),EM_EXSETSEL,0,(LPARAM)&batchThemeSelection);
+    unsigned long long batchThemeVersion=workspace->documents[0].version;
+    MsgThemeChanged(Globals.hwndMain,0,0);
+    for(int themeIndex=0;themeIndex<5;++themeIndex) PanelTheme_RefreshChildren(Globals.hwndMain);
+    DWORD themeGdiBefore=GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS);
+    for(int themeIndex=0;themeIndex<40;++themeIndex) PanelTheme_RefreshChildren(Globals.hwndMain);
+    DWORD themeGdiAfter=GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS);
+    CHARRANGE batchThemeAfter={0}; SendMessageW(GetDlgItem(batchPanel,121),EM_EXGETSEL,0,(LPARAM)&batchThemeAfter);
+    _WorkspaceTestCheck(&result,ListView_GetItemCount(batchList)==1 && ListView_GetCheckState(batchList,0) && IsWindowEnabled(GetDlgItem(batchPanel,112)) && batchThemeAfter.cpMin==1 && batchThemeAfter.cpMax==3,"batch theme refresh retains proposals, check state, confirmation and selection");
+    _WorkspaceTestCheck(&result,themeGdiBefore && themeGdiAfter && themeGdiAfter<=themeGdiBefore+2,"repeated panel theme refresh has bounded GDI object count");
+    HFONT panelFont=(HFONT)SendMessageW(GetDlgItem(batchPanel,113),WM_GETFONT,0,0); LOGFONTW panelFontInfo={0};
+    NONCLIENTMETRICSW panelMetrics={0}; panelMetrics.cbSize=sizeof(panelMetrics);
+    bool panelMetricsReady=SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS,sizeof(panelMetrics),&panelMetrics,0,GetDpiForWindow(Globals.hwndMain));
+    _WorkspaceTestCheck(&result,panelFont && panelFont!=(HFONT)GetStockObject(DEFAULT_GUI_FONT) && GetObjectW(panelFont,sizeof(panelFontInfo),&panelFontInfo)==sizeof(panelFontInfo) && panelMetricsReady && panelFontInfo.lfHeight==panelMetrics.lfMessageFont.lfHeight,"panel controls use an owned DPI message font");
+    char themeNote[160]; DWORD themeWritten=0;
+    StringCchPrintfA(themeNote,COUNTOF(themeNote),"THEME dark=%i panel=%lu field=%lu text=%lu GDI_before=%lu GDI_after=%lu DPI=%u\r\n",themeColors.dark,(unsigned long)themeColors.panel,(unsigned long)themeColors.field,(unsigned long)themeColors.text,(unsigned long)themeGdiBefore,(unsigned long)themeGdiAfter,GetDpiForWindow(Globals.hwndMain));
+    WriteFile(result.log,themeNote,(DWORD)strlen(themeNote),&themeWritten,NULL);
+    _WorkspaceTestCheck(&result,workspace->documents[0].version==batchThemeVersion && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"repeated theme refresh preserves editor version text and saved state");
+    _LogFilterToggle(); HWND themedLog=FindWindowExW(Globals.hwndMain,NULL,L"NP3LogFilterPanel",NULL);
+    _WorkspaceTestCheck(&result,ListView_GetBkColor(GetDlgItem(themedLog,107))==themeColors.field && ListView_GetTextColor(GetDlgItem(themedLog,107))==themeColors.text,"log filter list receives shared panel theme");
+    _LogFilterToggle();
+    _FileTreeToggle(); HWND themedTree=FindWindowExW(Globals.hwndMain,NULL,L"NP3WorkspaceFileTree",NULL); HWND themedTreeView=FindWindowExW(themedTree,NULL,WC_TREEVIEWW,NULL);
+    _WorkspaceTestCheck(&result,_WorkspaceTestTreeReady() && TreeView_GetBkColor(themedTreeView)==themeColors.field && TreeView_GetTextColor(themedTreeView)==themeColors.text,"file tree receives shared panel theme without losing directory loading");
+    _FileTreeToggle(); _BatchToggle();
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;
     StringCchPrintfA(summary, COUNTOF(summary), "RESULT checks=%i failures=%i\r\n", result.checks, result.failures);
