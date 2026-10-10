@@ -361,6 +361,21 @@ static void _WorkspaceSelfTest()
     int treeNarrow=FileTree_Layout(Globals.hwndMain,0,0,1,1),treeZero=FileTree_Layout(Globals.hwndMain,0,0,0,0);
     _WorkspaceTestCheck(&result,treeNarrow>=0 && treeNarrow<=1 && treeZero==0,"file tree width safely clamps zero and narrow layout");
     _SplitRelayout();
+    if(treeGrip) { SendMessageW(treeGrip,WM_LBUTTONDOWN,MK_LBUTTON,0); SendMessageW(treeGrip,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(40,0)); SendMessageW(treeGrip,WM_LBUTTONUP,0,0); }
+    GetWindowRect(panel,&treeBefore);
+    _FileTreeToggle(); _FileTreeToggle();
+    panel=FindWindowExW(Globals.hwndMain,NULL,L"NP3WorkspaceFileTree",NULL);
+    tree=FindWindowExW(panel,NULL,WC_TREEVIEWW,NULL); GetWindowRect(panel,&treeAfter);
+    _WorkspaceTestCheck(&result,_WorkspaceTestTreeReady() && treeAfter.right-treeAfter.left==treeBefore.right-treeBefore.left,"file tree committed width survives close and reopen");
+    wchar_t rememberedRoot[32768]={0}; TVITEMW rememberedItem={0}; rememberedItem.mask=TVIF_TEXT; rememberedItem.hItem=TreeView_GetRoot(tree); rememberedItem.pszText=rememberedRoot; rememberedItem.cchTextMax=COUNTOF(rememberedRoot); TreeView_GetItem(tree,&rememberedItem);
+    _WorkspaceTestCheck(&result,lstrcmpiW(rememberedRoot,folder)==0,"file tree root survives close and reopen");
+    wchar_t customTreeRoot[32768]; StringCchPrintfW(customTreeRoot,COUNTOF(customTreeRoot),L"%s\\nested",folder);
+    bool customRootLoaded=FileTree_SetRoot(Globals.hwndMain,customTreeRoot) && _WorkspaceTestTreeReady();
+    _FileTreeToggle(); _FileTreeToggle();
+    panel=FindWindowExW(Globals.hwndMain,NULL,L"NP3WorkspaceFileTree",NULL); tree=FindWindowExW(panel,NULL,WC_TREEVIEWW,NULL);
+    bool customRootReady=_WorkspaceTestTreeReady(); rememberedItem.hItem=TreeView_GetRoot(tree); TreeView_GetItem(tree,&rememberedItem);
+    _WorkspaceTestCheck(&result,customRootLoaded && customRootReady && lstrcmpiW(rememberedRoot,customTreeRoot)==0 && _WorkspaceTestTreeChild(tree,rememberedItem.hItem,L"child.txt"),"chosen tree root survives reopen independently of active file directory");
+    _WorkspaceTestCheck(&result,FileTree_SetRoot(Globals.hwndMain,folder) && _WorkspaceTestTreeReady(),"file tree can return to original root after remembered custom directory");
     HTREEITEM root = TreeView_GetRoot(tree);
     HIMAGELIST treeIcons=TreeView_GetImageList(tree,TVSIL_NORMAL); int treeIconWidth=0,treeIconHeight=0;
     if(treeIcons) ImageList_GetIconSize(treeIcons,&treeIconWidth,&treeIconHeight);

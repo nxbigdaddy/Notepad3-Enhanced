@@ -16,6 +16,26 @@
 namespace {
 constexpr wchar_t ClassName[] = L"NP3WorkspaceFileTree";
 constexpr UINT Ready = WM_APP + 1;
+constexpr wchar_t PreferencesKey[] = L"NP3FileTreePreferences";
+struct Preferences { std::wstring root; int widthDip = 240; };
+LRESULT CALLBACK PreferencesProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
+    LRESULT result = DefSubclassProc(window, message, wParam, lParam);
+    if (message == WM_NCDESTROY) {
+        delete reinterpret_cast<Preferences*>(RemovePropW(window, PreferencesKey));
+        RemoveWindowSubclass(window, PreferencesProc, 0);
+    }
+    return result;
+}
+Preferences* GetPreferences(HWND parent) {
+    auto* saved = reinterpret_cast<Preferences*>(GetPropW(parent, PreferencesKey));
+    if (saved) return saved;
+    auto candidate = std::make_unique<Preferences>();
+    if (!SetWindowSubclass(parent, PreferencesProc, 0, 0)) throw std::bad_alloc();
+    if (!SetPropW(parent, PreferencesKey, candidate.get())) {
+        RemoveWindowSubclass(parent, PreferencesProc, 0); throw std::bad_alloc();
+    }
+    return candidate.release();
+}
 struct Cursor {
     HANDLE handle = INVALID_HANDLE_VALUE;
     WIN32_FIND_DATAW found = {};
@@ -278,6 +298,11 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         if(IsWindow(state->tree)) TreeView_SetImageList(state->tree,nullptr,TVSIL_NORMAL);
         ImageList_Destroy(state->images); state->images=nullptr;
     }
+    if (message == WM_DESTROY && state) {
+        auto* saved = GetPreferences(state->parent);
+        saved->root = state->root;
+        saved->widthDip = state->dragging ? state->startWidthDip : state->widthDip;
+    }
     if (message == WM_NCDESTROY && state) {
         state->window = nullptr; ++state->generation; state->queued.clear();
         auto* holder = reinterpret_cast<std::shared_ptr<Tree>*>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -302,7 +327,9 @@ extern "C" void FileTree_Toggle(HWND parent, const wchar_t* directory, const FIL
     try {
     if (HWND old = Find(parent)) { DestroyWindow(old); }
     else {
+        auto* saved = GetPreferences(parent);
         auto state = std::make_shared<Tree>(); state->parent = parent; state->loading = labels->loading; state->limit = labels->limit;
+        state->widthDip = saved->widthDip;
         LARGE_INTEGER tick; QueryPerformanceCounter(&tick); state->cookie = static_cast<UINT_PTR>(tick.QuadPart);
         WNDCLASSW cls = {}; cls.hInstance = GetModuleHandleW(nullptr); cls.lpfnWndProc = WindowProc; cls.lpszClassName = ClassName; cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); RegisterClassW(&cls);
         HWND window = CreateWindowExW(WS_EX_CLIENTEDGE, ClassName, L"Files", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN, 0, 0, 240, 300, parent, nullptr, cls.hInstance, nullptr);
@@ -315,7 +342,7 @@ extern "C" void FileTree_Toggle(HWND parent, const wchar_t* directory, const FIL
         state->grip=CreateWindowExW(0,L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_NOTIFY,0,0,0,0,window,nullptr,cls.hInstance,nullptr);
         if(!state->grip || !SetWindowSubclass(state->grip,GripProc,0,0)) throw std::bad_alloc();
         Icons(state,window);
-        Root(state, directory);
+        if (saved->root.empty() || !Root(state, saved->root.c_str())) Root(state, directory);
         state->theme.Update(window,parent);
     }
     RECT bounds; GetClientRect(parent, &bounds); SendMessageW(parent, WM_SIZE, SIZE_RESTORED, MAKELPARAM(bounds.right, bounds.bottom));
