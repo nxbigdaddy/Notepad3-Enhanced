@@ -23,3 +23,8 @@ try {
     & $taskMSBuild Notepad3.sln /m:1 /restore "/p:Configuration=$Configuration" /p:Platform=x64 "/p:PlatformToolset=$Toolset" /v:quiet /clp:ErrorsOnly "/flp:logfile=$taskArtifacts\build-$Configuration.log;verbosity=normal"
     if ($LASTEXITCODE -ne 0) { throw "Build failed. See artifacts/build-$Configuration.log." }
 } finally { Pop-Location }
+
+# Offline renderer distribution accompanies the native binary.
+$taskRenderAssets = Join-Path $taskSource 'src\Markdown\vendor\render-assets'
+$taskBinaryFolder = Join-Path $taskSource ("Bin\$($Configuration)_x64_$Toolset")
+Copy-Item -LiteralPath $taskRenderAssets -Destination $taskBinaryFolder -Recurse -Force
