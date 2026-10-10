@@ -1,3 +1,4 @@
+#include "AiDiff.h"
 #include "AiPanel.h"
 #include "../UI/PanelTheme.h"
 #include <richedit.h>
@@ -71,14 +72,14 @@ std::wstring Paragraphs(const std::wstring& text) {
 }
 void Difference(const Owner& panel, const std::wstring& source, const std::wstring& output) {
     const auto before=Paragraphs(source), after=Paragraphs(output);
-    size_t prefix=0, suffix=0;
-    while(prefix<before.size() && prefix<after.size() && before[prefix]==after[prefix]) ++prefix;
-    if(prefix && prefix<before.size() && before[prefix]>=0xdc00 && before[prefix]<=0xdfff) --prefix;
-    while(suffix<before.size()-prefix && suffix<after.size()-prefix && before[before.size()-1-suffix]==after[after.size()-1-suffix]) ++suffix;
-    if(suffix && before.size()>suffix && before[before.size()-suffix]>=0xdc00 && before[before.size()-suffix]<=0xdfff) --suffix;
-    const auto& colors=panel->theme.Colors();
-    Highlight(GetDlgItem(panel->window,121),prefix,before.size()-suffix,colors.removed,colors.highlightText);
-    Highlight(GetDlgItem(panel->window,122),prefix,after.size()-suffix,colors.added,colors.highlightText);
+    const auto difference=np3::AiDifference(before,after);
+    const auto colors=panel->theme.Colors();
+    Highlight(GetDlgItem(panel->window,121),0,before.size(),colors.field,colors.text);
+    Highlight(GetDlgItem(panel->window,122),0,after.size(),colors.field,colors.text);
+    for(const auto& range:difference.ranges) {
+        Highlight(GetDlgItem(panel->window,121),range.beforeStart,range.beforeEnd,colors.removed,colors.highlightText);
+        Highlight(GetDlgItem(panel->window,122),range.afterStart,range.afterEnd,colors.added,colors.highlightText);
+    }
 }
 void Publish(const Owner& panel) {
     auto job = panel->job;

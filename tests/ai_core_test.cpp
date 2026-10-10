@@ -1,3 +1,4 @@
+#include "../Notepad3/src/AI/AiDiff.h"
 #include "../Notepad3/src/AI/AiCore.h"
 #include "../Notepad3/src/TextTools/JsonFormat.h"
 #include <cstdio>
@@ -12,6 +13,20 @@ int main() {
     bool created = false;
     auto response = [&](const std::string& json, int expected) { AiProtocol_Free(output); output = nullptr; expect(AiProtocol_Response(json.data(), json.size(), &output, &length) == expected, "response status"); };
     try {
+        auto diff=np3::AiDifference(L"old\runchanged\rsecond",L"new\runchanged\rthird");
+        expect(diff.precise && diff.ranges.size()==2,"two separate changes preserve unchanged paragraph");
+        expect(diff.ranges[0].beforeEnd<=4 && diff.ranges[1].beforeStart>=14,"diff ranges exclude middle context");
+        expect(np3::AiDifference(L"same",L"same").ranges.empty(),"identical text has no highlight");
+        auto inserted=np3::AiDifference(L"a\rc",L"a\rb\rc");
+        expect(inserted.ranges.size()==1 && inserted.ranges[0].beforeStart==inserted.ranges[0].beforeEnd && inserted.ranges[0].afterEnd-inserted.ranges[0].afterStart==2,"inserted line has zero source range");
+        auto deleted=np3::AiDifference(L"a\rb\rc",L"a\rc");
+        expect(deleted.ranges.size()==1 && deleted.ranges[0].afterStart==deleted.ranges[0].afterEnd,"deleted line has zero result range");
+        auto unicode=np3::AiDifference(L"x\xd83d\xde00y",L"x\xd83d\xde01y");
+        expect(unicode.ranges.size()==1 && unicode.ranges[0].beforeStart==1 && unicode.ranges[0].beforeEnd==3,"UTF16 surrogate pair stays intact");
+        std::wstring huge; for(int line=0;line<1100;++line) huge+=L"line\r";
+        expect(np3::AiDifference(huge,huge+L"more").precise,"large unchanged prefix remains precisely aligned");
+        std::wstring other; for(int line=0;line<1100;++line) other+=L"other\r";
+        expect(!np3::AiDifference(huge,other).precise,"large changed alignment bounded with explicit coarse flag");
         expect(AiEndpoint_Validate(L"https://example.test/v1/chat/completions") == AI_OK, "HTTPS service endpoint");
         expect(AiEndpoint_Validate(L"http://127.0.0.1:18888/v1/chat/completions") == AI_OK, "loopback local model endpoint");
         expect(AiEndpoint_Validate(L"http://localhost/v1/chat/completions") == AI_OK, "localhost endpoint");
