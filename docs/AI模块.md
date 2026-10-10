@@ -51,3 +51,7 @@ HTTP 证据 artifacts/ai-http-test-1791664138221706300（native-test.log、serve
 验证：完整 Release x64 构建通过；AI 核心 53 项、HTTP 19 项通过。无配置工作区 113 项检查通过（包含禁写 INI 后新密钥回滚、原密钥恢复），证据 artifacts/workspace-test-c591b79f643e41eea965b39db740f270。隔离 INI + 原生面板 + 本地 HTTP 服务 127 项检查通过，证据 artifacts/workspace-test-baa41fa65c8749dfbd4a7ce4e61c0eda；服务独立核对四操作与取消共 5 请求、模型/输入/Bearer/无 Cookie，退出后 INI 仍保留配置且无密钥，证据 artifacts/ai-panel-test-1791665388255202600。差异红绿格式通过真实 RichEdit EM_GETCHARFORMAT 读回验证，不代表已完成鼠标与视觉验收。
 
 开发包 artifacts/ai-panel-x64-v27/Notepad3.exe。相关命令 scripts/test-ai-core.cmd、scripts/test-ai-http.cmd、python scripts/test-ai-panel.py。生产功能没有模拟响应；本地测试只使用回环服务和临时假密钥，独立确认删除测试密钥。远程服务、代理、缺密钥时具体提示、关闭运行请求/源标签的完整交互边界、精细差异及主题/DPI 继续迭代。
+
+## 第三十八轮应用边界
+
+手动应用入口拒绝超过 2 MiB、含 NUL 和无效 UTF-8 的结果，先校验后开启编辑事务。来源标签关闭后不能应用；重新打开相同路径与内容也因新文档身份拒绝旧结果。181/197 项综合原生检查通过，含这五项新增边界；正常本地响应和一次撤销仍通过。真实服务、完整多段差异和实际交互验收继续推进。

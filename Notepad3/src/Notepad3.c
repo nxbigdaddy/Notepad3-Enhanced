@@ -12573,6 +12573,8 @@ static bool _AiApply(const AI_PANEL_APPLY* request)
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace || !request || !request->result || !request->resultLength || SciCall_GetReadOnly() || Sci_IsMultiOrRectangleSelection()) return false;
+    if (request->resultLength > 2 * 1024 * 1024 || memchr(request->result, 0, request->resultLength) ||
+        !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, request->result, (int)request->resultLength, NULL, 0)) return false;
     WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
     const AI_PANEL_SOURCE* source = &request->source;
     if (doc->id != source->id || doc->version != source->version || SciCall_GetAnchor() != source->anchor || SciCall_GetCurrentPos() != source->caret) return false;
