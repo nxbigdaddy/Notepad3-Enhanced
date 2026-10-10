@@ -48,6 +48,7 @@
 #include "DarkMode/DarkMode.h"
 #include "Notepad3Util.h"
 #include "Markdown/MarkdownPreview.h"
+#include "Workspace/FileTree.h"
 #include "Markdown/MarkdownPdf.h"
 #include "TextTools/JsonFormat.h"
 #include "StyleLexers/EditLexer.h"
@@ -381,6 +382,7 @@ static bool _WorkspaceSwitch(int index);
 static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
 static void _WorkspaceDispose();
+static void _FileTreeToggle();
 static int _ConfigCheck(int kind, bool showMessage);
 static void _MarkdownExportCommand(bool pdf);
 static void _MarkdownPdfSelfTest();
@@ -2600,6 +2602,14 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
             else InfoBoxLng(MB_ICONINFORMATION, NULL, IDS_MUI_MARKDOWN_PDF_DONE);
         }
         return 0;
+    case NP3_WM_FILETREE_OPEN: {
+        HPATHL path = Path_Allocate((const WCHAR*)lParam);
+        FileLoad(path, FLF_None, 0, 0); Path_Release(path);
+        return 0;
+    }
+    case NP3_WM_FILETREE_ERROR:
+        InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_FILETREE_ERROR, (uint32_t)wParam);
+        return 0;
     case NP3_WM_WORKSPACE_RECOVERY:
         _WorkspaceRecoveryStart();
         _WorkspaceRecoveryTest();
@@ -3949,6 +3959,8 @@ LRESULT MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam)
 
     int const tabHeight = _WorkspaceLayout(x, y, max_i(0, cx));
     y += tabHeight; cy = max_i(0, cy - tabHeight);
+    int const treeWidth = FileTree_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
+    x += treeWidth; cx -= treeWidth;
     cx -= MarkdownPreview_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
 
     HDWP const hdwp = BeginDeferWindowPos(2);
@@ -5221,6 +5233,7 @@ LRESULT MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam)
 
     CheckCmd(hmenu, IDM_VIEW_READONLY, ro);
     CheckCmd(hmenu, IDM_VIEW_WORDWRAP, Globals.fvCurFile.bWordWrap);
+    CheckCmd(hmenu, IDM_VIEW_FILETREE, FileTree_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_MARKDOWN_PREVIEW, MarkdownPreview_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_LONGLINEMARKER, Settings.MarkLongLines);
     CheckCmd(hmenu, IDM_VIEW_SHOWINDENTGUIDES, Settings.ShowIndentGuides);
@@ -7213,6 +7226,9 @@ static bool _HandleViewAndSettingsCommands(HWND hwnd, UINT umsg, WPARAM wParam, 
         break;
 
 
+    case IDM_VIEW_FILETREE:
+        _FileTreeToggle();
+        break;
     case IDM_VIEW_MARKDOWN_PREVIEW:
         MarkdownPreview_Toggle(hwnd);
         UpdateToolbar();
@@ -12387,6 +12403,20 @@ static inline void _ResetFileWatchingMode() {
 #include "Workspace/WorkspaceRecovery.inc"
 #include "Markdown/MarkdownExportCommand.inc"
 #include "TextTools/ConfigCheck.inc"
+static void _FileTreeToggle()
+{
+    HPATHL directory = Path_IsNotEmpty(Paths.CurrentFile) ? Path_Copy(Paths.CurrentFile) : Path_Copy(Paths.WorkingDirectory);
+    if (!directory) return;
+    if (Path_IsNotEmpty(Paths.CurrentFile)) Path_RemoveFileSpec(directory);
+    WCHAR choose[128], refresh[128], loading[128], limit[128];
+    GetLngString(IDS_MUI_FILETREE_CHOOSE, choose, COUNTOF(choose));
+    GetLngString(IDS_MUI_FILETREE_REFRESH, refresh, COUNTOF(refresh));
+    GetLngString(IDS_MUI_FILETREE_LOADING, loading, COUNTOF(loading));
+    GetLngString(IDS_MUI_FILETREE_LIMIT, limit, COUNTOF(limit));
+    FILETREE_LABELS labels = { choose, refresh, loading, limit };
+    FileTree_Toggle(Globals.hwndMain, Path_Get(directory), &labels); Path_Release(directory);
+}
+
 #include "Workspace/WorkspaceSelfTest.inc"
 #include "Workspace/WorkspaceRecoveryTest.inc"
 #include "Markdown/MarkdownPdfSelfTest.inc"

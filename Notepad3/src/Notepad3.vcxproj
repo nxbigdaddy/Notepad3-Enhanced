@@ -1291,6 +1291,7 @@
     <ClInclude Include="Workspace\SessionStoreC.h" />
     <ClCompile Include="TextTools\JsonFormat.cpp" />
     <ClCompile Include="TextTools\ConfigValidate.cpp" />
+    <ClCompile Include="Workspace\FileTree.cpp" />
     <ClCompile Include="Markdown\MarkdownRender.cpp" />
     <ClCompile Include="Markdown\MarkdownExport.cpp" />
     <ClCompile Include="Markdown\MarkdownPdf.cpp" />
@@ -1299,6 +1300,7 @@
     <ClCompile Include="Markdown\vendor\md4c\md4c-html.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
     <ClCompile Include="Markdown\vendor\md4c\entity.c"><WarningLevel>Level3</WarningLevel><TreatWarningAsError>false</TreatWarningAsError></ClCompile>
     <ClInclude Include="Workspace\DocumentWorkspace.inc" />
+    <ClInclude Include="Workspace\FileTree.h" />
     <ClInclude Include="Workspace\WorkspaceSelfTest.inc" />
     <ClInclude Include="Workspace\WorkspaceSession.inc" />
     <ClInclude Include="Workspace\WorkspaceNormalSession.inc" />

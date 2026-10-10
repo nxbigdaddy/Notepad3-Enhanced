@@ -363,6 +363,7 @@ BEGIN
     BEGIN
         MENUITEM "Woord Oo&rvloei\tCtrl+W",                 IDM_VIEW_WORDWRAP
         MENUITEM "Markdown Preview\tCtrl+Shift+F12", IDM_VIEW_MARKDOWN_PREVIEW
+        MENUITEM "File Tree", IDM_VIEW_FILETREE
         MENUITEM "&Lang Lyn Merker\tCtrl+Alt+L",            IDM_VIEW_LONGLINEMARKER
         MENUITEM "Indent&asiegidse\tCtrl+Shift+G",          IDM_VIEW_SHOWINDENTGUIDES
         MENUITEM SEPARATOR

@@ -15,6 +15,24 @@ static bool _WorkspaceTestText(const char* expected)
     SciCall_GetText(COUNTOF(text), text);
     return strcmp(text, expected) == 0;
 }
+static bool _WorkspaceTestTreeReady()
+{
+    DWORD const start = GetTickCount();
+    while (FileTree_IsLoading(Globals.hwndMain) && GetTickCount() - start < 5000) {
+        MsgWaitForMultipleObjectsEx(0, NULL, 50, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        MSG message;
+        while (PeekMessageW(&message, NULL, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+    }
+    return !FileTree_IsLoading(Globals.hwndMain);
+}
+static HTREEITEM _WorkspaceTestTreeChild(HWND tree, HTREEITEM parent, const WCHAR* name)
+{
+    for (HTREEITEM item = TreeView_GetChild(tree, parent); item; item = TreeView_GetNextSibling(tree, item)) {
+        WCHAR label[256]; TVITEMW entry = { 0 }; entry.mask = TVIF_TEXT; entry.hItem = item; entry.pszText = label; entry.cchTextMax = COUNTOF(label);
+        if (TreeView_GetItem(tree, &entry) && wcscmp(label, name) == 0) return item;
+    }
+    return NULL;
+}
 static void _WorkspaceSelfTest()
 {
     WCHAR folder[MAX_PATH_EXPLICIT];
@@ -155,6 +173,26 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result, _ConfigCheck(CONFIG_INI, false) == 0, "valid INI structure accepted in actual editor");
     SciCall_Undo();
     _WorkspaceTestCheck(&result, _WorkspaceCanClose(FSF_Ask), "all saved tabs can close");
+    _FileTreeToggle();
+    _WorkspaceTestCheck(&result, FileTree_IsOpen(Globals.hwndMain) && _WorkspaceTestTreeReady(), "native file tree loads asynchronously");
+    HWND panel = FindWindowExW(Globals.hwndMain, NULL, L"NP3WorkspaceFileTree", NULL);
+    HWND tree = FindWindowExW(panel, NULL, WC_TREEVIEWW, NULL);
+    HTREEITEM root = TreeView_GetRoot(tree);
+    HTREEITEM folderItem = _WorkspaceTestTreeChild(tree, root, L"nested");
+    _WorkspaceTestCheck(&result, folderItem && !TreeView_GetChild(tree, folderItem), "directory children remain lazy before expansion");
+    TreeView_Expand(tree, folderItem, TVE_EXPAND);
+    _WorkspaceTestCheck(&result, _WorkspaceTestTreeReady() && _WorkspaceTestTreeChild(tree, folderItem, L"child.txt"), "expanding directory loads its children");
+    HTREEITEM fileItem = _WorkspaceTestTreeChild(tree, root, L"b.txt");
+    SciCall_AppendText(1, "+");
+    TreeView_SelectItem(tree, fileItem);
+    NMHDR activate = { tree, 0, NM_RETURN }; SendMessageW(panel, WM_NOTIFY, 0, (LPARAM)&activate);
+    _WorkspaceTestCheck(&result, workspace->count == 2 && _WorkspaceTestText("beta\r\nB"), "file-tree activation opens file in another tab");
+    _WorkspaceSwitch(0);
+    _WorkspaceTestCheck(&result, _WorkspaceTestText("alpha\r\nA+") && IsSaveNeeded(), "file-tree opening preserves unsaved source tab");
+    SciCall_Undo(); _WorkspaceSwitch(1); _WorkspaceCloseActive();
+    _WorkspaceTestCheck(&result, !FileTree_SetRoot(Globals.hwndMain, L"?:\\invalid") && TreeView_GetRoot(tree) == root, "invalid folder leaves current tree intact");
+    _FileTreeToggle();
+    _WorkspaceTestCheck(&result, !FileTree_IsOpen(Globals.hwndMain), "file tree closes independently of documents");
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;
     StringCchPrintfA(summary, COUNTOF(summary), "RESULT checks=%i failures=%i\r\n", result.checks, result.failures);
