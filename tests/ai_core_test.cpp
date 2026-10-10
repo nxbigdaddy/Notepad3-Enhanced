@@ -27,6 +27,31 @@ int main() {
         expect(np3::AiDifference(huge,huge+L"more").precise,"large unchanged prefix remains precisely aligned");
         std::wstring other; for(int line=0;line<1100;++line) other+=L"other\r";
         expect(!np3::AiDifference(huge,other).precise,"large changed alignment bounded with explicit coarse flag");
+        std::wstring largeBefore,largeAfter;
+        for(int line=0;line<3000;++line) { auto text=L"row "+std::to_wstring(line)+L"\r"; largeBefore+=text; largeAfter+=(line==10 || line==2900 ? L"changed\r" : text); }
+        auto anchored=np3::AiDifference(largeBefore,largeAfter);
+        expect(anchored.precise && anchored.ranges.size()==2,"large unique context anchors separate distant changes");
+        std::wstring repeatedBefore=L"old\r"+huge+L"old end", repeatedAfter=L"new\r"+huge+L"new end";
+        auto repeated=np3::AiDifference(repeatedBefore,repeatedAfter);
+        expect(repeated.precise && repeated.ranges.size()==2,"large aligned repeated context remains unhighlighted");
+        expect(np3::AiDifference(L"",huge).precise && np3::AiDifference(L"",huge).ranges.size()==1,"large pure insertion needs no alignment matrix");
+        unsigned sequence=1234567;
+        for(int trial=0;trial<200;++trial) {
+            std::wstring input,target; const wchar_t* words[]={L"a",L"重复",L"x\xd83d\xde00",L"tail"};
+            for(int side=0;side<2;++side) { std::wstring& text=side ? target : input;
+                sequence=sequence*1664525u+1013904223u; unsigned count=sequence%25;
+                for(unsigned line=0;line<count;++line) { sequence=sequence*1664525u+1013904223u; text+=words[(sequence>>16)%4]; text+=L'\r'; }
+            }
+            auto changes=np3::AiDifference(input,target); std::wstring rebuilt; size_t consumed=0; bool ordered=true;
+            for(const auto& range:changes.ranges) {
+                if(range.beforeStart<consumed || range.beforeEnd<range.beforeStart || range.beforeEnd>input.size() || range.afterEnd<range.afterStart || range.afterEnd>target.size()) { ordered=false; break; }
+                rebuilt+=input.substr(consumed,range.beforeStart-consumed); rebuilt+=target.substr(range.afterStart,range.afterEnd-range.afterStart); consumed=range.beforeEnd;
+            }
+            rebuilt+=input.substr(consumed);
+            expect(ordered && rebuilt==target,"diff ranges reconstruct target across repeated Unicode paragraphs");
+        }
+
+
         expect(AiEndpoint_Validate(L"https://example.test/v1/chat/completions") == AI_OK, "HTTPS service endpoint");
         expect(AiEndpoint_Validate(L"http://127.0.0.1:18888/v1/chat/completions") == AI_OK, "loopback local model endpoint");
         expect(AiEndpoint_Validate(L"http://localhost/v1/chat/completions") == AI_OK, "localhost endpoint");
