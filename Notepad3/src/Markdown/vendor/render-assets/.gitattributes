@@ -1,0 +1,2 @@
+# Preserve downloaded bytes and integrity hashes across Windows checkouts.
+* -text
