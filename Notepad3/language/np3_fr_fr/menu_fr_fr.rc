@@ -365,6 +365,7 @@ BEGIN
         MENUITEM "Markdown Preview\tCtrl+Shift+F12", IDM_VIEW_MARKDOWN_PREVIEW
         MENUITEM "File Tree", IDM_VIEW_FILETREE
         MENUITEM "Split Editor", IDM_VIEW_EDITOR_SPLIT
+        MENUITEM "Log Filter", IDM_VIEW_LOG_FILTER
         MENUITEM "Marqueur de ligne longue\tCtrl+Alt+L",               IDM_VIEW_LONGLINEMARKER
         MENUITEM "Guides de retra&its\tCtrl+Maj+G",                    IDM_VIEW_SHOWINDENTGUIDES
         MENUITEM SEPARATOR

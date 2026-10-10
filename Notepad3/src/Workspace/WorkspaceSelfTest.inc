@@ -25,6 +25,16 @@ static bool _WorkspaceTestTreeReady()
     }
     return !FileTree_IsLoading(Globals.hwndMain);
 }
+static bool _WorkspaceTestLogReady(void)
+{
+    DWORD start = GetTickCount();
+    while (LogPanel_IsBusy(Globals.hwndMain) && GetTickCount() - start < 5000) {
+        MsgWaitForMultipleObjectsEx(0, NULL, 50, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        MSG message;
+        while (PeekMessageW(&message, NULL, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+    }
+    return !LogPanel_IsBusy(Globals.hwndMain);
+}
 static HTREEITEM _WorkspaceTestTreeChild(HWND tree, HTREEITEM parent, const WCHAR* name)
 {
     for (HTREEITEM item = TreeView_GetChild(tree, parent); item; item = TreeView_GetNextSibling(tree, item)) {
@@ -305,6 +315,41 @@ static void _WorkspaceSelfTest()
     _FileTreeToggle();
     _WorkspaceTestCheck(&result, _WorkspaceTestTreeReady() && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(), "close during read and reopen preserves editor and loads fresh tree");
     _FileTreeToggle();
+    SciCall_BeginUndoAction();
+    const char* logLines = "\r\nERROR 中文\r\ninfo\r\nERROR end";
+    SciCall_AppendText(strlen(logLines), logLines); SciCall_EndUndoAction();
+    unsigned long long logVersion = workspace->documents[workspace->active].version;
+    _LogFilterToggle();
+    HWND logPanel = FindWindowExW(Globals.hwndMain, NULL, L"NP3LogFilterPanel", NULL);
+    HWND logList = GetDlgItem(logPanel, 107);
+    SetWindowTextW(GetDlgItem(logPanel, 101), L"ERROR");
+    SendMessageW(logPanel, WM_COMMAND, MAKEWPARAM(105, BN_CLICKED), (LPARAM)GetDlgItem(logPanel, 105));
+    _WorkspaceTestCheck(&result, LogPanel_IsOpen(Globals.hwndMain) && _WorkspaceTestLogReady() && ListView_GetItemCount(logList) == 2, "native log panel asynchronously filters unsaved buffer");
+    _WorkspaceTestCheck(&result, workspace->documents[workspace->active].version == logVersion && IsSaveNeeded(), "log filtering retains document version and dirty state");
+    FileLoad(b, FLF_DontSave, 0, 0);
+    ListView_SetItemState(logList, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+    NMHDR locate = {logList, 107, NM_RETURN}; SendMessageW(logPanel, WM_NOTIFY, 0, (LPARAM)&locate);
+    _WorkspaceTestCheck(&result, workspace->active == 0 && SciCall_GetSelectionStart() == 10 && SciCall_GetSelectionEnd() == 15, "log result activation returns to source tab and selects actual match");
+    SciCall_BeginUndoAction(); SciCall_AppendText(1, "!"); SciCall_EndUndoAction();
+    _WorkspaceSwitch(1);
+    SendMessageW(logPanel, WM_NOTIFY, 0, (LPARAM)&locate);
+    WCHAR staleText[256], expectedStale[256]; GetWindowTextW(GetDlgItem(logPanel, 108), staleText, COUNTOF(staleText));
+    GetLngString(IDS_MUI_LOG_STALE, expectedStale, COUNTOF(expectedStale));
+    _WorkspaceTestCheck(&result, workspace->active == 1 && wcscmp(staleText, expectedStale) == 0, "changed source rejects stale log offsets without switching tabs");
+    _WorkspaceCloseActive(); SciCall_Undo(); SciCall_Undo();
+    _WorkspaceTestCheck(&result, _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(), "log filtering and locating preserve original undo history");
+    SetWindowTextW(GetDlgItem(logPanel, 101), L"["); SendMessageW(GetDlgItem(logPanel, 102), BM_SETCHECK, BST_CHECKED, 0);
+    _LogFilterRun();
+    WCHAR patternError[256], expectedPattern[256];
+    bool errorReady = _WorkspaceTestLogReady(); GetWindowTextW(GetDlgItem(logPanel, 108), patternError, COUNTOF(patternError));
+    GetLngString(IDS_MUI_LOG_PATTERN_ERROR, expectedPattern, COUNTOF(expectedPattern));
+    _WorkspaceTestCheck(&result, errorReady && ListView_GetItemCount(logList) == 0 && wcsncmp(patternError, expectedPattern, wcslen(expectedPattern)) == 0, "log panel reports invalid regex and clears old results");
+    SetWindowTextW(GetDlgItem(logPanel, 101), L"alpha"); SendMessageW(GetDlgItem(logPanel, 102), BM_SETCHECK, BST_UNCHECKED, 0);
+    _LogFilterRun(); _LogFilterToggle(); _LogFilterToggle();
+    logPanel = FindWindowExW(Globals.hwndMain, NULL, L"NP3LogFilterPanel", NULL); SetWindowTextW(GetDlgItem(logPanel, 101), L"alpha");
+    _LogFilterRun();
+    _WorkspaceTestCheck(&result, _WorkspaceTestLogReady() && ListView_GetItemCount(GetDlgItem(logPanel, 107)) == 1 && _WorkspaceTestText("alpha\r\nA"), "close during log work and reopen loads fresh results without altering editor");
+    _LogFilterToggle();
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;
     StringCchPrintfA(summary, COUNTOF(summary), "RESULT checks=%i failures=%i\r\n", result.checks, result.failures);

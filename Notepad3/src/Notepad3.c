@@ -49,6 +49,7 @@
 #include "Notepad3Util.h"
 #include "Markdown/MarkdownPreview.h"
 #include "Workspace/FileTree.h"
+#include "TextTools/LogFilterPanel.h"
 #include "Markdown/MarkdownPdf.h"
 #include "TextTools/JsonFormat.h"
 #include "StyleLexers/EditLexer.h"
@@ -389,6 +390,9 @@ static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
 static void _WorkspaceDispose();
 static void _FileTreeToggle();
+static void _LogFilterToggle(void);
+static bool _LogFilterRun(void);
+static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location);
 static int _ConfigCheck(int kind, bool showMessage);
 static void _MarkdownExportCommand(bool pdf);
 static void _MarkdownPdfSelfTest();
@@ -2608,6 +2612,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
             else InfoBoxLng(MB_ICONINFORMATION, NULL, IDS_MUI_MARKDOWN_PDF_DONE);
         }
         return 0;
+    case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
+    case NP3_WM_LOGFILTER_LOCATE: return _LogFilterLocate((const LOG_PANEL_LOCATION*)lParam);
     case NP3_WM_FILETREE_OPEN: {
         HPATHL path = Path_Allocate((const WCHAR*)lParam);
         FileLoad(path, FLF_None, 0, 0); Path_Release(path);
@@ -3968,6 +3974,7 @@ LRESULT MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam)
     y += tabHeight; cy = max_i(0, cy - tabHeight);
     int const treeWidth = FileTree_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
     x += treeWidth; cx -= treeWidth;
+    cy -= LogPanel_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
     cx -= MarkdownPreview_Layout(hwnd, x, y, max_i(0, cx), max_i(0, cy));
 
     cx -= _SplitLayout(x, y, max_i(0, cx), max_i(0, cy));
@@ -5242,6 +5249,7 @@ LRESULT MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam)
     CheckCmd(hmenu, IDM_VIEW_READONLY, ro);
     CheckCmd(hmenu, IDM_VIEW_WORDWRAP, Globals.fvCurFile.bWordWrap);
     CheckCmd(hmenu, IDM_VIEW_FILETREE, FileTree_IsOpen(hwnd));
+    CheckCmd(hmenu, IDM_VIEW_LOG_FILTER, LogPanel_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_EDITOR_SPLIT, _SplitIsOpen());
     CheckCmd(hmenu, IDM_VIEW_MARKDOWN_PREVIEW, MarkdownPreview_IsOpen(hwnd));
     CheckCmd(hmenu, IDM_VIEW_LONGLINEMARKER, Settings.MarkLongLines);
@@ -7237,6 +7245,9 @@ static bool _HandleViewAndSettingsCommands(HWND hwnd, UINT umsg, WPARAM wParam, 
 
     case IDM_VIEW_EDITOR_SPLIT:
         _SplitToggle();
+        break;
+    case IDM_VIEW_LOG_FILTER:
+        _LogFilterToggle();
         break;
     case IDM_VIEW_FILETREE:
         _FileTreeToggle();
@@ -12429,6 +12440,39 @@ static void _FileTreeToggle()
     GetLngString(IDS_MUI_FILETREE_LIMIT, limit, COUNTOF(limit));
     FILETREE_LABELS labels = { choose, refresh, loading, limit };
     FileTree_Toggle(Globals.hwndMain, Path_Get(directory), &labels); Path_Release(directory);
+}
+
+static bool _LogFilterRun(void)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (!workspace || LogPanel_IsBusy(Globals.hwndMain)) return false;
+    DocPos length = SciCall_GetLength();
+    if (length > 8 * 1024 * 1024) return LogPanel_Run(Globals.hwndMain, NULL, (size_t)length, 0, 0);
+    char* text = AllocMem((size_t)length + 1, HEAP_ZERO_MEMORY); if (!text) return false;
+    SciCall_GetText(length + 1, text);
+    WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
+    bool result = LogPanel_Run(Globals.hwndMain, text, (size_t)length, doc->id, doc->version);
+    FreeMem(text); return result;
+}
+static void _LogFilterToggle(void)
+{
+    WCHAR strings[LP_COUNT][256]; const WCHAR* labels[LP_COUNT];
+    for (int i = 0; i < LP_COUNT; ++i) { GetLngString(IDS_MUI_LOG_REGEX + i, strings[i], COUNTOF(strings[i])); labels[i] = strings[i]; }
+    LogPanel_Toggle(Globals.hwndMain, labels);
+}
+static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace(); if (!workspace || !location) return false;
+    for (int i = 0; i < workspace->count; ++i) {
+        WORKSPACE_DOCUMENT* doc = &workspace->documents[i];
+        if (doc->id != location->id) continue;
+        if (doc->version != location->version || !_WorkspaceSwitch(i) || doc->version != location->version) return false;
+        size_t start = location->row.matchLength ? location->row.matchOffset : location->row.offset;
+        size_t length = location->row.matchLength ? location->row.matchLength : location->row.length;
+        if (start > (size_t)SciCall_GetLength() || length > (size_t)SciCall_GetLength() - start) return false;
+        SciCall_SetSel((DocPos)start, (DocPos)(start + length)); SciCall_ScrollCaret(); SetFocus(Globals.hwndEdit); return true;
+    }
+    return false;
 }
 
 #include "Workspace/WorkspaceSelfTest.inc"
