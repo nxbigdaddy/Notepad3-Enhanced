@@ -1455,9 +1455,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     // Always probe for dark mode OS support (loads UxTheme undocumented APIs)
     // — needed so menu item stays enabled regardless of user's current preference
     SetDarkMode(true);
-    if (!IsSettingDarkMode()) {
-        SetDarkMode(false); // OS or user says light mode
-    }
+    SetDarkModePreference(IsSettingDarkMode(),Settings.WinThemeDarkMode==WINDSPMOD_DARK);
 #endif
 
     HRSRC const hRes = FindResourceEx(hInstance, RT_RCDATA, MAKEINTRESOURCE(IDR_STD_DARKMODE_THEME), 
@@ -2753,9 +2751,10 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 
 #ifdef D_NP3_WIN10_DARK_MODE
     case WM_SETTINGCHANGE: {
-        if (IsColorSchemeChangeMessage(lParam)) {
-            RefreshTitleBarThemeColor(hwnd);
-            SendMessage(Globals.hwndEdit, WM_THEMECHANGED, 0, 0);
+        if (IsColorSchemeChangeMessage(lParam) || wParam==SPI_SETHIGHCONTRAST) {
+            SetDarkMode(true);
+            SetDarkModePreference(IsSettingDarkMode(),Settings.WinThemeDarkMode==WINDSPMOD_DARK);
+            MsgThemeChanged(hwnd,0,0);
         }
         // Forward to Scintilla to refresh mouse scroll settings (issue #5223)
         SendMessage(Globals.hwndEdit, WM_SETTINGCHANGE, wParam, lParam);
@@ -7974,7 +7973,7 @@ static bool _HandleViewAndSettingsCommands(HWND hwnd, UINT umsg, WPARAM wParam, 
         }
 
         Settings.WinThemeDarkMode = IsSettingDarkMode() ? WINDSPMOD_LIGHT : WINDSPMOD_DARK; // toggle non auto!
-        SetDarkMode(IsSettingDarkMode());
+        SetDarkModePreference(IsSettingDarkMode(),Settings.WinThemeDarkMode==WINDSPMOD_DARK);
 
         Style_DynamicThemesMenuCmd(IDM_THEMES_FACTORY_RESET);
 

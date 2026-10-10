@@ -219,6 +219,7 @@ extern "C" bool IsDarkModeSupported()
 
 
 static bool s_UserSetDarkMode = false;
+static bool s_ForceDarkMode = false;
 
 extern "C" bool CheckDarkModeEnabled()
 {
@@ -300,7 +301,7 @@ extern "C" void AllowDarkModeForAppEx(bool allow)
         if (buildNum < 18362) {
             AllowDarkModeForApp(allow);
         } else {
-            reinterpret_cast<fnSetPreferredAppMode>(AllowDarkModeForApp)(allow ? PreferredAppMode::AllowDark : PreferredAppMode::Default);
+            reinterpret_cast<fnSetPreferredAppMode>(AllowDarkModeForApp)(allow ? (s_ForceDarkMode ? PreferredAppMode::ForceDark : PreferredAppMode::AllowDark) : PreferredAppMode::Default);
         }
     }
 }
@@ -338,28 +339,31 @@ static void FixDarkScrollBar(bool bDarkMode)
 // ============================================================================
 
 
-extern "C" void SetDarkMode(bool bEnableDarkMode)
+extern "C" void SetDarkModePreference(bool bEnableDarkMode, bool forceDark)
 {
     s_UserSetDarkMode = bEnableDarkMode;
+    s_bDarkModeSupported = false;
 
     DWORD major, minor;
     DWORD const buildNumber = GetWindowsBuildNumber(&major, &minor);
     if (buildNumber) {
         // undocumented function addresses are only valid for this WinVer build numbers
         if (CheckLoadLibrary(major, minor, buildNumber)) {
-
-            AllowDarkModeForApp(s_UserSetDarkMode);
+            // Capability must remain available when the OS is using a light theme.
+            s_bDarkModeSupported = true;
+            s_ForceDarkMode = forceDark && !IsHighContrast();
+            AllowDarkModeForAppEx(s_UserSetDarkMode);
 
             RefreshImmersiveColorPolicyState();
 
-            s_bDarkModeSupported = ShouldAppsUseDarkMode() && !IsHighContrast(); // (!) after RefreshImmersiveColorPolicyState()
 
             FlushMenuThemes();
 
-            FixDarkScrollBar(s_UserSetDarkMode);
+            FixDarkScrollBar(CheckDarkModeEnabled());
         }
     }
 }
+extern "C" void SetDarkMode(bool enable) { SetDarkModePreference(enable, false); }
 // ============================================================================
 
 #else // NO DarkMode support
@@ -368,6 +372,7 @@ extern "C" void SetDarkMode(bool bEnableDarkMode)
 {
     (void)(bEnableDarkMode);
 }
+extern "C" void SetDarkModePreference(bool enable, bool forceDark) { (void)enable; (void)forceDark; }
 
 #endif
 

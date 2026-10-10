@@ -15,6 +15,7 @@ extern "C" {
 #endif
 
 void SetDarkMode(bool bEnableDarkMode);
+void SetDarkModePreference(bool enable, bool forceDark);
 inline void InitDarkMode()
 {
     SetDarkMode(true);

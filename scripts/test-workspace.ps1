@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/log-filter-panel-x64-v24/Notepad3.exe', [string]$AiEndpoint = '', [switch]$Preview)
+param([string]$Executable = 'artifacts/log-filter-panel-x64-v24/Notepad3.exe', [string]$AiEndpoint = '', [switch]$Preview, [ValidateSet('auto','dark','light')][string]$ThemeMode)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -27,9 +27,10 @@ $taskPreviousAi = $env:NP3_AI_SELFTEST_URL
 $taskPreviousPreview = $env:NP3_MARKDOWN_CHECK_PREVIEW
 $taskPreviousDiagnostics = $env:NP3_MARKDOWN_DIAGNOSTICS
 $taskArguments = @('/n', '/f0')
-if ($AiEndpoint) {
+if ($AiEndpoint -or $ThemeMode) {
     $taskIni = Join-Path $taskFolder 'test.ini'
-    [IO.File]::WriteAllText($taskIni, "[Settings2]`r`nReopenWorkspace=false`r`n", [Text.UTF8Encoding]::new($true))
+    $taskTheme = switch ($ThemeMode) { 'dark' { 1 } 'light' { 2 } default { 0 } }
+    [IO.File]::WriteAllText($taskIni, "[Settings]`r`nWinThemeDarkMode=$taskTheme`r`n[Settings2]`r`nReopenWorkspace=false`r`n", [Text.UTF8Encoding]::new($true))
     $taskArguments = @('/n', '/f', ('"' + $taskIni + '"'))
 }
 try {

@@ -809,6 +809,34 @@ static void _WorkspaceSelfTest()
     _LogFilterToggle();
     _FileTreeToggle(); HWND themedTree=FindWindowExW(Globals.hwndMain,NULL,L"NP3WorkspaceFileTree",NULL); HWND themedTreeView=FindWindowExW(themedTree,NULL,WC_TREEVIEWW,NULL);
     _WorkspaceTestCheck(&result,_WorkspaceTestTreeReady() && TreeView_GetBkColor(themedTreeView)==themeColors.field && TreeView_GetTextColor(themedTreeView)==themeColors.text,"file tree receives shared panel theme without losing directory loading");
+#ifdef D_NP3_WIN10_DARK_MODE
+    if(IsDarkModeSupported() && !IsHighContrast()) {
+        WIN_DISPL_MODE savedTheme=Settings.WinThemeDarkMode;
+        SetDarkMode(true);
+        bool systemDark=ShouldAppsUseDarkModeEx();
+        SetDarkModePreference(IsSettingDarkMode(),savedTheme==WINDSPMOD_DARK);
+        _LogFilterToggle(); themedLog=FindWindowExW(Globals.hwndMain,NULL,L"NP3LogFilterPanel",NULL);
+        bool openedThemeAi=!AiPanel_IsOpen(_WorkspaceAi()); if(openedThemeAi) _AiToggle();
+        HWND themedAi=FindWindowExW(Globals.hwndMain,NULL,L"NP3AiPanel",NULL);
+        for(int mode=0;mode<3;++mode) {
+            Settings.WinThemeDarkMode=mode==0?WINDSPMOD_DARK:mode==1?WINDSPMOD_LIGHT:WINDSPMOD_AUTO;
+            // Reset app preference before asking for the OS preference in automatic mode.
+            SetDarkMode(true);
+            SetDarkModePreference(IsSettingDarkMode(),Settings.WinThemeDarkMode==WINDSPMOD_DARK);
+            MsgThemeChanged(Globals.hwndMain,0,0);
+            PANEL_COLORS current={0}; _PanelColors(&current);
+            bool expectedDark=mode==0 || (mode==2 && systemDark);
+            _WorkspaceTestCheck(&result,IsDarkModeSupported() && !!UseDarkMode()==expectedDark && !!current.dark==expectedDark,mode==0?"explicit dark theme works independently of OS light preference":mode==1?"explicit light theme keeps dark capability available":"automatic theme follows OS preference after explicit modes");
+            _WorkspaceTestCheck(&result,ListView_GetBkColor(batchList)==current.field && ListView_GetTextColor(batchList)==current.text && ListView_GetBkColor(GetDlgItem(themedLog,107))==current.field && TreeView_GetBkColor(themedTreeView)==current.field && TreeView_GetTextColor(themedTreeView)==current.text && _WorkspaceTestPanelBrush(themedAi,GetDlgItem(themedAi,121),current.field,current.text),"all four extension panels refresh actual palette across theme modes");
+            _WorkspaceTestCheck(&result,workspace->documents[0].version==batchThemeVersion && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded() && ListView_GetItemCount(batchList)==1 && ListView_GetCheckState(batchList,0),"theme transitions retain saved editor and confirmed batch proposal");
+            SendMessageW(Globals.hwndMain,WM_SETTINGCHANGE,0,(LPARAM)L"ImmersiveColorSet");
+            PANEL_COLORS afterSetting={0}; _PanelColors(&afterSetting);
+            _WorkspaceTestCheck(&result,!!afterSetting.dark==expectedDark && ListView_GetBkColor(batchList)==afterSetting.field && TreeView_GetBkColor(themedTreeView)==afterSetting.field && workspace->documents[0].version==batchThemeVersion && _WorkspaceTestText("alpha\r\nA"),"system color notification refreshes panels while preserving chosen theme and editor");
+        }
+        Settings.WinThemeDarkMode=savedTheme; SetDarkMode(true); SetDarkModePreference(IsSettingDarkMode(),savedTheme==WINDSPMOD_DARK); MsgThemeChanged(Globals.hwndMain,0,0);
+        if(openedThemeAi) _AiToggle(); _LogFilterToggle();
+    }
+#endif
     _FileTreeToggle(); _BatchToggle();
     Path_Release(a); Path_Release(b);
     char summary[128]; DWORD written;
