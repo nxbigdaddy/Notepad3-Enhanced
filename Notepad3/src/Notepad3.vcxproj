@@ -1301,6 +1301,7 @@
     <ClCompile Include="AI\AiPanel.cpp" />
     <ClCompile Include="Workspace\FileTree.cpp" />
     <ClCompile Include="Workspace\FileSearchCore.cpp" />
+    <ClCompile Include="Workspace\HistoryCore.cpp" />
     <ClCompile Include="Workspace\FileSearchPanel.cpp" />
     <ClCompile Include="Markdown\MarkdownRender.cpp" />
     <ClCompile Include="Markdown\MarkdownExport.cpp" />
