@@ -1300,6 +1300,7 @@
     <ClCompile Include="AI\AiHttp.cpp" />
     <ClCompile Include="AI\AiPanel.cpp" />
     <ClCompile Include="Workspace\FileTree.cpp" />
+    <ClCompile Include="Workspace\FileSearchCore.cpp" />
     <ClCompile Include="Markdown\MarkdownRender.cpp" />
     <ClCompile Include="Markdown\MarkdownExport.cpp" />
     <ClCompile Include="Markdown\MarkdownStandalone.cpp" />
