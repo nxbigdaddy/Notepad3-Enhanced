@@ -11,6 +11,7 @@ int AiProtocol_Request(const char* model, int action, const char* input, size_t 
 int AiProtocol_Response(const char* json, size_t length, char** output, size_t* outputLength);
 void AiProtocol_Free(char* text);
 // Secrets are isolated by profile and never written to the application's INI.
+DWORD AiCredential_AccountProfile(const wchar_t* endpoint, const wchar_t* configurationId, wchar_t* profile, size_t capacity);
 DWORD AiCredential_ServiceProfile(const wchar_t* endpoint, wchar_t* profile, size_t capacity);
 DWORD AiCredential_Save(const wchar_t* profile, const char* secret);
 DWORD AiCredential_Load(const wchar_t* profile, char** secret);

@@ -176,6 +176,23 @@ extern "C" DWORD AiCredential_ServiceProfile(const wchar_t* endpoint, wchar_t* p
     for (size_t i = 0; i < 32; ++i) { profile[8 + 2 * i] = hex[hash[i] >> 4]; profile[9 + 2 * i] = hex[hash[i] & 15]; }
     profile[72] = 0; return ERROR_SUCCESS;
 }
+extern "C" DWORD AiCredential_AccountProfile(const wchar_t* endpoint, const wchar_t* configurationId, wchar_t* profile, size_t capacity) {
+    if (!profile || capacity < 73 || AiEndpoint_Validate(endpoint) != AI_OK || !configurationId || !*configurationId || wcslen(configurationId)>64) return ERROR_INVALID_PARAMETER;
+    for(const wchar_t* p=configurationId;*p;++p) if(!((*p>=L'a' && *p<=L'z') || (*p>=L'A' && *p<=L'Z') || (*p>=L'0' && *p<=L'9') || *p==L'-' || *p==L'_')) return ERROR_INVALID_PARAMETER;
+    try {
+        // Versioned, length-prefixed identity avoids delimiter ambiguity and leaves legacy service keys unchanged.
+        std::wstring identity=L"NP3-AI-account-v1:"+std::to_wstring(wcslen(endpoint))+L":"+endpoint+L":"+configurationId;
+        BCRYPT_ALG_HANDLE algorithm=nullptr;
+        if(BCryptOpenAlgorithmProvider(&algorithm,BCRYPT_SHA256_ALGORITHM,nullptr,0)<0) return ERROR_INVALID_FUNCTION;
+        unsigned char hash[32];
+        const NTSTATUS status=BCryptHash(algorithm,nullptr,0,reinterpret_cast<PUCHAR>(identity.data()),static_cast<ULONG>(identity.size()*sizeof(wchar_t)),hash,sizeof(hash));
+        BCryptCloseAlgorithmProvider(algorithm,0);
+        if(status<0) return ERROR_INVALID_FUNCTION;
+        wchar_t result[73]=L"account-"; const wchar_t* hex=L"0123456789abcdef";
+        for(size_t i=0;i<32;++i){result[8+2*i]=hex[hash[i]>>4];result[9+2*i]=hex[hash[i]&15];}
+        wcscpy_s(profile,capacity,result); return ERROR_SUCCESS;
+    } catch(...) { return ERROR_NOT_ENOUGH_MEMORY; }
+}
 extern "C" void AiCredential_Free(char* secret) { if (secret) { SecureZeroMemory(secret, strlen(secret)); std::free(secret); } }
 extern "C" DWORD AiCredential_Save(const wchar_t* profile, const char* secret) {
     try {
