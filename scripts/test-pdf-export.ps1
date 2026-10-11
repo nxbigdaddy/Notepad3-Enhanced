@@ -1,6 +1,6 @@
 param([string]$Executable = 'Notepad3/Bin/Release_x64_v143/Notepad3.exe', [switch]$Advanced, [switch]$Long, [switch]$Tall, [switch]$CloseMain, [switch]$CloseCancel, [switch]$CloseSave, [switch]$CloseDiscard, [switch]$CloseRace)
 $ErrorActionPreference = 'Stop'
-if ($CloseRace -and !$CloseCancel) { throw 'CloseRace requires CloseCancel.' }
+if ($CloseRace -and !($CloseCancel -or $CloseSave -or $CloseDiscard)) { throw 'CloseRace requires a close-dialog action.' }
 if (([int]$CloseCancel.IsPresent + [int]$CloseSave.IsPresent + [int]$CloseDiscard.IsPresent) -gt 1) { throw 'Choose one close-dialog action.' }
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))

@@ -52,6 +52,8 @@ static void _MarkdownPdfSelfTestPrinting(HWND window)
         _WorkspaceTestCheck(&test->result,window && MarkdownPdf_IsBusy(Globals.hwndMain),"main close observes actual submitted PDF print");
         WCHAR closeChoice[16];
         if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CHOICE",closeChoice,COUNTOF(closeChoice))) {
+            bool race=GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_RACE",NULL,0)!=0;
+            workspaceCloseTestWait=race;
             workspaceCloseTestFilename=L"source.md";
             workspaceCloseTestChoice=!wcscmp(closeChoice,L"save")?IDYES:IDNO; workspaceCloseTestClicks=0;
             workspaceCloseTestTimer=SetTimer(NULL,0,25,_WorkspaceTestCloseTimer);
@@ -62,7 +64,8 @@ static void _MarkdownPdfSelfTestPrinting(HWND window)
                 if(workspaceCloseTestTimer) KillTimer(NULL,workspaceCloseTestTimer);
                 workspaceCloseTestTimer=0;
             }
-            workspaceCloseTestFilename=L"close-flow.txt";
+            workspaceCloseTestFilename=L"close-flow.txt"; workspaceCloseTestWait=false;
+            if(race) _WorkspaceTestCheck(&test->result,test->completedDuringDialog,"unlocked PDF completes inside real close dialog before Save or Discard is clicked");
             _WorkspaceTestCheck(&test->result,workspaceCloseTestClicks==1,"actual Save or Discard button handles submitted-print close confirmation");
             _WorkspaceTestCheck(&test->result,!IsWindow(parent) && !_Workspace(),"confirmed dirty-document main close destroys window and disposes workspace");
             _MarkdownPdfTestFinish(test); return;
