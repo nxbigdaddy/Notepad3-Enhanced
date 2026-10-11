@@ -98,3 +98,10 @@ foreach ($taskMode in @('split-seed', 'split-verify', 'split-import')) {
 }
 if ([IO.File]::ReadAllText((Join-Path $taskFolder 'split-long.json')) -ne $taskJson) { throw 'Split session import changed original disk bytes' }
 Write-Output "Long document split scrolling, opposite folds, selections, zoom and manual import verified across processes. Evidence: $taskFolder"
+
+$taskInitFailure = Start-RecoveryTest 'init-failure'
+if (!$taskInitFailure.WaitForExit(30000)) { throw "Initialization failure test still running: PID $($taskInitFailure.Id)" }
+Read-RecoveryResult 'init-failure'
+if ([IO.File]::ReadAllText((Join-Path $taskFolder 'blocked-directory')) -ne 'directory fixture') { throw 'Initialization failure changed blocking file bytes' }
+if ([IO.File]::ReadAllText((Join-Path $taskFolder 'split-long.json')) -ne $taskJson) { throw 'Initialization failure test changed original disk bytes' }
+Write-Output "Initialization failure reporting, draft preservation, manual backup and successful retry verified. Evidence: $taskFolder"

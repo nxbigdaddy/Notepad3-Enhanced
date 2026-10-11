@@ -25,6 +25,42 @@ static void _WorkspaceRecoveryReport(WORKSPACE_RECOVERY* recovery, uint32_t erro
     if (!recovery->isolatedTest && !recovery->closing)
         InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_RECOVERY_ERROR, error);
 }
+static void _WorkspaceRecoveryStartFailure(bool isolatedTest, uint32_t error)
+{
+    DOCUMENT_WORKSPACE* workspace=_Workspace(); if(!workspace) return;
+    WORKSPACE_RECOVERY failed={0}; failed.isolatedTest=isolatedTest;
+    failed.lastError=workspace->recoveryStartError; failed.errorReports=workspace->recoveryStartReports;
+    _WorkspaceRecoveryReport(&failed,error);
+    workspace->recoveryStartError=failed.lastError; workspace->recoveryStartReports=failed.errorReports;
+}
+static WORKSPACE_RECOVERY* _WorkspaceRecoveryInitialize(HPATHL directory,bool isolatedTest)
+{
+    if(!directory) { _WorkspaceRecoveryStartFailure(isolatedTest,ERROR_NOT_ENOUGH_MEMORY); return NULL; }
+    HRESULT const created=Path_CreateDirectoryEx(directory);
+    if(!Path_IsExistingDirectory(directory)) {
+        uint32_t error=Path_IsExistingFile(directory) || created==S_OK?ERROR_DIRECTORY:FAILED(created)?(uint32_t)HRESULT_CODE(created):(uint32_t)created;
+        _WorkspaceRecoveryStartFailure(isolatedTest,error); Path_Release(directory); return NULL;
+    }
+    WORKSPACE_RECOVERY* recovery=AllocMem(sizeof(*recovery),HEAP_ZERO_MEMORY);
+    if(!recovery) { _WorkspaceRecoveryStartFailure(isolatedTest,ERROR_NOT_ENOUGH_MEMORY); Path_Release(directory); return NULL; }
+    recovery->directory=directory; recovery->isolatedTest=isolatedTest;
+    FILETIME stamp; GetSystemTimeAsFileTime(&stamp); WCHAR leaf[128];
+    StringCchPrintfW(leaf,COUNTOF(leaf),L"np3-%lu-%08lx%08lx.np3recovery",GetCurrentProcessId(),stamp.dwHighDateTime,stamp.dwLowDateTime);
+    recovery->file=Path_Copy(directory);
+    bool paths=recovery->file && Path_Append(recovery->file,leaf);
+    if(paths) {
+        recovery->lockPath=Path_Copy(recovery->file); recovery->closedPath=Path_Copy(recovery->file); recovery->normalPath=Path_Copy(recovery->file);
+        paths=recovery->lockPath && recovery->closedPath && recovery->normalPath && Path_RenameExtension(recovery->lockPath,L".lock") && Path_RenameExtension(recovery->closedPath,L".closed") && Path_RenameExtension(recovery->normalPath,L".np3workspace");
+    }
+    recovery->lock=paths?Path_CreateFile(recovery->lockPath,GENERIC_READ|GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,NULL):INVALID_HANDLE_VALUE;
+    if(!IS_VALID_HANDLE(recovery->lock)) {
+        uint32_t const error=paths?GetLastError():ERROR_NOT_ENOUGH_MEMORY;
+        _WorkspaceRecoveryStartFailure(isolatedTest,error);
+        Path_Release(directory); Path_Release(recovery->file); Path_Release(recovery->lockPath); Path_Release(recovery->closedPath); Path_Release(recovery->normalPath); FreeMem(recovery); return NULL;
+    }
+    _Workspace()->recoveryStartError=0;
+    return recovery;
+}
 static unsigned __stdcall _WorkspaceRecoveryWorker(void* argument)
 {
     WORKSPACE_RECOVERY_JOB* job = argument;
@@ -138,30 +174,14 @@ static void _WorkspaceRecoveryStart()
         bool const allowed = Path_IsExistingFile(marker); Path_Release(marker);
         if (!allowed) { Path_Release(directory); return; }
     } else {
-        PWSTR appData = NULL;
-        if (FAILED(SHGetKnownFolderPath(&FOLDERID_LocalAppData, KF_FLAG_CREATE, NULL, &appData))) return;
-        directory = Path_Allocate(appData); CoTaskMemFree(appData);
-        Path_Append(directory, L"Notepad3");
-        HRESULT const created = Path_CreateDirectoryEx(directory);
-        if (FAILED(created) && created != HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)) { Path_Release(directory); return; }
-        Path_Append(directory, L"Recovery");
+        PWSTR appData=NULL;
+        HRESULT const located=SHGetKnownFolderPath(&FOLDERID_LocalAppData,KF_FLAG_CREATE,NULL,&appData);
+        if(FAILED(located)) { CoTaskMemFree(appData); _WorkspaceRecoveryStartFailure(false,(uint32_t)HRESULT_CODE(located)); return; }
+        directory=Path_Allocate(appData); CoTaskMemFree(appData);
+        if(!directory || !Path_Append(directory,L"Notepad3\\Recovery")) { Path_Release(directory); _WorkspaceRecoveryStartFailure(false,ERROR_NOT_ENOUGH_MEMORY); return; }
     }
-    HRESULT const created = Path_CreateDirectoryEx(directory);
-    if (FAILED(created) && created != HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)) { Path_Release(directory); return; }
-    WORKSPACE_RECOVERY* recovery = AllocMem(sizeof(*recovery), HEAP_ZERO_MEMORY);
-    if (!recovery) { Path_Release(directory); return; }
-    FILETIME stamp; GetSystemTimeAsFileTime(&stamp);
-    WCHAR leaf[128];
-    StringCchPrintfW(leaf, COUNTOF(leaf), L"np3-%lu-%08lx%08lx.np3recovery", GetCurrentProcessId(), stamp.dwHighDateTime, stamp.dwLowDateTime);
-    recovery->directory = directory; recovery->file = Path_Copy(directory); Path_Append(recovery->file, leaf);
-    recovery->isolatedTest = length != 0;
-    recovery->lockPath = Path_Copy(recovery->file); Path_RenameExtension(recovery->lockPath, L".lock");
-    recovery->closedPath = Path_Copy(recovery->file); Path_RenameExtension(recovery->closedPath, L".closed");
-    recovery->normalPath = Path_Copy(recovery->file); Path_RenameExtension(recovery->normalPath, L".np3workspace");
-    recovery->lock = Path_CreateFile(recovery->lockPath, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (!IS_VALID_HANDLE(recovery->lock)) {
-        Path_Release(directory); Path_Release(recovery->file); Path_Release(recovery->lockPath); Path_Release(recovery->closedPath); Path_Release(recovery->normalPath); FreeMem(recovery); return;
-    }
+    WORKSPACE_RECOVERY* recovery=_WorkspaceRecoveryInitialize(directory,length!=0);
+    if(!recovery) return;
     _Workspace()->recovery = recovery;
     bool recovered = false;
     HPATHL pattern = Path_Copy(directory); Path_Append(pattern, L"np3-*.np3recovery");

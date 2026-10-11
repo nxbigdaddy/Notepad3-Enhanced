@@ -20,6 +20,7 @@ static void _WorkspaceRecoveryTest()
     bool const live = wcscmp(mode, L"live") == 0;
     bool const clean = wcscmp(mode, L"clean") == 0;
     bool const failure = wcscmp(mode, L"failure") == 0;
+    bool const initFailure = wcscmp(mode,L"init-failure")==0;
     bool const splitSeed = wcscmp(mode, L"split-seed") == 0;
     bool const splitVerify = wcscmp(mode, L"split-verify") == 0;
     bool const splitImport = wcscmp(mode, L"split-import") == 0;
@@ -28,8 +29,34 @@ static void _WorkspaceRecoveryTest()
     bool const normalExplicit = wcscmp(mode, L"normal-explicit") == 0;
     bool const normalMissing = wcscmp(mode, L"normal-missing") == 0;
     bool const normalDisabled = wcscmp(mode, L"normal-disabled") == 0;
-    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || splitSeed || splitVerify || splitImport || normalSeed || normalVerify || normalExplicit || normalMissing || normalDisabled, "recognized recovery test mode");
-    if (seeded) {
+    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || initFailure || splitSeed || splitVerify || splitImport || normalSeed || normalVerify || normalExplicit || normalMissing || normalDisabled, "recognized recovery test mode");
+    if(initFailure) {
+        HPATHL blocked=Path_Copy(recovery->directory); Path_Append(blocked,L"blocked-directory");
+        HANDLE blockFile=Path_CreateFile(blocked,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
+        DWORD written=0; if(IS_VALID_HANDLE(blockFile)) { WriteFile(blockFile,"directory fixture",17,&written,NULL); CloseHandle(blockFile); }
+        _WorkspaceTestCheck(&result,written==17,"initialization failure fixture is an existing ordinary file");
+        SciCall_SetReadOnly(false); SciCall_BeginUndoAction(); SciCall_SelectAll(); SciCall_ReplaceSel("important draft"); SciCall_EndUndoAction(); SciCall_SetSel(2,7);
+        int const originalCount=workspace->count;
+        sptr_t const originalDoc=SciCall_GetDocPointer(); unsigned long long originalId=workspace->documents[workspace->active].id,originalVersion=_WorkspaceVersion();
+        int originalUndo=SciCall_GetUndoCurrent(); bool reopen=Settings2.ReopenWorkspace;
+        Settings2.ReopenWorkspace=false; _WorkspaceRecoveryClose(); recovery=NULL;
+        WORKSPACE_RECOVERY* attempted=_WorkspaceRecoveryInitialize(Path_Copy(blocked),true);
+        _WorkspaceTestCheck(&result,!attempted && !workspace->recovery && workspace->recoveryStartError==ERROR_DIRECTORY && workspace->recoveryStartReports==1,"real directory initialization failure records one warning without installing incomplete service");
+        if(attempted) { workspace->recovery=attempted; _WorkspaceRecoveryClose(); }
+        attempted=_WorkspaceRecoveryInitialize(Path_Copy(blocked),true);
+        _WorkspaceTestCheck(&result,!attempted && workspace->recoveryStartReports==1,"repeated identical initialization failure does not repeat warning");
+        if(attempted) { workspace->recovery=attempted; _WorkspaceRecoveryClose(); }
+        _WorkspaceTestCheck(&result,workspace->count==originalCount && SciCall_GetDocPointer()==originalDoc && workspace->documents[workspace->active].id==originalId && _WorkspaceVersion()==originalVersion && _WorkspaceTestText("important draft") && SciCall_GetAnchor()==2 && SciCall_GetCurrentPos()==7 && SciCall_GetUndoCurrent()==originalUndo && IsSaveNeeded(),"failed recovery initialization preserves draft identity version selection undo and dirty state");
+        HPATHL manual=Path_Copy(blocked); Path_RenameExtension(manual,L".np3session"); uint32_t error=0;
+        _WorkspaceTestCheck(&result,_WorkspaceSessionSave(manual,&error),"manual protected backup remains available while automatic initialization failed");
+        NP3_SESSION saved=NULL; NP3_SESSION_DOCUMENT entry={0};
+        bool savedDraft=Session_Load(Path_Get(manual),&saved,&error) && Session_Count(saved)==(size_t)originalCount && Session_Get(saved,Session_Active(saved),&entry) && entry.textLength==15 && !memcmp(entry.text,"important draft",15);
+        _WorkspaceTestCheck(&result,savedDraft,"manual backup independently reads back full unsaved draft after initialization failure"); Session_Free(saved);
+        _WorkspaceRecoveryStart(); recovery=workspace->recovery;
+        _WorkspaceTestCheck(&result,recovery && workspace->recoveryStartError==0 && workspace->recoveryStartReports==1 && recovery->job && _WorkspaceRecoveryHarvest(recovery,10000),"successful real startup retry clears initialization error and persists automatic backup");
+        _WorkspaceTestCheck(&result,_WorkspaceTestText("important draft") && _WorkspaceVersion()==originalVersion && SciCall_GetUndoCurrent()==originalUndo && IsSaveNeeded(),"successful recovery retry preserves pending edits and undo history");
+        Settings2.ReopenWorkspace=reopen; Path_Release(blocked); Path_Release(manual);
+    } else if (seeded) {
         _WorkspaceTestCheck(&result, workspace->count == 1 && SciCall_GetLength() == 0, "seed starts isolated");
         SciCall_AppendText(15, "unsaved alpha\r\n"); Encoding_Current(CPI_UTF8SIGN);
         HPATHL empty = Path_Allocate(NULL);

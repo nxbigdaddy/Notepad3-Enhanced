@@ -41,6 +41,8 @@ typedef struct DOCUMENT_WORKSPACE {
     int splitRatio, splitStartRatio;
     RECT splitArea;
     void* recovery;
+    uint32_t recoveryStartError;
+    unsigned int recoveryStartReports;
     void* ai;
     void* batch;
     void* pdfTest;
