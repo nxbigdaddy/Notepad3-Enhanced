@@ -449,6 +449,20 @@ static void _WorkspaceSelfTest()
         RECT previewMain={0}; GetClientRect(Globals.hwndMain,&previewMain);
         _WorkspaceTestCheck(&result,previewAfter.right-previewAfter.left>=160 && previewAfter.right-previewAfter.left<=previewMain.right-160,"extreme Markdown drag retains minimum preview and editor widths");
         SendMessageW(previewGrip,WM_CANCELMODE,0,0);
+        RECT previewCommitted={0},previewMainBounds={0}; GetWindowRect(previewGrip,&previewCommitted); GetWindowRect(Globals.hwndMain,&previewMainBounds);
+        int previewZeroWidth=MarkdownPreview_Layout(Globals.hwndMain,7,13,0,0); GetWindowRect(previewGrip,&previewAfter);
+        _WorkspaceTestCheck(&result,previewZeroWidth==0 && previewAfter.right==previewAfter.left && previewAfter.bottom==previewAfter.top,"actual Markdown host tolerates zero available size");
+        int previewNarrowWidth=MarkdownPreview_Layout(Globals.hwndMain,7,13,100,50); GetWindowRect(previewGrip,&previewAfter);
+        MapWindowPoints(NULL,Globals.hwndMain,(POINT*)&previewAfter,2);
+        _WorkspaceTestCheck(&result,previewNarrowWidth==33 && previewAfter.left==74 && previewAfter.right==107 && previewAfter.top==13 && previewAfter.bottom==63,"actual narrow Markdown host stays inside offset layout bounds");
+        SetWindowPos(Globals.hwndMain,NULL,0,0,480,320,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+        RECT previewResizedMain={0},previewResizedEditor={0}; GetClientRect(Globals.hwndMain,&previewResizedMain);
+        GetWindowRect(previewGrip,&previewAfter); MapWindowPoints(NULL,Globals.hwndMain,(POINT*)&previewAfter,2);
+        GetWindowRect(Globals.hwndEdit,&previewResizedEditor); MapWindowPoints(NULL,Globals.hwndMain,(POINT*)&previewResizedEditor,2);
+        _WorkspaceTestCheck(&result,previewAfter.left>=0 && previewAfter.right<=previewResizedMain.right && previewAfter.top>=0 && previewAfter.bottom<=previewResizedMain.bottom && previewResizedEditor.right<=previewAfter.left && previewResizedEditor.right>previewResizedEditor.left,"real main window resize keeps editor and Markdown host within client bounds without overlap");
+        SetWindowPos(Globals.hwndMain,NULL,0,0,previewMainBounds.right-previewMainBounds.left,previewMainBounds.bottom-previewMainBounds.top,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+        GetWindowRect(previewGrip,&previewAfter);
+        _WorkspaceTestCheck(&result,EqualRect(&previewCommitted,&previewAfter),"restoring actual main window size retains committed Markdown width ratio");
         _WorkspaceTestCheck(&result,_WorkspaceVersion()==previewDragVersion && SciCall_GetUndoCurrent()==previewDragUndo && _WorkspaceTestText(jsonCommandInput) && IsSaveNeeded()==previewDragDirty,"Markdown drag cancel capture loss and commit preserve source version undo and savepoint");
     }
     unsigned long long jsonVersion=workspace->documents[workspace->active].version;
