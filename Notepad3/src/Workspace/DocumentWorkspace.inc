@@ -378,6 +378,43 @@ static void _WorkspaceRefresh()
     TabCtrl_SetCurSel(workspace->tabs, workspace->active);
 }
 
+static RECT _WorkspaceTabCloseRect(HWND tabs, int index)
+{
+    RECT rect={0}; TabCtrl_GetItemRect(tabs,index,&rect);
+    int size=MulDiv(20,GetDpiForWindow(tabs),96);
+    rect.left=max_i(rect.left,rect.right-size); rect.right-=MulDiv(3,GetDpiForWindow(tabs),96);
+    return rect;
+}
+static LRESULT CALLBACK _WorkspaceTabsProc(HWND window,UINT message,WPARAM wParam,LPARAM lParam,UINT_PTR subclass,DWORD_PTR data)
+{
+    UNREFERENCED_PARAMETER(subclass); UNREFERENCED_PARAMETER(data);
+    if(message==WM_LBUTTONDOWN || message==WM_LBUTTONDBLCLK){
+        TCHITTESTINFO hit={0};hit.pt.x=GET_X_LPARAM(lParam);hit.pt.y=GET_Y_LPARAM(lParam);
+        int index=TabCtrl_HitTest(window,&hit);
+        if(index>=0){
+            RECT close=_WorkspaceTabCloseRect(window,index);bool onClose=PtInRect(&close,hit.pt);
+            if((message==WM_LBUTTONDOWN && onClose) || (message==WM_LBUTTONDBLCLK && !onClose)){
+                if(_WorkspaceSwitch(index)) SendWMCommand(Globals.hwndMain,IDM_FILE_CLOSE_TAB);
+                return 0;
+            }
+            if(message==WM_LBUTTONDBLCLK && onClose)return 0;
+        }
+    }
+    if(message==WM_NCDESTROY)RemoveWindowSubclass(window,_WorkspaceTabsProc,0);
+    LRESULT result=DefSubclassProc(window,message,wParam,lParam);
+    if(message==WM_PAINT || message==WM_PRINTCLIENT){
+        HDC dc=message==WM_PAINT?GetDC(window):(HDC)wParam;
+        if(dc){
+            int saved=SaveDC(dc);RECT client;GetClientRect(window,&client);IntersectClipRect(dc,client.left,client.top,client.right,client.bottom);
+            COLORREF text=GetSysColor(COLOR_BTNTEXT);HTHEME theme=OpenThemeData(window,L"TAB");
+            if(theme){GetThemeColor(theme,TABP_TABITEM,TIS_NORMAL,3803 /* TMT_TEXTCOLOR */,&text);CloseThemeData(theme);}
+            SetTextColor(dc,text);SetBkMode(dc,TRANSPARENT);SelectObject(dc,GetStockObject(DEFAULT_GUI_FONT));
+            for(int i=0;i<TabCtrl_GetItemCount(window);++i){RECT close=_WorkspaceTabCloseRect(window,i);DrawTextW(dc,L"×",1,&close,DT_CENTER|DT_VCENTER|DT_SINGLELINE);}
+            RestoreDC(dc,saved);if(message==WM_PAINT)ReleaseDC(window,dc);
+        }
+    }
+    return result;
+}
 static bool _WorkspaceEnsure()
 {
     if (_Workspace()) return true;
@@ -406,6 +443,8 @@ static bool _WorkspaceEnsure()
     SendMessage(workspace->tabs, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), FALSE);
     SendMessage(workspace->closeButton, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), FALSE);
     Globals.workspace = workspace;
+    SetWindowSubclass(workspace->tabs,_WorkspaceTabsProc,0,0);
+    TabCtrl_SetPadding(workspace->tabs,MulDiv(24,GetDpiForWindow(workspace->tabs),96),MulDiv(3,GetDpiForWindow(workspace->tabs),96));
     _WorkspaceCapture(); _WorkspaceRefresh();
     RECT rect; GetClientRect(Globals.hwndMain, &rect);
     SendMessage(Globals.hwndMain, WM_SIZE, 0, MAKELPARAM(rect.right, rect.bottom));

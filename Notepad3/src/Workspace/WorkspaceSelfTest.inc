@@ -568,6 +568,24 @@ static void _WorkspaceSelfTest()
             if(closeLoaded) _WorkspaceCloseActive();
         }
     }
+    if(closeCreated && workspace->count==1){
+        unsigned long long remainingId=workspace->documents[0].id;
+        closeLoaded=FileLoad(closeFixture,FLF_None,0,0);
+        RECT tabRect;TabCtrl_GetItemRect(workspace->tabs,workspace->active,&tabRect);
+        SendMessageW(workspace->tabs,WM_LBUTTONDBLCLK,MK_LBUTTON,MAKELPARAM(tabRect.left+8,(tabRect.top+tabRect.bottom)/2));
+        _WorkspaceTestCheck(&result,closeLoaded && workspace->count==1 && workspace->documents[0].id==remainingId,"double click closes target saved tab and retains other document");
+        closeLoaded=FileLoad(closeFixture,FLF_None,0,0);_WorkspaceSwitch(0);
+        RECT closeRect=_WorkspaceTabCloseRect(workspace->tabs,1);
+        SendMessageW(workspace->tabs,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM((closeRect.left+closeRect.right)/2,(closeRect.top+closeRect.bottom)/2));
+        _WorkspaceTestCheck(&result,closeLoaded && workspace->count==1 && workspace->documents[0].id==remainingId,"per tab close glyph closes inactive target without closing original document");
+        closeLoaded=FileLoad(closeFixture,FLF_None,0,0);SciCall_AppendText(5,"dirty");
+        workspaceCloseTestChoice=IDCANCEL;workspaceCloseTestClicks=0;workspaceCloseTestTimer=SetTimer(NULL,0,25,_WorkspaceTestCloseTimer);
+        TabCtrl_GetItemRect(workspace->tabs,workspace->active,&tabRect);
+        if(workspaceCloseTestTimer)SendMessageW(workspace->tabs,WM_LBUTTONDBLCLK,MK_LBUTTON,MAKELPARAM(tabRect.left+8,(tabRect.top+tabRect.bottom)/2));
+        if(workspaceCloseTestTimer){KillTimer(NULL,workspaceCloseTestTimer);workspaceCloseTestTimer=0;}
+        _WorkspaceTestCheck(&result,closeLoaded && workspaceCloseTestClicks==1 && workspace->count==2 && IsSaveNeeded() && _WorkspaceTestText("close fixture\r\nsaveddirty"),"double click dirty tab honors actual Cancel and retains unsaved text");
+        SciCall_SetSavePoint();_WorkspaceCloseActive();
+    }
     Path_Release(closeFixture);
     _WorkspaceTestCheck(&result, _WorkspaceCanClose(FSF_Ask), "all saved tabs can close");
     _SplitToggle();
