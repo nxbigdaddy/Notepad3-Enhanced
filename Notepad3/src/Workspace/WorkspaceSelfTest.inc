@@ -9,11 +9,13 @@ static LRESULT CALLBACK _WorkspaceTestDpiMessage(HWND window,UINT message,WPARAM
     return DefSubclassProc(window,message,wParam,lParam);
 }
 static UINT_PTR workspaceCloseTestTimer;
+static bool workspaceCloseTestWait;
 static const WCHAR* workspaceCloseTestFilename=L"close-flow.txt";
 static int workspaceCloseTestChoice, workspaceCloseTestClicks;
 static BOOL CALLBACK _WorkspaceTestCloseDialog(HWND dialog, LPARAM unused)
 {
     UNREFERENCED_PARAMETER(unused);
+    if(workspaceCloseTestWait) return TRUE;
     WCHAR className[32], message[2048];
     GetClassNameW(dialog,className,COUNTOF(className));
     if(wcscmp(className,L"#32770") || GetAncestor(GetWindow(dialog,GW_OWNER),GA_ROOT)!=Globals.hwndMain) return TRUE;

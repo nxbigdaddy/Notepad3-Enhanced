@@ -92,7 +92,7 @@ void Print(const std::shared_ptr<Job>& job) {
             Finish(job, error); return S_OK;
         }).Get());
     if (FAILED(status)) Finish(job, Status(status));
-    else if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_DIR",nullptr,0)) SendMessageW(job->parent,NP3_WM_MARKDOWN_PDF_PRINTING,reinterpret_cast<WPARAM>(job->window),0);
+    else if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_DIR",nullptr,0)) PostMessageW(job->parent,NP3_WM_MARKDOWN_PDF_PRINTING,reinterpret_cast<WPARAM>(job->window),0);
 }
 void PollRender(const std::shared_ptr<Job>& job) {
     if(job->done || job->printing || job->polling || !job->web) return;

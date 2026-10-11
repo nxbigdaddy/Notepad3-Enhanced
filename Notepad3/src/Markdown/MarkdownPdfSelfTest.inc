@@ -3,7 +3,7 @@ typedef struct PDF_TEST {
     HPATHL directory, target;
     HANDLE locked;
     int phase;
-    bool closingDialog;
+    bool closingDialog, completedDuringDialog;
     sptr_t document;
     unsigned long long version;
 } PDF_TEST;
@@ -69,6 +69,8 @@ static void _MarkdownPdfSelfTestPrinting(HWND window)
         }
         if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CANCEL",NULL,0)) {
             unsigned long long before=workspace->documents[workspace->active].version;
+            bool race=GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_RACE",NULL,0)!=0;
+            workspaceCloseTestWait=race;
             workspaceCloseTestFilename=L"source.md"; workspaceCloseTestChoice=IDCANCEL; workspaceCloseTestClicks=0;
             workspaceCloseTestTimer=SetTimer(NULL,0,25,_WorkspaceTestCloseTimer);
             _WorkspaceTestCheck(&test->result,workspaceCloseTestTimer!=0,"arm actual dirty-document close Cancel button");
@@ -77,7 +79,8 @@ static void _MarkdownPdfSelfTestPrinting(HWND window)
                 if(workspaceCloseTestTimer) KillTimer(NULL,workspaceCloseTestTimer);
                 workspaceCloseTestTimer=0;
             }
-            workspaceCloseTestFilename=L"close-flow.txt";
+            workspaceCloseTestFilename=L"close-flow.txt"; workspaceCloseTestWait=false;
+            if(race) _WorkspaceTestCheck(&test->result,test->completedDuringDialog && !MarkdownPdf_IsBusy(Globals.hwndMain),"unlocked PDF completes inside real close dialog before Cancel is clicked");
             _WorkspaceTestCheck(&test->result,workspaceCloseTestClicks==1 && IsWindow(Globals.hwndMain) && _Workspace()==workspace,"actual Cancel button keeps main window and workspace during submitted PDF print");
             _WorkspaceTestCheck(&test->result,SciCall_GetDocPointer()==test->document && workspace->documents[workspace->active].version==before && IsSaveNeeded() && SciCall_CanUndo(),"canceled close preserves dirty source binding version and undo");
         }
@@ -102,7 +105,11 @@ static bool _MarkdownPdfSelfTestDone(uint32_t error)
     PDF_TEST* test = workspace ? workspace->pdfTest : NULL;
     if (!test) return false;
     if(test->phase==3 && test->closingDialog) {
-        _WorkspaceTestCheck(&test->result,error!=0,"print completing inside canceled close dialog cannot replace locked baseline");
+        if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_RACE",NULL,0)) {
+            test->completedDuringDialog=true; workspaceCloseTestWait=false;
+            _WorkspaceTestCheck(&test->result,error==0 && Path_IsExistingFile(test->target),"unlocked replacement successfully commits while close confirmation is open");
+            _WorkspaceTestCheck(&test->result,IsWindow(Globals.hwndMain) && SciCall_GetDocPointer()==test->document && IsSaveNeeded() && SciCall_CanUndo(),"print completion in modal loop preserves dirty source and undo");
+        } else _WorkspaceTestCheck(&test->result,error!=0,"print completing inside canceled close dialog cannot replace locked baseline");
         return true;
     }
     if(test->phase<0) {
@@ -154,6 +161,12 @@ static bool _MarkdownPdfSelfTestDone(uint32_t error)
         WCHAR closeMode[8];
         if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE",closeMode,COUNTOF(closeMode))) {
             if(IS_VALID_HANDLE(test->locked) && !GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CANCEL",NULL,0) && !GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CHOICE",NULL,0)) { CloseHandle(test->locked); test->locked=NULL; }
+            if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_RACE",NULL,0)) {
+                if(IS_VALID_HANDLE(test->locked)) { CloseHandle(test->locked); test->locked=NULL; }
+                HPATHL race=Path_Copy(test->directory); Path_Append(race,L"race.pdf");
+                _WorkspaceTestCheck(&test->result,_MarkdownPdfTestCopy(test->target,race),"prepare unlocked existing PDF replacement baseline");
+                Path_Release(test->target); test->target=race;
+            }
             const char* canceled="\r\nCANCELLED OUTPUT MUST NOT APPEAR";
             SciCall_AppendText(strlen(canceled),canceled); test->phase=3;
             uint32_t startError=0;

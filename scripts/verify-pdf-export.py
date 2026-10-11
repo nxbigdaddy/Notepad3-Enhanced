@@ -13,6 +13,7 @@ parser.add_argument("directory", type=Path)
 parser.add_argument("--advanced", action="store_true")
 parser.add_argument("--long", action="store_true")
 parser.add_argument("--tall", action="store_true")
+parser.add_argument("--race", action="store_true")
 args = parser.parse_args()
 folder = args.directory.resolve()
 advanced = args.advanced
@@ -55,9 +56,25 @@ assert digest(output) == digest(folder / "baseline.pdf"), "Failed replacement ch
 renderer = shutil.which("pdftoppm")
 assert renderer, "Install Poppler or add pdftoppm to PATH for visual inspection"
 subprocess.run([renderer, "-png", "-r", "120", str(output), str(folder / "page")], check=True)
+race_report = None
+if args.race:
+    race_output = folder / "race.pdf"
+    race_reader = PdfReader(race_output)
+    race_text = "\n".join(p.extract_text() or "" for p in race_reader.pages)
+    assert "CANCELLED OUTPUT MUST NOT APPEAR" in race_text, "Unlocked modal replacement did not include its new snapshot"
+    assert "AFTER SNAPSHOT" not in race_text, "Unlocked replacement included previously undone edit"
+    assert "导出验证" in race_text and "这是中文正文" in race_text, "Unlocked replacement lost original content"
+    assert digest(race_output) != digest(folder / "baseline.pdf"), "Unlocked replacement did not change old PDF bytes"
+    assert all(abs(float(p.mediabox.width)-210/25.4*72)<1 and abs(float(p.mediabox.height)-297/25.4*72)<1 for p in race_reader.pages), "Unlocked replacement is not A4"
+    assert all((p.extract_text() or "").strip() for p in race_reader.pages), "Unlocked replacement contains blank pages"
+    if args.tall:
+        assert any(all(f"TALLNODE{number:02d}" in (p.extract_text() or "") for number in range(1,31)) for p in race_reader.pages), "Unlocked replacement lost or split diagram"
+    subprocess.run([renderer, "-png", "-r", "120", str(race_output), str(folder / "race-page")], check=True)
+    (folder / "race-extracted-text.txt").write_text(race_text, encoding="utf-8")
+    race_report = {"pages": len(race_reader.pages), "sha256": digest(race_output), "new_snapshot_committed": True}
 report = {"pages": len(reader.pages), "images": len(images), "a4": True, "advanced": advanced, "tall": args.tall,
           "tall_nodes": 30 if args.tall else 0, "no_blank_pages": all((page.extract_text() or "").strip() for page in reader.pages),
           "snapshot_immutable": True, "locked_replacement_preserved": True,
-          "sha256": digest(output), "rendered_pages": [p.name for p in folder.glob("page-*.png")]}
+          "modal_replacement": race_report, "sha256": digest(output), "rendered_pages": [p.name for p in folder.glob("page-*.png")]}
 (folder / "verification.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 print(json.dumps(report))
