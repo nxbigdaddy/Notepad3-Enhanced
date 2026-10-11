@@ -182,6 +182,25 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result, isolated, "isolated empty startup");
     if (!isolated) { CloseHandle(result.log); return; }
     WCHAR searchSettingsStage[32]={0};
+    WCHAR historyStage[32]={0};
+    if(GetEnvironmentVariableW(L"NP3_HISTORY_TEST",historyStage,COUNTOF(historyStage))){
+        WCHAR store[32768];unsigned long long count=0;
+        HPATHL source=Path_Allocate(folder);Path_Append(source,L"中文.md");
+        bool enabled=Settings2.HistoryEnabled && Settings.SaveRecentFiles;
+        _WorkspaceTestCheck(&result,_WorkspaceHistoryStore(store,COUNTOF(store)),"history sidecar follows isolated INI path");
+        _WorkspaceTestCheck(&result,Settings2.HistoryMaximum==(!lstrcmpW(historyStage,L"high")?10000:!lstrcmpW(historyStage,L"low")?1:500),"history capacity defaults and bounds loaded from INI");
+        _WorkspaceTestCheck(&result,FileLoad(source,FLF_None,0,0) && _WorkspaceTestText("history fixture"),"successful first open retains original document bytes");
+        _WorkspaceTestCheck(&result,FileLoad(source,FLF_None,0,0) && workspace->count==1,"reopening existing file reuses original tab");
+        _WorkspaceTestCheck(&result,HistoryService_Flush(5000) && (enabled?(HistoryService_GetEntry(store,Path_Get(source),&count) && count==2):(GetFileAttributesW(store)==INVALID_FILE_ATTRIBUTES)),"enabled opens persist twice while disabled history creates no sidecar");
+        Settings2.HistoryEnabled=false;
+        _WorkspaceTestCheck(&result,FileLoad(source,FLF_None,0,0) && HistoryService_Flush(5000) && (!enabled || (HistoryService_GetEntry(store,Path_Get(source),&count) && count==2)),"recording switch prevents repeated open count changes");
+        Settings2.HistoryEnabled=enabled;
+        _WorkspaceTestCheck(&result,FileLoad(source,FLF_Reload|FLF_DontSave,0,0) && HistoryService_Flush(5000) && (!enabled || (HistoryService_GetEntry(store,Path_Get(source),&count) && count==2)),"reload does not add a new history open");
+        _WorkspaceTestCheck(&result,FileLoad(source,FLF_New|FLF_DontSave,0,0) && HistoryService_Flush(5000) && (!enabled || (HistoryService_GetEntry(store,Path_Get(source),&count) && count==2)),"untitled document creation does not record supplied path");
+        Path_Release(source);
+        char summary[128];DWORD written;StringCchPrintfA(summary,COUNTOF(summary),"RESULT checks=%i failures=%i\r\n",result.checks,result.failures);WriteFile(result.log,summary,(DWORD)strlen(summary),&written,NULL);CloseHandle(result.log);
+        _WorkspaceDispose();DestroyWindow(Globals.hwndMain);return;
+    }
     if(GetEnvironmentVariableW(L"NP3_SEARCH_SETTINGS_TEST",searchSettingsStage,COUNTOF(searchSettingsStage))){
         HWND searchSettings=FileSearch_Show(Globals.hwndMain,folder);
         bool write=!lstrcmpW(searchSettingsStage,L"write"),custom=write || !lstrcmpW(searchSettingsStage,L"read");

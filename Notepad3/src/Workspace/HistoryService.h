@@ -7,6 +7,8 @@ extern "C" {
 BOOL HistoryService_Record(const wchar_t* store, const wchar_t* path, size_t maximum);
 BOOL HistoryService_Flush(DWORD timeout);
 DWORD HistoryService_Error(void);
+// Disk read; callers using this from a panel must run it off the UI thread.
+BOOL HistoryService_GetEntry(const wchar_t* store, const wchar_t* path, unsigned long long* count);
 #ifdef __cplusplus
 }
 #endif

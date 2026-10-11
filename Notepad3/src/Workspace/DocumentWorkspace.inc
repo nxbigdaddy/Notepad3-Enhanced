@@ -573,6 +573,8 @@ static bool _WorkspaceCanClose(FileSaveFlags flags)
 }
 static void _WorkspaceDispose()
 {
+    // Bounded wait only: the worker owns all strings and never accesses the UI.
+    HistoryService_Flush(2000);
     MarkdownPdf_Cancel(Globals.hwndMain);
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace) return;
@@ -583,6 +585,16 @@ static void _WorkspaceDispose()
     Globals.workspace = NULL; FreeMem(workspace);
 }
 
+static bool _WorkspaceHistoryStore(WCHAR* store,size_t capacity)
+{
+    return Path_IsNotEmpty(Paths.IniFile) && SUCCEEDED(StringCchPrintfW(store,capacity,L"%s.history",Path_Get(Paths.IniFile)));
+}
+static void _WorkspaceHistoryOpened(const HPATHL path,FileLoadFlags flags)
+{
+    if (!Settings2.HistoryEnabled || !Settings.SaveRecentFiles || (flags & (FLF_New|FLF_Reload)) || Path_IsEmpty(path)) return;
+    WCHAR store[32768];
+    if (_WorkspaceHistoryStore(store,COUNTOF(store))) HistoryService_Record(store,Path_Get(path),(size_t)Settings2.HistoryMaximum);
+}
 bool FileLoad(const HPATHL path, const FileLoadFlags flags, const DocPos position, const DocLn line)
 {
     if (!_WorkspaceEnsure()) { InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_WORKSPACE_LIMIT); return false; }
@@ -601,13 +613,16 @@ bool FileLoad(const HPATHL path, const FileLoadFlags flags, const DocPos positio
         _WorkspaceCapture();
         for (int i = 0; i < workspace->count; ++i) {
             if (Path_IsNotEmpty(workspace->documents[i].path) && Path_StrgComparePath(resolved, workspace->documents[i].path, Paths.WorkingDirectory, true) == 0) {
-                Path_Release(resolved); return _WorkspaceSwitch(i);
+                bool const switched=_WorkspaceSwitch(i);
+                if (switched) _WorkspaceHistoryOpened(resolved,flags);
+                Path_Release(resolved); return switched;
             }
         }
     }
     bool const reuseEmpty = workspace->count == 1 && Path_IsEmpty(Paths.CurrentFile) && SciCall_GetLength() == 0 && !IsSaveNeeded();
     if (reuseEmpty) {
         bool const result = _FileLoadSingle(resolved, flags | FLF_DontSave, position, line);
+        if (result) _WorkspaceHistoryOpened(resolved,flags);
         Path_Release(resolved); _WorkspaceCapture(); _WorkspaceRefresh(); MarkdownPreview_Changed(Globals.hwndMain); return result;
     }
     if (workspace->count >= WORKSPACE_DOCUMENT_LIMIT) {
@@ -633,6 +648,7 @@ bool FileLoad(const HPATHL path, const FileLoadFlags flags, const DocPos positio
     Flags.bSettingsFileSoftLocked = false; Flags.bHugeFileLoadState = false; s_NeedSavingForced = false;
     Encoding_Current(Settings.DefaultEncoding);
     bool const result = _FileLoadSingle(resolved, flags | FLF_DontSave, position, line);
+    if (result) _WorkspaceHistoryOpened(resolved,flags);
     Path_Release(resolved);
     if (result) _WorkspaceCapture();
     else {

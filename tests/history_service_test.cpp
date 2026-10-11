@@ -1,7 +1,11 @@
 #include "../Notepad3/src/Workspace/HistoryService.h"
 #include "../Notepad3/src/Workspace/HistoryCore.h"
 #include <cstdio>
-int wmain() {
+int wmain(int argc,wchar_t** argv) {
+    if (argc==5 && !wcscmp(argv[1],L"--read")) {
+        unsigned long long count=0;
+        return HistoryService_GetEntry(argv[2],argv[3],&count) && count==wcstoull(argv[4],nullptr,10)?0:1;
+    }
     wchar_t temp[MAX_PATH]; if (!GetTempPathW(MAX_PATH,temp)) return 1;
     std::wstring root=std::wstring(temp)+L"np3-history-worker-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
     if (!CreateDirectoryW(root.c_str(),nullptr)) return 1;

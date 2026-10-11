@@ -1496,6 +1496,8 @@ void LoadSettings()
     IniSectionGetString(IniSecSettings2,L"SearchTypes",L"*.md",Settings2.SearchTypes,COUNTOF(Settings2.SearchTypes));
     IniSectionGetString(IniSecSettings2,L"SearchExcluded",L".git;node_modules;.np3-extension-backups;render-assets",Settings2.SearchExcluded,COUNTOF(Settings2.SearchExcluded));
     Settings2.SearchFlags=clampi(IniSectionGetInt(IniSecSettings2,L"SearchFlags",1),0,15);
+    Settings2.HistoryEnabled=IniSectionGetBool(IniSecSettings2,L"HistoryEnabled",true);
+    Settings2.HistoryMaximum=clampi(IniSectionGetInt(IniSecSettings2,L"HistoryMaximum",500),1,10000);
     IniSectionGetString(IniSecSettings2, L"AIEndpoint", L"", Settings2.AIEndpoint, COUNTOF(Settings2.AIEndpoint));
     IniSectionGetString(IniSecSettings2, L"AIModel", L"", Settings2.AIModel, COUNTOF(Settings2.AIModel));
     Settings2.AITimeoutMs = clampi(IniSectionGetInt(IniSecSettings2, L"AITimeoutMs", 60000), 100, 120000);
@@ -2137,6 +2139,8 @@ static bool _SaveSettings(bool bForceSaveSettings)
     IniSectionSetString(L"Settings2",L"SearchTypes",Settings2.SearchTypes);
     IniSectionSetString(L"Settings2",L"SearchExcluded",Settings2.SearchExcluded);
     IniSectionSetInt(L"Settings2",L"SearchFlags",Settings2.SearchFlags);
+    IniSectionSetBool(L"Settings2",L"HistoryEnabled",Settings2.HistoryEnabled);
+    IniSectionSetInt(L"Settings2",L"HistoryMaximum",Settings2.HistoryMaximum);
 
     SAVE_VALUE_IF_NOT_EQ_DEFAULT(Bool, SaveSettings);
     SAVE_VALUE_IF_NOT_EQ_DEFAULT(Bool, SaveRecentFiles);

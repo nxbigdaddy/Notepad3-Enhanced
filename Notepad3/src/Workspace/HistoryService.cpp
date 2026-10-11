@@ -56,3 +56,12 @@ BOOL HistoryService_Flush(DWORD timeout) {
 DWORD HistoryService_Error(void) {
     std::lock_guard<std::mutex> lock(state->mutex); return state->error;
 }
+BOOL HistoryService_GetEntry(const wchar_t* store,const wchar_t* path,unsigned long long* count) {
+    if (!store || !path || !count) return FALSE;
+    try {
+        std::vector<np3::HistoryEntry> entries; DWORD error=0;
+        if (!np3::HistoryRead(store,entries,error)) return FALSE;
+        for (const auto& entry:entries) if (CompareStringOrdinal(entry.path.c_str(),-1,path,-1,TRUE)==CSTR_EQUAL) { *count=entry.count; return TRUE; }
+    } catch (...) {}
+    return FALSE;
+}

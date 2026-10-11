@@ -837,6 +837,8 @@ typedef struct SETTINGS2_T {
     WCHAR   FileTreeRoot[32768];
     WCHAR   SearchTypes[4097], SearchExcluded[4097];
     int     SearchFlags;
+    bool    HistoryEnabled;
+    int     HistoryMaximum;
     WCHAR   AIEndpoint[2049];
     WCHAR   AIModel[257];
     int     AITimeoutMs;

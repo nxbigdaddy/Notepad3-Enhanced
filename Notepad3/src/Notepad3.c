@@ -50,6 +50,7 @@
 #include "Markdown/MarkdownPreview.h"
 #include "Workspace/FileTree.h"
 #include "Workspace/FileSearchPanel.h"
+#include "Workspace/HistoryService.h"
 #include "TextTools/LogFilterPanel.h"
 #include "TextTools/BatchPanel.h"
 #include "UI/PanelTheme.h"
