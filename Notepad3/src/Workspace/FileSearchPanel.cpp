@@ -36,7 +36,8 @@ void Layout(Panel* state) {
     MoveWindow(state->roots,margin,Scale(state->window,36),width,Scale(state->window,52),TRUE);
     MoveWindow(state->types,margin,Scale(state->window,116),Scale(state->window,180),Scale(state->window,26),TRUE);
     MoveWindow(state->query,margin+Scale(state->window,192),Scale(state->window,116),(std::max)(0,width-Scale(state->window,192)),Scale(state->window,26),TRUE);
-    MoveWindow(state->list,margin,Scale(state->window,194),width,(std::max)(0,static_cast<int>(client.bottom)-Scale(state->window,230)),TRUE);
+    MoveWindow(GetDlgItem(state->window,108),margin+Scale(state->window,100),Scale(state->window,154),(std::max)(0,width-Scale(state->window,100)),Scale(state->window,26),TRUE);
+    MoveWindow(state->list,margin,Scale(state->window,232),width,(std::max)(0,static_cast<int>(client.bottom)-Scale(state->window,268)),TRUE);
     MoveWindow(state->status,margin,client.bottom-Scale(state->window,28),width,Scale(state->window,22),TRUE);
 }
 std::wstring Name(const std::wstring& path){size_t separator=path.find_last_of(L"\\/");return separator==std::wstring::npos?path:path.substr(separator+1);}
@@ -63,6 +64,11 @@ void Start(Panel* state) {
     if(!root.empty())options.roots.push_back(root);
     if(options.roots.empty()){SetWindowTextW(state->status,L"请填写搜索目录，每行一个目录。");return;}
     options.query=Text(state->query);
+    options.recursive=SendDlgItemMessageW(state->window,109,BM_GETCHECK,0,0)==BST_CHECKED;
+    options.excludedDirectories.clear();std::wstring excluded=Text(GetDlgItem(state->window,108)),entry;
+    auto accept=[&](){size_t first=entry.find_first_not_of(L" \t"),last=entry.find_last_not_of(L" \t");if(first!=std::wstring::npos){auto name=entry.substr(first,last-first+1);if(name==L"." || name==L".." || name.find_first_of(L"\\/:*?\"<>|")!=std::wstring::npos)return false;options.excludedDirectories.push_back(name);}entry.clear();return true;};
+    for(wchar_t c:excluded){if(c==L';'){if(!accept()){SetWindowTextW(state->status,L"排除目录请填写名称，以分号分隔，不填写路径或通配符。");return;}}else entry+=c;}
+    if(!accept()){SetWindowTextW(state->status,L"排除目录请填写名称，以分号分隔，不填写路径或通配符。");return;}
     if(state->job)state->job->cancel=true;
     auto job=std::make_shared<Job>();
     if(!SetTimer(state->window,1,100,nullptr)){SetWindowTextW(state->status,L"无法启动搜索计时器。");return;}
@@ -99,7 +105,7 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
     Panel* state=State(window);
     try {
         if(message==WM_NCCREATE){auto* owner=static_cast<std::unique_ptr<Panel>*>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams);state=owner->release();state->window=window;SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(state));return TRUE;}
-        if(message==WM_GETMINMAXINFO){auto* size=reinterpret_cast<MINMAXINFO*>(lParam);size->ptMinTrackSize={Scale(window,480),Scale(window,350)};return 0;}
+        if(message==WM_GETMINMAXINFO){auto* size=reinterpret_cast<MINMAXINFO*>(lParam);size->ptMinTrackSize={Scale(window,480),Scale(window,400)};return 0;}
         if(!state)return DefWindowProcW(window,message,wParam,lParam);
         if(message==NP3_WM_PANEL_REFRESH){state->theme.Update(window,state->parent);Layout(state);return 0;}
         LRESULT themed=0;if(state->theme.Handle(window,message,wParam,lParam,themed))return themed;
@@ -109,8 +115,11 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
             Child(window,L"STATIC",L"文件格式",0,0,12,94,180,22);Child(window,L"STATIC",L"文件名或路径关键词",0,0,204,94,400,22);
             state->types=Child(window,L"EDIT",L"*.md",WS_TABSTOP|ES_AUTOHSCROLL,102,12,116,180,26);SendMessageW(state->types,EM_SETLIMITTEXT,4096,0);
             state->query=Child(window,L"EDIT",L"",WS_TABSTOP|ES_AUTOHSCROLL,103,204,116,500,26);SendMessageW(state->query,EM_SETLIMITTEXT,4096,0);
-            Child(window,L"BUTTON",L"搜索",WS_TABSTOP,104,12,154,90,30);Child(window,L"BUTTON",L"停止",WS_TABSTOP,105,114,154,90,30);
-            state->list=Child(window,WC_LISTVIEWW,L"",WS_TABSTOP|LVS_REPORT|LVS_OWNERDATA|LVS_SINGLESEL|LVS_SHOWSELALWAYS,106,12,194,700,280);
+            Child(window,L"STATIC",L"排除目录",0,0,12,156,96,22);
+            HWND exclusions=Child(window,L"EDIT",L".git;node_modules;.np3-extension-backups;render-assets",WS_TABSTOP|ES_AUTOHSCROLL,108,112,154,600,26);SendMessageW(exclusions,EM_SETLIMITTEXT,4096,0);
+            Child(window,L"BUTTON",L"搜索",WS_TABSTOP,104,12,190,90,30);Child(window,L"BUTTON",L"停止",WS_TABSTOP,105,114,190,90,30);
+            HWND recursive=Child(window,L"BUTTON",L"包含子目录",WS_TABSTOP|BS_AUTOCHECKBOX,109,218,194,150,22);SendMessageW(recursive,BM_SETCHECK,BST_CHECKED,0);
+            state->list=Child(window,WC_LISTVIEWW,L"",WS_TABSTOP|LVS_REPORT|LVS_OWNERDATA|LVS_SINGLESEL|LVS_SHOWSELALWAYS,106,12,232,700,240);
             ListView_SetExtendedListViewStyle(state->list,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
             const wchar_t* names[]={L"名称",L"完整路径",L"大小（字节）",L"修改时间"};int widths[]={180,370,100,160};
             for(int i=0;i<4;++i){LVCOLUMNW column{};column.mask=LVCF_TEXT|LVCF_WIDTH;column.pszText=const_cast<wchar_t*>(names[i]);column.cx=Scale(window,widths[i]);ListView_InsertColumn(state->list,i,&column);}

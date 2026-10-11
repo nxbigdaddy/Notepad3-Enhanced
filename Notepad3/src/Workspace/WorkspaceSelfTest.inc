@@ -741,6 +741,14 @@ static void _WorkspaceSelfTest()
     SetDlgItemTextW(search,102,L"bad?type"); SendMessageW(search,WM_COMMAND,104,0);
     WCHAR searchStatus[256];GetDlgItemTextW(search,107,searchStatus,COUNTOF(searchStatus));
     _WorkspaceTestCheck(&result,wcsstr(searchStatus,L"格式无效")!=NULL,"file search rejects invalid extension input without starting scan");
+    SetDlgItemTextW(search,101,folder);SetDlgItemTextW(search,102,L"*.txt");SetDlgItemTextW(search,103,L"child.txt");SetDlgItemTextW(search,108,L"nested");SendMessageW(search,WM_COMMAND,104,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==12,"search exclusion setting skips selected nested folder while retaining other roots");
+    SetDlgItemTextW(search,108,L"");SendMessageW(search,WM_COMMAND,104,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==13,"empty exclusion setting searches all fixture child folders");
+    SendDlgItemMessageW(search,109,BM_SETCHECK,BST_UNCHECKED,0);SendMessageW(search,WM_COMMAND,104,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==0,"unchecked recursion setting excludes all descendant fixture files");
+    SetDlgItemTextW(search,108,L"../nested");SendMessageW(search,WM_COMMAND,104,0);GetDlgItemTextW(search,107,searchStatus,COUNTOF(searchStatus));
+    _WorkspaceTestCheck(&result,wcsstr(searchStatus,L"排除目录")!=NULL,"exclusion setting rejects paths instead of silently accepting ineffective names");
     DestroyWindow(search);
     search=FileSearch_Show(Globals.hwndMain,searchRoot);
     _WorkspaceTestCheck(&result,search && ListView_GetItemCount(GetDlgItem(search,106))==0,"file search closes and recreates without stale results");
