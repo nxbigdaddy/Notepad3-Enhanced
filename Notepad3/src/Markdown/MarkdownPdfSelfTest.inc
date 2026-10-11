@@ -45,6 +45,16 @@ static bool _MarkdownPdfSelfTestDone(uint32_t error)
         if (error) { _MarkdownPdfTestFinish(test); return true; }
         HPATHL baseline = Path_Copy(test->directory); Path_Append(baseline, L"baseline.pdf");
         _WorkspaceTestCheck(&test->result, _MarkdownPdfTestCopy(test->target, baseline), "retain successful PDF baseline"); Path_Release(baseline);
+        const char* canceled="\r\nCANCELLED OUTPUT MUST NOT APPEAR";
+        SciCall_AppendText(strlen(canceled),canceled);
+        uint32_t cancelError=0;
+        bool cancelStarted=_MarkdownExportSnapshot(test->target,&cancelError,true);
+        HWND canceledJob=FindWindowExW(Globals.hwndMain,NULL,L"NP3MarkdownPdfJob",NULL);
+        _WorkspaceTestCheck(&test->result,cancelStarted && canceledJob && MarkdownPdf_IsBusy(Globals.hwndMain),"cancellation fixture starts actual pending WebView PDF replacement");
+        if(canceledJob) DestroyWindow(canceledJob);
+        _WorkspaceTestCheck(&test->result,!MarkdownPdf_IsBusy(Globals.hwndMain) && SciCall_GetDocPointer()==test->document && IsSaveNeeded() && SciCall_CanUndo(),"destroying export job releases busy state and preserves edited source undo");
+        SciCall_Undo();
+        _WorkspaceTestCheck(&test->result,!IsSaveNeeded() && Path_IsExistingFile(test->target),"canceled replacement leaves original export and source savepoint available");
         test->locked = Path_CreateFile(test->target, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         _WorkspaceTestCheck(&test->result, IS_VALID_HANDLE(test->locked), "lock existing PDF against replacement");
         test->phase = 1;

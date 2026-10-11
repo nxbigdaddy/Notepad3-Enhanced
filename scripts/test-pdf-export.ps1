@@ -43,6 +43,7 @@ if ($Long) {
 # A known PNG fixture is kept next to the Markdown source.
 [IO.File]::WriteAllBytes((Join-Path $taskFolder 'sample.png'), [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAABU0lEQVR4nO2bwU3DQBBFnSjNDC3QEucUwZmWaCFTBUfOIOUItr+IPX8W+b1j7Gg1b/9mV/bk9PH5NcEy55VrgCANCRIgSIAgAYIECBJcli48X2/TkXh/fZr9nAQJECRAkABBAgQ9uos5ybf5HSRebocWlAteft/QaOoypprZ+1s0nce3s/2L/yZBublCf5R8Ccr95t8ZJZOg3LskmyPOQQMIyprZ9oSoXFBWlmFwxBJrFZT1M1w9BAkSIKhPULqOKqUDkSABggQIEiBIgCABggQI6hMUrud+pQORIAGCWgVF/SqrHoIEdQuKyhk2JNSRoKgpw7NLssTGEBR7z7btkOVLUOxXkvPVs/XdfNwL2/IA0N/g0fAbFI8W2dL+0tMfFH+M0uEaqH6UTQueYIRexCU4BwkQJECQAEECBAlO/G9+HRIkQJAAQQIECRAkQJAAQdM631MXUr7ET6ogAAAAAElFTkSuQmCC'))
 $taskPrevious = $env:NP3_PDF_SELFTEST_DIR
+$taskStartedUtc = [DateTime]::UtcNow
 try {
     $env:NP3_PDF_SELFTEST_DIR = $taskFolder
     $taskProcess = Start-Process -FilePath $taskExe -ArgumentList @('/n', '/f0') -WindowStyle Hidden -PassThru
@@ -59,3 +60,7 @@ $taskOutput = Join-Path $taskFolder 'export.pdf'
 $taskBaseline = Join-Path $taskFolder 'baseline.pdf'
 if ((Get-FileHash -LiteralPath $taskOutput).Hash -ne (Get-FileHash -LiteralPath $taskBaseline).Hash) { throw 'Failed replacement changed earlier PDF bytes' }
 Write-Output "PDF baseline SHA-256 retained after replacement failure. Evidence: $taskFolder"
+$taskStaging = @(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Directory -Filter ('np3-pdf-' + $taskProcess.Id + '-*') | Where-Object { $_.CreationTimeUtc -ge $taskStartedUtc })
+$taskTemporary = @(Get-ChildItem -LiteralPath $taskFolder -File -Filter ('*.tmp-pdf-' + $taskProcess.Id + '-*'))
+if ($taskStaging.Count -or $taskTemporary.Count) { throw "PDF cancellation or failure left owned temporary artifacts: $taskFolder" }
+Write-Output 'PDF owned staging directories and temporary output files cleaned after cancellation and failure.'

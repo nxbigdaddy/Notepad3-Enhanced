@@ -23,6 +23,7 @@ text = "\n".join(page.extract_text() or "" for page in reader.pages)
 for expected in ["Markdown PDF", "导出验证", "这是中文正文", "English text.", "项目", "示例", "42", "return"]:
     assert expected in text, f"Missing PDF content: {expected}"
 assert "AFTER SNAPSHOT" not in text, "PDF includes editing after snapshot"
+assert "CANCELLED OUTPUT" not in text, "Canceled PDF job replaced the previous output"
 if advanced:
     for expected in ["离线图表与公式", "图表起点", "图表终点", "公式标记"]:
         assert expected in text, f"Advanced PDF content missing: {expected}"
