@@ -437,6 +437,7 @@ static void _WorkspaceRecoveryClose();
 static void _WorkspaceRecoveryTest();
 static void _WorkspaceCycle(int direction);
 static void _WorkspaceEdited();
+static unsigned long long _WorkspaceVersion();
 static void _WorkspaceDocumentKey(WCHAR* key, size_t capacity);
 static void _WorkspaceSelfTest();
 static bool _WorkspaceOwnsPath(const HPATHL path);
@@ -6625,11 +6626,14 @@ static bool _HandleEditLineManipulation(HWND hwnd, UINT umsg, WPARAM wParam, LPA
             break;
         }
         if (outputLength != (size_t)length || memcmp(input ? input : "", output, outputLength) != 0) {
+            unsigned long long const beforeVersion=_WorkspaceVersion();
             UndoTransActionBegin();
             SciCall_SetTargetRange(start, end);
             Sci_ReplaceTargetTestChgHist((DocPos)outputLength, output);
             if (selected) SciCall_SetSel(start, start + (DocPos)outputLength);
             EndUndoTransAction();
+            if(_WorkspaceVersion()==beforeVersion) _WorkspaceEdited();
+            MarkdownPreview_Changed(Globals.hwndMain);
         }
         JsonFormat_Free(output);
         break;

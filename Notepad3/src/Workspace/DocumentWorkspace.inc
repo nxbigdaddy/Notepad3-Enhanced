@@ -600,6 +600,11 @@ static void _WorkspaceEdited()
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (workspace && workspace->active >= 0 && workspace->active < workspace->count) ++workspace->documents[workspace->active].version;
 }
+static unsigned long long _WorkspaceVersion()
+{
+    DOCUMENT_WORKSPACE* workspace=_Workspace();
+    return workspace && workspace->active>=0 && workspace->active<workspace->count?workspace->documents[workspace->active].version:0;
+}
 static void _WorkspaceDocumentKey(WCHAR* key, size_t capacity)
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();

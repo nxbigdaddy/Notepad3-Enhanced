@@ -249,6 +249,28 @@ static void _WorkspaceSelfTest()
     SciCall_SelectAll(); SciCall_ReplaceSel("[section]\r\nkey=value");
     _WorkspaceTestCheck(&result, _ConfigCheck(CONFIG_INI, false) == 0, "valid INI structure accepted in actual editor");
     SciCall_Undo();
+    const char* jsonCommandInput="prefix {\"x\":1,\"s\":\"中文\"} suffix";
+    const char* jsonCommandPretty="prefix {\r\n  \"x\": 1,\r\n  \"s\": \"中文\"\r\n} suffix";
+    SciCall_SelectAll(); SciCall_ReplaceSel(jsonCommandInput); SciCall_SetSel(7,(DocPos)strlen(jsonCommandInput)-7);
+    bool jsonPreview=GetEnvironmentVariableW(L"NP3_MARKDOWN_CHECK_PREVIEW",NULL,0)!=0;
+    if(jsonPreview) { MarkdownPreview_Toggle(Globals.hwndMain); _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false),"JSON command fixture starts actual preview"); }
+    unsigned long long jsonVersion=workspace->documents[workspace->active].version;
+    SendMessageW(Globals.hwndMain,WM_COMMAND,IDM_EDIT_JSON_FORMAT,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestText(jsonCommandPretty) && SciCall_GetSelectionStart()==7 && SciCall_GetSelectionEnd()==(DocPos)strlen(jsonCommandPretty)-7 && workspace->documents[workspace->active].version==jsonVersion+1,"JSON format command changes only selected Unicode JSON and advances version once");
+    if(jsonPreview) _WorkspaceTestCheck(&result,!MarkdownPreview_IsRendered(Globals.hwndMain) && _WorkspaceTestPreviewReady(false),"JSON format quiet transaction refreshes actual WebView preview");
+    jsonVersion=workspace->documents[workspace->active].version;
+    SendMessageW(Globals.hwndMain,WM_COMMAND,IDM_EDIT_JSON_COMPACT,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestText(jsonCommandInput) && workspace->documents[workspace->active].version==jsonVersion+1,"JSON compact command restores selected bytes and advances version once");
+    if(jsonPreview) _WorkspaceTestCheck(&result,!MarkdownPreview_IsRendered(Globals.hwndMain) && _WorkspaceTestPreviewReady(false),"JSON compact quiet transaction refreshes actual WebView preview");
+    jsonVersion=workspace->documents[workspace->active].version; int jsonUndoCurrent=SciCall_GetUndoCurrent();
+    SendMessageW(Globals.hwndMain,WM_COMMAND,IDM_EDIT_JSON_COMPACT,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestText(jsonCommandInput) && workspace->documents[workspace->active].version==jsonVersion && SciCall_GetUndoCurrent()==jsonUndoCurrent,"idempotent JSON compact leaves version and undo unchanged");
+    SciCall_SetReadOnly(TRUE); SendMessageW(Globals.hwndMain,WM_COMMAND,IDM_EDIT_JSON_FORMAT,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestText(jsonCommandInput) && workspace->documents[workspace->active].version==jsonVersion,"JSON command respects editor read-only state"); SciCall_SetReadOnly(FALSE);
+    SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText(jsonCommandPretty),"JSON compact command has one independent undo");
+    SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText(jsonCommandInput),"JSON format command has one independent undo");
+    if(jsonPreview) MarkdownPreview_Toggle(Globals.hwndMain);
+    SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"JSON command fixture restores original saved document");
     _WorkspaceTestCheck(&result, _WorkspaceCanClose(FSF_Ask), "all saved tabs can close");
     _SplitToggle();
     HWND primaryView = workspace->primaryView, secondView = workspace->splitView;
