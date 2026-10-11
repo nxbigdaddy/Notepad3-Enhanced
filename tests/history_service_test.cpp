@@ -2,6 +2,12 @@
 #include "../Notepad3/src/Workspace/HistoryCore.h"
 #include <cstdio>
 int wmain(int argc,wchar_t** argv) {
+    if(argc==5 && !wcscmp(argv[1],L"--pinned")){
+        std::vector<np3::HistoryEntry> entries;DWORD error=0;
+        if(!np3::HistoryRead(argv[2],entries,error))return 1;
+        for(const auto& entry:entries)if(CompareStringOrdinal(entry.path.c_str(),-1,argv[3],-1,TRUE)==CSTR_EQUAL)return entry.pinned==(wcstoul(argv[4],nullptr,10)!=0)?0:1;
+        return 1;
+    }
     if (argc==5 && !wcscmp(argv[1],L"--read")) {
         unsigned long long count=0;
         return HistoryService_GetEntry(argv[2],argv[3],&count) && count==wcstoull(argv[4],nullptr,10)?0:1;

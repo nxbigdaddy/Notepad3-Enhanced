@@ -7,6 +7,7 @@ New-Item -ItemType Directory -Path $fixture | Out-Null
 [IO.File]::WriteAllText((Join-Path $fixture 'workspace-test.marker'),'isolated history regression')
 $document=Join-Path $fixture '中文.md'
 [IO.File]::WriteAllText($document,'history fixture',[Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $fixture 'other.txt'),'owned history removal fixture',[Text.UTF8Encoding]::new($false))
 foreach($stage in @('enabled','disabled','recent-off','low','high')){
     $ini=Join-Path $fixture ($stage+'.ini')
     $enabled=if($stage -eq 'disabled'){'false'}else{'true'}
@@ -30,8 +31,13 @@ foreach($stage in @('enabled','disabled','recent-off','low','high')){
     }else{
         & (Join-Path $root 'artifacts/history_service_test.exe') --read ($ini+'.history') $document 2
         if($LASTEXITCODE){throw 'Independent process history readback failed'}
+        if($stage -eq 'enabled'){
+            & (Join-Path $root 'artifacts/history_service_test.exe') --pinned ($ini+'.history') $document 1
+            if($LASTEXITCODE){throw 'Independent persisted pin readback failed'}
+        }
     }
     if([IO.File]::ReadAllText($document) -ne 'history fixture'){throw 'History changed source document'}
+    if([IO.File]::ReadAllText((Join-Path $fixture 'other.txt')) -ne 'owned history removal fixture'){throw 'Removing history changed source file'}
     Write-Output "$stage $($log.Trim().Split("`n")[-1])"
 }
 Write-Output "Independent readback and source preservation passed: $fixture"

@@ -1,6 +1,7 @@
 #include "HistoryPanel.h"
 #include "HistoryCore.h"
 #include "HistoryService.h"
+#include "FileSearchCore.h"
 #include "FileTree.h"
 #include "../UI/PanelTheme.h"
 #include <commctrl.h>
@@ -27,11 +28,18 @@ Panel* State(HWND window){return reinterpret_cast<Panel*>(GetWindowLongPtrW(wind
 int Scale(HWND window,int value){return MulDiv(value,GetDpiForWindow(window),96);}
 HWND Child(HWND window,const wchar_t* cls,const wchar_t* text,DWORD style,int id,int x,int y,int width,int height){return CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|WS_TABSTOP|style,Scale(window,x),Scale(window,y),Scale(window,width),Scale(window,height),window,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);}
 std::wstring Text(HWND window,int id){wchar_t value[4097]{};GetDlgItemTextW(window,id,value,4097);return value;}
-void Filter(Panel* s){
+bool Filter(Panel* s){
+    std::vector<std::wstring> extensions;
+    if(!np3::ParseSearchExtensions(Text(s->window,102),extensions)){SetDlgItemTextW(s->window,107,L"类型格式无效，请使用 *.md;*.txt 或 *。已有列表保留。");return false;}
     std::wstring query=Text(s->window,101);s->visible.clear();
-    for(size_t i=0;i<s->rows.size();++i)if(query.empty() || StrStrIW(s->rows[i].entry.path.c_str(),query.c_str()))s->visible.push_back(i);
+    for(size_t i=0;i<s->rows.size();++i){
+        const auto& path=s->rows[i].entry.path;std::wstring extension=PathFindExtensionW(path.c_str());
+        bool type=extensions.empty();for(const auto& allowed:extensions)if(CompareStringOrdinal(extension.c_str(),-1,allowed.c_str(),-1,TRUE)==CSTR_EQUAL)type=true;
+        if(type && (query.empty() || StrStrIW(path.c_str(),query.c_str())))s->visible.push_back(i);
+    }
     std::stable_sort(s->visible.begin(),s->visible.end(),[&](size_t a,size_t b){
         const auto& x=s->rows[a].entry;const auto& y=s->rows[b].entry;int order=0;
+        if(x.pinned!=y.pinned)return x.pinned;
         if(s->sortColumn==2)order=CompareFileTime(&x.opened,&y.opened);
         else if(s->sortColumn==3)order=x.count<y.count?-1:x.count>y.count?1:0;
         else order=CompareStringOrdinal(x.path.c_str(),-1,y.path.c_str(),-1,TRUE)-CSTR_EQUAL;
@@ -40,26 +48,38 @@ void Filter(Panel* s){
     // A virtual row number can refer to a different file after sorting/filtering.
     ListView_SetItemState(GetDlgItem(s->window,106),-1,0,LVIS_SELECTED|LVIS_FOCUSED);
     ListView_SetItemCountEx(GetDlgItem(s->window,106),static_cast<int>(s->visible.size()),LVSICF_NOSCROLL);InvalidateRect(GetDlgItem(s->window,106),nullptr,TRUE);
+    return true;
 }
-void Refresh(Panel* s){
+void Refresh(Panel* s,const np3::HistoryChange* change=nullptr){
     if(s->job)return;
     auto job=std::make_shared<Job>();std::wstring store=s->store;
-    SetDlgItemTextW(s->window,107,L"正在读取历史…");
-    std::thread([job,store]{
+    HISTORY_STATE settings{};SendMessageW(s->parent,NP3_WM_HISTORY_STATE,0,reinterpret_cast<LPARAM>(&settings));
+    bool mutate=change!=nullptr;np3::HistoryChange operation;if(change)operation=*change;
+    SetDlgItemTextW(s->window,107,mutate?L"正在更新历史…":L"正在读取历史…");
+    std::thread([job,store,mutate,operation,maximum=settings.maximum]{
         try{
             if(!HistoryService_Flush(5000))job->error=ERROR_TIMEOUT;
             else {
                 std::vector<np3::HistoryEntry> entries;
-                if(np3::HistoryRead(store,entries,job->error))for(auto& entry:entries){DWORD attrs=GetFileAttributesW(entry.path.c_str());job->rows.push_back({std::move(entry),attrs==INVALID_FILE_ATTRIBUTES || !!(attrs&FILE_ATTRIBUTE_DIRECTORY)});}
+                bool loaded=mutate?np3::HistoryUpdate(store,operation,static_cast<size_t>(maximum),entries,job->error):np3::HistoryRead(store,entries,job->error);
+                if(loaded)for(auto& entry:entries){DWORD attrs=GetFileAttributesW(entry.path.c_str());job->rows.push_back({std::move(entry),attrs==INVALID_FILE_ATTRIBUTES || !!(attrs&FILE_ATTRIBUTE_DIRECTORY)});}
             }
         }catch(...){job->error=ERROR_NOT_ENOUGH_MEMORY;}
         job->done=true;
     }).detach();s->job=job;
+    for(int id:{104,110,111})EnableWindow(GetDlgItem(s->window,id),FALSE);
 }
 void Layout(Panel* s){RECT r{};GetClientRect(s->window,&r);int m=Scale(s->window,12),width=(std::max)(0,static_cast<int>(r.right)-2*m);
-    MoveWindow(GetDlgItem(s->window,101),m,Scale(s->window,38),width,Scale(s->window,26),TRUE);
+    MoveWindow(GetDlgItem(s->window,102),m,Scale(s->window,38),Scale(s->window,144),Scale(s->window,26),TRUE);
+    MoveWindow(GetDlgItem(s->window,101),m+Scale(s->window,156),Scale(s->window,38),(std::max)(0,width-Scale(s->window,156)),Scale(s->window,26),TRUE);
     MoveWindow(GetDlgItem(s->window,106),m,Scale(s->window,104),width,(std::max)(0,static_cast<int>(r.bottom)-Scale(s->window,140)),TRUE);
     MoveWindow(GetDlgItem(s->window,107),m,r.bottom-Scale(s->window,28),width,Scale(s->window,22),TRUE);
+}
+void Mutate(Panel* s,np3::HistoryAction action){
+    if(s->job)return;
+    int selected=ListView_GetNextItem(GetDlgItem(s->window,106),-1,LVNI_SELECTED);if(selected<0 || static_cast<size_t>(selected)>=s->visible.size()){SetDlgItemTextW(s->window,107,L"请先选择历史记录。");return;}
+    const auto& entry=s->rows[s->visible[selected]].entry;
+    np3::HistoryChange change;change.action=action;change.path=entry.path;change.pinned=!entry.pinned;Refresh(s,&change);
 }
 void Open(Panel* s){int selected=ListView_GetNextItem(GetDlgItem(s->window,106),-1,LVNI_SELECTED);if(selected<0 || static_cast<size_t>(selected)>=s->visible.size())return;
     Row row=s->rows[s->visible[selected]];
@@ -70,9 +90,10 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam){Pane
     try{
         if(message==WM_NCCREATE){auto owner=reinterpret_cast<std::unique_ptr<Panel>*>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams);s=owner->release();s->window=window;SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(s));}
         if(message==WM_CREATE){
-            Child(window,L"STATIC",L"搜索路径或文件名",0,0,12,12,280,22);Child(window,L"EDIT",L"",ES_AUTOHSCROLL,101,12,38,700,26);SendDlgItemMessageW(window,101,EM_SETLIMITTEXT,4096,0);
+            Child(window,L"STATIC",L"类型 / 路径或文件名",0,0,12,12,280,22);Child(window,L"EDIT",L"*",ES_AUTOHSCROLL,102,12,38,144,26);SendDlgItemMessageW(window,102,EM_SETLIMITTEXT,4096,0);Child(window,L"EDIT",L"",ES_AUTOHSCROLL,101,168,38,540,26);SendDlgItemMessageW(window,101,EM_SETLIMITTEXT,4096,0);
             Child(window,L"BUTTON",L"刷新",0,104,12,72,80,26);Child(window,L"BUTTON",L"记录打开历史",BS_AUTOCHECKBOX,109,108,72,150,26);
-            Child(window,L"STATIC",L"只保存路径与打开元数据",0,0,280,76,300,22);
+            Child(window,L"BUTTON",L"置顶/取消",0,110,276,72,100,26);
+            Child(window,L"BUTTON",L"移除记录",0,111,392,72,100,26);
             HWND list=Child(window,WC_LISTVIEWW,L"",LVS_REPORT|LVS_OWNERDATA|LVS_SINGLESEL|LVS_SHOWSELALWAYS,106,12,104,700,350);ListView_SetExtendedListViewStyle(list,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
             const wchar_t* titles[]={L"文件",L"路径",L"最近打开",L"次数",L"状态"};const int widths[]={140,320,160,60,120};
             for(int i=0;i<5;++i){LVCOLUMNW c{};c.mask=LVCF_TEXT|LVCF_WIDTH;c.pszText=const_cast<wchar_t*>(titles[i]);c.cx=Scale(window,widths[i]);ListView_InsertColumn(list,i,&c);}
@@ -83,12 +104,13 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam){Pane
         if(message==WM_SIZE && s){Layout(s);return 0;}
         if(message==WM_GETMINMAXINFO){auto info=reinterpret_cast<MINMAXINFO*>(lParam);info->ptMinTrackSize={Scale(window,560),Scale(window,320)};return 0;}
         if(message==WM_TIMER && s && s->job && s->job->done){auto job=s->job;s->job.reset();
-            if(!job->error){s->rows=std::move(job->rows);Filter(s);}
+            for(int id:{104,110,111})EnableWindow(GetDlgItem(window,id),TRUE);
+            if(!job->error){auto previous=std::move(s->rows);s->rows=std::move(job->rows);if(!Filter(s)){s->rows=std::move(previous);return 0;}}
             wchar_t status[200];DWORD error=job->error?job->error:HistoryService_Error();
             if(error)StringCchPrintfW(status,200,L"历史读写错误 %lu；已有记录保留。",error);
             else StringCchPrintfW(status,200,L"%zu 条历史记录。双击或 Enter 打开；失效记录保留。",s->rows.size());SetDlgItemTextW(window,107,status);return 0;
         }
-        if(message==WM_COMMAND && s){int id=LOWORD(wParam);if(id==104)Refresh(s);else if(id==101 && HIWORD(wParam)==EN_CHANGE)Filter(s);else if(id==109){HISTORY_STATE settings{};SendMessageW(s->parent,NP3_WM_HISTORY_STATE,0,reinterpret_cast<LPARAM>(&settings));settings.enabled=SendDlgItemMessageW(window,109,BM_GETCHECK,0,0)==BST_CHECKED;SendMessageW(s->parent,NP3_WM_HISTORY_STATE,1,reinterpret_cast<LPARAM>(&settings));}return 0;}
+        if(message==WM_COMMAND && s){int id=LOWORD(wParam);if(id==104)Refresh(s);else if(id==110)Mutate(s,np3::HistoryAction::Pin);else if(id==111)Mutate(s,np3::HistoryAction::Remove);else if((id==101 || id==102) && HIWORD(wParam)==EN_CHANGE)Filter(s);else if(id==109){HISTORY_STATE settings{};SendMessageW(s->parent,NP3_WM_HISTORY_STATE,0,reinterpret_cast<LPARAM>(&settings));settings.enabled=SendDlgItemMessageW(window,109,BM_GETCHECK,0,0)==BST_CHECKED;SendMessageW(s->parent,NP3_WM_HISTORY_STATE,1,reinterpret_cast<LPARAM>(&settings));}return 0;}
         if(message==WM_NOTIFY && s){auto hdr=reinterpret_cast<NMHDR*>(lParam);if(hdr->idFrom==106){
             if(hdr->code==LVN_GETDISPINFOW){auto info=reinterpret_cast<NMLVDISPINFOW*>(lParam);if((info->item.mask&LVIF_TEXT) && info->item.iItem>=0 && static_cast<size_t>(info->item.iItem)<s->visible.size()){
                 const Row& row=s->rows[s->visible[info->item.iItem]];s->display=row.entry.path;
