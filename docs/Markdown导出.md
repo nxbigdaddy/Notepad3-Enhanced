@@ -32,4 +32,6 @@ HTML 开发包 artifacts/markdown-export-x64-v13/Notepad3.exe。HTML 保存对�
 
 最终证据 artifacts/pdf-test-b4bf7d48341841f287efa6b8983d1fb0，包含 export.pdf、baseline.pdf、extracted-text.txt、verification.json 与 page-1.png。完整 x64 Release 构建及 50 项工作区检查通过；工作区证据 artifacts/workspace-test-e0536e96d022404ebcb961c5dc5a5405。新版 artifacts/markdown-pdf-x64-v14/Notepad3.exe。
 
-当前视觉核对覆盖一页固定样例，不代表长文分页、缺失运行时、关闭时中断、多个实例同时导出及真实保存对话框都已验收。这些边界继续保留在总验收清单中。
+第六十五轮补齐普通一页、60 段八页长文及 30 节点超高图表两页的实际输出、独立内容/字节核对和页面渲染。打印 SVG 使用块布局、最大 235 mm 高度及可用宽度，按比例保持整图，消除空白页和跨页连线断开。超高图表字号会缩小，需要放大 PDF 阅读。最新包 artifacts/pdf-tall-diagram-x64-v65；具体证据见迭代进展。
+
+仍不代表缺失运行时、关闭时中断、多个实例同时导出及真实保存对话框都已验收。这些边界继续保留在总验收清单中。

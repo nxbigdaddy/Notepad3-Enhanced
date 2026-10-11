@@ -57,7 +57,7 @@ std::string RenderMarkdownExport(std::string_view markdown, const std::wstring& 
     Replace(html, "img-src https://np3-preview.invalid data:", "img-src file: data:");
     Replace(html, "base-uri https://np3-preview.invalid", "base-uri file:");
     Replace(html, "<base href=\"https://np3-preview.invalid/\">", "<base href=\"" + uri + "\">");
-    Replace(html, "</style>", "@media print{html{color-scheme:light}body{color:#111;background:#fff;padding:0;max-width:none}pre{white-space:pre-wrap;overflow-wrap:anywhere}table,pre,blockquote,.np3-diagram,.katex-display{break-inside:avoid}h1,h2,h3,h4{break-after:avoid}a{color:inherit}}@page{margin:18mm}</style>");
+    Replace(html, "</style>", "@media print{html{color-scheme:light}body{color:#111;background:#fff;padding:0;max-width:none}pre{white-space:pre-wrap;overflow-wrap:anywhere}table,pre,blockquote,.katex-display{break-inside:avoid}.np3-diagram{break-inside:auto}.np3-diagram svg{display:block;max-height:235mm;width:auto;max-width:100%}h1,h2,h3,h4{break-after:avoid}a{color:inherit}}@page{margin:18mm}</style>");
     if (html.size() > OutputLimit) throw std::length_error("Export exceeds 32 MiB output limit");
     return html;
 }

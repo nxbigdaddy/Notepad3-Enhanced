@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/markdown-pdf-x64-v14/Notepad3.exe', [switch]$Advanced, [switch]$Long)
+param([string]$Executable = 'Notepad3/Bin/Release_x64_v143/Notepad3.exe', [switch]$Advanced, [switch]$Long, [switch]$Tall)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -24,6 +24,15 @@ $$
 $$
 '
     [IO.File]::AppendAllText((Join-Path $taskFolder 'source.md'), $taskExtra, [Text.UTF8Encoding]::new($false))
+}
+if ($Tall) {
+    $taskDiagram = "`r`n`r`n## 超高图表`r`n`r`n``````mermaid`r`nflowchart TD`r`n"
+    for ($taskNode = 1; $taskNode -le 30; ++$taskNode) {
+        $taskDiagram += ('  N{0}[TALLNODE{0:D2}]' -f $taskNode) + "`r`n"
+        if ($taskNode -gt 1) { $taskDiagram += ('  N{0} --> N{1}' -f ($taskNode - 1), $taskNode) + "`r`n" }
+    }
+    $taskDiagram += "```````r`n`r`nTALL-DIAGRAM-END`r`n"
+    [IO.File]::AppendAllText((Join-Path $taskFolder 'source.md'), $taskDiagram, [Text.UTF8Encoding]::new($false))
 }
 if ($Long) {
     for ($taskParagraph = 1; $taskParagraph -le 60; ++$taskParagraph) {

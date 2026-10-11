@@ -12,6 +12,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("directory", type=Path)
 parser.add_argument("--advanced", action="store_true")
 parser.add_argument("--long", action="store_true")
+parser.add_argument("--tall", action="store_true")
 args = parser.parse_args()
 folder = args.directory.resolve()
 advanced = args.advanced
@@ -32,8 +33,16 @@ if args.long:
     assert len(reader.pages)>=3, "Long fixture was not paginated"
     assert "END-OF-LONG-DOCUMENT" in reader.pages[-1].extract_text(), "Final paragraph was lost or moved"
     for number in range(1,61): assert f"分页段落 {number}" in text, f"Paragraph {number} missing"
-else:
+elif not args.tall:
     assert len(reader.pages) == 1, "Unexpected fixture pagination"
+if args.tall:
+    assert all((page.extract_text() or "").strip() for page in reader.pages), "Tall diagram generated an empty page"
+    assert any("超高图表" in (page.extract_text() or "") and "TALLNODE01" in (page.extract_text() or "") for page in reader.pages), "Tall diagram heading separated from first node"
+    for number in range(1, 31):
+        assert f"TALLNODE{number:02d}" in text, f"Tall diagram node {number} missing"
+    assert any(all(f"TALLNODE{number:02d}" in (page.extract_text() or "") for number in range(1, 31)) for page in reader.pages), "Tall diagram split across pages"
+    assert "TALL-DIAGRAM-END" in text, "Content after tall diagram missing"
+    assert "flowchart TD" not in text, "Tall diagram printed as raw Markdown source"
 page = reader.pages[0]
 assert all(abs(float(item.mediabox.width)-210/25.4*72)<1 for item in reader.pages), "Page width is not A4"
 assert all(abs(float(item.mediabox.height)-297/25.4*72)<1 for item in reader.pages), "Page height is not A4"
@@ -45,7 +54,8 @@ assert digest(output) == digest(folder / "baseline.pdf"), "Failed replacement ch
 renderer = shutil.which("pdftoppm")
 assert renderer, "Install Poppler or add pdftoppm to PATH for visual inspection"
 subprocess.run([renderer, "-png", "-r", "120", str(output), str(folder / "page")], check=True)
-report = {"pages": len(reader.pages), "images": len(images), "a4": True, "advanced": advanced,
+report = {"pages": len(reader.pages), "images": len(images), "a4": True, "advanced": advanced, "tall": args.tall,
+          "tall_nodes": 30 if args.tall else 0, "no_blank_pages": all((page.extract_text() or "").strip() for page in reader.pages),
           "snapshot_immutable": True, "locked_replacement_preserved": True,
           "sha256": digest(output), "rendered_pages": [p.name for p in folder.glob("page-*.png")]}
 (folder / "verification.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
