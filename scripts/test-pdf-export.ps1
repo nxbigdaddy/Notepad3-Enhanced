@@ -1,5 +1,6 @@
-param([string]$Executable = 'Notepad3/Bin/Release_x64_v143/Notepad3.exe', [switch]$Advanced, [switch]$Long, [switch]$Tall, [switch]$CloseMain, [switch]$CloseCancel)
+param([string]$Executable = 'Notepad3/Bin/Release_x64_v143/Notepad3.exe', [switch]$Advanced, [switch]$Long, [switch]$Tall, [switch]$CloseMain, [switch]$CloseCancel, [switch]$CloseSave, [switch]$CloseDiscard)
 $ErrorActionPreference = 'Stop'
+if (([int]$CloseCancel.IsPresent + [int]$CloseSave.IsPresent + [int]$CloseDiscard.IsPresent) -gt 1) { throw 'Choose one close-dialog action.' }
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
 if (!(Test-Path -LiteralPath $taskExe)) { throw "Missing executable: $taskExe" }
@@ -42,17 +43,21 @@ if ($Long) {
 }
 # A known PNG fixture is kept next to the Markdown source.
 [IO.File]::WriteAllBytes((Join-Path $taskFolder 'sample.png'), [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAABU0lEQVR4nO2bwU3DQBBFnSjNDC3QEucUwZmWaCFTBUfOIOUItr+IPX8W+b1j7Gg1b/9mV/bk9PH5NcEy55VrgCANCRIgSIAgAYIECBJcli48X2/TkXh/fZr9nAQJECRAkABBAgQ9uos5ybf5HSRebocWlAteft/QaOoypprZ+1s0nce3s/2L/yZBublCf5R8Ccr95t8ZJZOg3LskmyPOQQMIyprZ9oSoXFBWlmFwxBJrFZT1M1w9BAkSIKhPULqOKqUDkSABggQIEiBIgCABggQI6hMUrud+pQORIAGCWgVF/SqrHoIEdQuKyhk2JNSRoKgpw7NLssTGEBR7z7btkOVLUOxXkvPVs/XdfNwL2/IA0N/g0fAbFI8W2dL+0tMfFH+M0uEaqH6UTQueYIRexCU4BwkQJECQAEECBAlO/G9+HRIkQJAAQQIECRAkQJAAQdM631MXUr7ET6ogAAAAAElFTkSuQmCC'))
+$taskSourceBytes = [IO.File]::ReadAllBytes((Join-Path $taskFolder 'source.md'))
+$taskPreviousChoice = $env:NP3_PDF_SELFTEST_CLOSE_CHOICE
 $taskSourceHash = (Get-FileHash -LiteralPath (Join-Path $taskFolder 'source.md')).Hash
 $taskPreviousCancel = $env:NP3_PDF_SELFTEST_CLOSE_CANCEL
 $taskPreviousClose = $env:NP3_PDF_SELFTEST_CLOSE
 $taskPrevious = $env:NP3_PDF_SELFTEST_DIR
 $taskStartedUtc = [DateTime]::UtcNow
 try {
+    if ($CloseSave) { $env:NP3_PDF_SELFTEST_CLOSE_CHOICE = "save" } elseif ($CloseDiscard) { $env:NP3_PDF_SELFTEST_CLOSE_CHOICE = "discard" } else { Remove-Item Env:NP3_PDF_SELFTEST_CLOSE_CHOICE -ErrorAction SilentlyContinue }
     if ($CloseCancel) { $env:NP3_PDF_SELFTEST_CLOSE_CANCEL = "1" } else { Remove-Item Env:NP3_PDF_SELFTEST_CLOSE_CANCEL -ErrorAction SilentlyContinue }
-    if ($CloseMain -or $CloseCancel) { $env:NP3_PDF_SELFTEST_CLOSE = "1" } else { Remove-Item Env:NP3_PDF_SELFTEST_CLOSE -ErrorAction SilentlyContinue }
+    if ($CloseMain -or $CloseCancel -or $CloseSave -or $CloseDiscard) { $env:NP3_PDF_SELFTEST_CLOSE = "1" } else { Remove-Item Env:NP3_PDF_SELFTEST_CLOSE -ErrorAction SilentlyContinue }
     $env:NP3_PDF_SELFTEST_DIR = $taskFolder
     $taskProcess = Start-Process -FilePath $taskExe -ArgumentList @('/n', '/f0') -WindowStyle Hidden -PassThru
 } finally {
+    if ($null -eq $taskPreviousChoice) { Remove-Item Env:NP3_PDF_SELFTEST_CLOSE_CHOICE -ErrorAction SilentlyContinue } else { $env:NP3_PDF_SELFTEST_CLOSE_CHOICE = $taskPreviousChoice }
     if ($null -eq $taskPreviousCancel) { Remove-Item Env:NP3_PDF_SELFTEST_CLOSE_CANCEL -ErrorAction SilentlyContinue } else { $env:NP3_PDF_SELFTEST_CLOSE_CANCEL = $taskPreviousCancel }
     if ($null -eq $taskPreviousClose) { Remove-Item Env:NP3_PDF_SELFTEST_CLOSE -ErrorAction SilentlyContinue } else { $env:NP3_PDF_SELFTEST_CLOSE = $taskPreviousClose }
     if ($null -eq $taskPrevious) { Remove-Item Env:NP3_PDF_SELFTEST_DIR -ErrorAction SilentlyContinue } else { $env:NP3_PDF_SELFTEST_DIR = $taskPrevious }
@@ -64,7 +69,11 @@ if (!(Test-Path -LiteralPath $taskLog)) { throw "Missing native PDF test log: $t
 $taskResult = [IO.File]::ReadAllText($taskLog)
 Write-Output $taskResult
 if ($taskResult -notmatch 'RESULT checks=\d+ failures=0') { throw "Native PDF tests failed: $taskFolder" }
-if ((Get-FileHash -LiteralPath (Join-Path $taskFolder 'source.md')).Hash -ne $taskSourceHash) { throw 'PDF test changed source bytes' }
+if ($CloseSave) {
+    $taskExpectedSource = $taskSourceBytes + [Text.Encoding]::UTF8.GetBytes("`r`nCANCELLED OUTPUT MUST NOT APPEAR")
+    if ([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $taskFolder 'source.md'))) -ne [Convert]::ToBase64String($taskExpectedSource)) { throw 'Close Save did not persist exact edited UTF-8 source bytes' }
+    Write-Output 'Close Save persisted exact independently expected UTF-8 source bytes.'
+} elseif ((Get-FileHash -LiteralPath (Join-Path $taskFolder 'source.md')).Hash -ne $taskSourceHash) { throw 'PDF test changed source bytes' }
 $taskOutput = Join-Path $taskFolder 'export.pdf'
 $taskBaseline = Join-Path $taskFolder 'baseline.pdf'
 if ((Get-FileHash -LiteralPath $taskOutput).Hash -ne (Get-FileHash -LiteralPath $taskBaseline).Hash) { throw 'Failed replacement changed earlier PDF bytes' }

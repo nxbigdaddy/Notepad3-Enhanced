@@ -50,6 +50,23 @@ static void _MarkdownPdfSelfTestPrinting(HWND window)
     if(test) { char note[100]; DWORD written; StringCchPrintfA(note,COUNTOF(note),"PRINT submission phase=%i window=%p\r\n",test->phase,window); WriteFile(test->result.log,note,(DWORD)strlen(note),&written,NULL); }
     if(test && test->phase==3) {
         _WorkspaceTestCheck(&test->result,window && MarkdownPdf_IsBusy(Globals.hwndMain),"main close observes actual submitted PDF print");
+        WCHAR closeChoice[16];
+        if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CHOICE",closeChoice,COUNTOF(closeChoice))) {
+            workspaceCloseTestFilename=L"source.md";
+            workspaceCloseTestChoice=!wcscmp(closeChoice,L"save")?IDYES:IDNO; workspaceCloseTestClicks=0;
+            workspaceCloseTestTimer=SetTimer(NULL,0,25,_WorkspaceTestCloseTimer);
+            _WorkspaceTestCheck(&test->result,workspaceCloseTestTimer!=0,"arm actual dirty-document close Save or Discard button");
+            HWND parent=Globals.hwndMain;
+            if(workspaceCloseTestTimer) {
+                test->closingDialog=true; SendMessageW(parent,WM_CLOSE,0,0); test->closingDialog=false;
+                if(workspaceCloseTestTimer) KillTimer(NULL,workspaceCloseTestTimer);
+                workspaceCloseTestTimer=0;
+            }
+            workspaceCloseTestFilename=L"close-flow.txt";
+            _WorkspaceTestCheck(&test->result,workspaceCloseTestClicks==1,"actual Save or Discard button handles submitted-print close confirmation");
+            _WorkspaceTestCheck(&test->result,!IsWindow(parent) && !_Workspace(),"confirmed dirty-document main close destroys window and disposes workspace");
+            _MarkdownPdfTestFinish(test); return;
+        }
         if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CANCEL",NULL,0)) {
             unsigned long long before=workspace->documents[workspace->active].version;
             workspaceCloseTestFilename=L"source.md"; workspaceCloseTestChoice=IDCANCEL; workspaceCloseTestClicks=0;
@@ -136,7 +153,7 @@ static bool _MarkdownPdfSelfTestDone(uint32_t error)
         _WorkspaceTestCheck(&test->result, error != 0 && Path_IsExistingFile(test->target), "locked PDF replacement reports failure and retains output");
         WCHAR closeMode[8];
         if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE",closeMode,COUNTOF(closeMode))) {
-            if(IS_VALID_HANDLE(test->locked) && !GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CANCEL",NULL,0)) { CloseHandle(test->locked); test->locked=NULL; }
+            if(IS_VALID_HANDLE(test->locked) && !GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CANCEL",NULL,0) && !GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CHOICE",NULL,0)) { CloseHandle(test->locked); test->locked=NULL; }
             const char* canceled="\r\nCANCELLED OUTPUT MUST NOT APPEAR";
             SciCall_AppendText(strlen(canceled),canceled); test->phase=3;
             uint32_t startError=0;
