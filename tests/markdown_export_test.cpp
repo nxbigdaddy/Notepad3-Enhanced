@@ -5,6 +5,7 @@
 #include <iterator>
 #include <cstdio>
 #include <stdexcept>
+#include <filesystem>
 int checks = 0;
 void expect(bool condition, const char* label) { ++checks; if (!condition) throw std::runtime_error(label); }
 std::string disk(const std::wstring& path) { std::ifstream input(path, std::ios::binary); return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() }; }
@@ -32,6 +33,7 @@ int main() {
         const std::string advancedSource="# 单文件图表与公式\n\n```mermaid\nflowchart LR\n A[开始] --> B[结束]\n```\n\n行内 $E=mc^2$\n\n$$\\frac{1}{2}$$\n\n<script>window.attack=1</script>\n";
         const auto advanced=np3::RenderMarkdownStandalone(advancedSource,folder,np3::MarkdownAssetsDirectory());
         expect(advanced.find("script-src 'sha256-")!=std::string::npos && advanced.find("'unsafe-eval'")==std::string::npos,"standalone scripts use exact content hashes");
+        expect(advanced.find("@media print")!=std::string::npos && advanced.find("max-height:235mm")!=std::string::npos && advanced.find("@page{margin:18mm}")!=std::string::npos,"advanced standalone HTML retains shared print layout and tall diagram limits");
         expect(advanced.find("np3-assets.invalid")==std::string::npos && advanced.find("np3-preview.invalid")==std::string::npos,"standalone page has no virtual host dependencies");
         expect(advanced.find("data:font/woff2;base64,")!=std::string::npos && advanced.find("url(fonts/")==std::string::npos,"font dependencies are embedded");
         expect(advanced.find("<script>window.attack=1</script>")==std::string::npos,"advanced standalone document markup remains inert");
@@ -40,6 +42,24 @@ int main() {
         expect(Markdown_ExportHtml(advancedSource.data(),advancedSource.size(),folder.c_str(),advancedTarget.c_str(),&error) && disk(advancedTarget)==advanced,"native export selects advanced standalone rendering");
         bool assetsMissing=false; try { np3::RenderMarkdownStandalone(advancedSource,folder,folder+L"\\missing-assets"); } catch(const std::exception&) { assetsMissing=true; }
         expect(assetsMissing,"missing advanced assets fail instead of silently exporting raw graphs");
+        namespace fs=std::filesystem;
+        const fs::path partial=fs::path(folder)/L"partial-assets";
+        fs::copy(fs::path(np3::MarkdownAssetsDirectory()),partial,fs::copy_options::recursive);
+        auto missingAsset=[&](const fs::path& relative,const char* label) {
+            const fs::path source=partial/relative, held=source.wstring()+L".held";
+            fs::rename(source,held);
+            bool rejected=false;
+            try { np3::RenderMarkdownStandalone(advancedSource,folder,partial.wstring()); } catch(const std::exception&) { rejected=true; }
+            fs::rename(held,source);
+            expect(rejected,label);
+        };
+        missingAsset(L"mermaid.min.js","partial advanced assets reject missing Mermaid script");
+        missingAsset(fs::path(L"fonts")/L"KaTeX_AMS-Regular.woff2","partial advanced assets reject missing formula font");
+        const fs::path renderer=partial/L"np3-render.js";
+        { std::ofstream damaged(renderer,std::ios::binary|std::ios::trunc); damaged.put(static_cast<char>(0xC0)); }
+        bool invalidAsset=false;
+        try { np3::RenderMarkdownStandalone(advancedSource,folder,partial.wstring()); } catch(const std::exception&) { invalidAsset=true; }
+        expect(invalidAsset,"corrupt non-UTF8 renderer asset rejects advanced export");
         std::ofstream fixture("advanced-export-fixture.json",std::ios::binary);
         int pathLength=WideCharToMultiByte(CP_UTF8,0,advancedTarget.c_str(),-1,nullptr,0,nullptr,nullptr); std::string utf8Path(pathLength,0);
         WideCharToMultiByte(CP_UTF8,0,advancedTarget.c_str(),-1,utf8Path.data(),pathLength,nullptr,nullptr); utf8Path.pop_back();
