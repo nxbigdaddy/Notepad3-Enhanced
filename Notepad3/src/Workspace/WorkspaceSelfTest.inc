@@ -143,6 +143,38 @@ static bool _WorkspaceTestAiReady(void)
     }
     return !AiPanel_IsBusy(_WorkspaceAi());
 }
+static void _WorkspaceTestAiCapacity(WORKSPACE_TEST_RESULT* result)
+{
+    AI_PANEL_SAVE restore={0},request={0};restore.settings=_AiSettings();restore.secret="";request=restore;
+    WCHAR section[32],id[65],profile[73];char* key=NULL;
+    bool prepared=OpenSettingsFile(__FUNCTION__);
+    if(prepared) {
+        for(int index=2;index<AI_PROFILE_MAXIMUM;++index) {
+            StringCchPrintfW(section,COUNTOF(section),L"AIProfile%02d",index);StringCchPrintfW(id,COUNTOF(id),L"capacity-%lu-%d",GetCurrentProcessId(),index);
+            prepared=IniSectionSetString(section,L"Id",id) && IniSectionSetString(section,L"Endpoint",restore.settings.endpoint) && IniSectionSetString(section,L"Model",restore.settings.model) && IniSectionSetInt(section,L"TimeoutMs",60000) && prepared;
+        }
+        prepared=CloseSettingsFile(__FUNCTION__,prepared) && prepared;
+    }
+    _WorkspaceTestCheck(result,prepared,"owned fixture fills all 32 saved profile slots");
+    StringCchPrintfW(request.settings.configurationId,COUNTOF(request.settings.configurationId),L"capacity-new-%lu-%llu",GetCurrentProcessId(),GetTickCount64());request.secret="owned-capacity-fixture-key";
+    bool identity=AiCredential_AccountProfile(request.settings.endpoint,request.settings.configurationId,profile,COUNTOF(profile))==ERROR_SUCCESS;
+    if(prepared && identity) {
+        _WorkspaceTestCheck(result,!_AiSave(&request,false),"33rd profile is rejected without overwriting saved slots");
+        _WorkspaceTestCheck(result,!wcscmp(Settings2.AIConfigurationId,restore.settings.configurationId) && AiCredential_Load(profile,&key)==ERROR_NOT_FOUND && !key,"capacity rejection preserves active account and rolls back newly saved key");AiCredential_Free(key);key=NULL;
+        _WorkspaceTestCheck(result,_AiSave(&restore,false),"existing profile can still update when all slots are full");
+        AI_PANEL_SETTINGS last={0};bool removed=_AiReadProfile(AI_PROFILE_MAXIMUM-1,&last) && _AiRemoveProfile(AI_PROFILE_MAXIMUM-1,&last);
+        _WorkspaceTestCheck(result,removed && _AiSave(&request,false),"removing a profile permits saving a new account in freed slot");
+        bool loaded=AiCredential_Load(profile,&key)==ERROR_SUCCESS && !strcmp(key,"owned-capacity-fixture-key");AiCredential_Free(key);key=NULL;
+        _WorkspaceTestCheck(result,loaded && _AiReadProfile(AI_PROFILE_MAXIMUM-1,&last) && !wcscmp(last.configurationId,request.settings.configurationId),"reused capacity slot and scoped key independently read back");
+        AiCredential_Delete(profile);
+    }
+    bool cleaned=OpenSettingsFile(__FUNCTION__);
+    if(cleaned) {
+        for(int index=2;index<AI_PROFILE_MAXIMUM;++index){StringCchPrintfW(section,COUNTOF(section),L"AIProfile%02d",index);IniSectionDelete(section,NULL,true);}
+        cleaned=CloseSettingsFile(__FUNCTION__,true);
+    }
+    _WorkspaceTestCheck(result,cleaned && _AiSave(&restore,false),"owned capacity fixture cleans temporary slots and restores active account");
+}
 static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_TEST_RESULT* result)
 {
     WCHAR idA[65],idB[65],profileA[73],profileB[73],saved[65]; char* key=NULL;
@@ -188,6 +220,16 @@ static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_
     _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA"),"saved account quick switch uses original scoped key for actual local request");
     SendDlgItemMessageW(panel,123,CB_SETCURSEL,itemB,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(123,CBN_SELCHANGE),0);
     _WorkspaceTestCheck(result,!wcscmp(Settings2.AIConfigurationId,idB) && Settings2.AITimeoutMs==32000,"saved second account switch restores its independent timeout");
+    int slotB=(int)SendDlgItemMessageW(panel,123,CB_GETITEMDATA,itemB,0);
+    selected=_AiSettings();AI_PANEL_SETTINGS stale=selected;stale.timeoutMs++;
+    _WorkspaceTestCheck(result,!_AiRemoveProfile(slotB,&stale) && _AiReadProfile(slotB,&stale),"stale profile snapshot cannot remove changed configuration");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(124,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,123,CB_GETCOUNT,0,0)==2 && !_AiReadProfile(slotB,&stale),"native remove profile frees only selected saved slot");
+    bool keyKept=AiCredential_Load(profileB,&key)==ERROR_SUCCESS && !strcmp(key,"fake-panel-test-key-b");AiCredential_Free(key);key=NULL;
+    _WorkspaceTestCheck(result,keyKept && !wcscmp(Settings2.AIConfigurationId,idB),"removing profile keeps credential and current active settings");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,123,CB_GETCOUNT,0,0)==3 && _AiReadProfile(slotB,&stale) && !wcscmp(stale.configurationId,idB),"saving removed active profile reuses freed slot");
+    _WorkspaceTestAiCapacity(result);
     SendMessageW(panel,WM_COMMAND,MAKEWPARAM(106,BN_CLICKED),0);
     _WorkspaceTestCheck(result,AiCredential_Load(profileB,&key)==ERROR_NOT_FOUND && !key,"delete key removes selected account only"); AiCredential_Free(key);key=NULL;
     bool retained=AiCredential_Load(profileA,&key)==ERROR_SUCCESS && !strcmp(key,"fake-panel-test-key-a"); AiCredential_Free(key);

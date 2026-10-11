@@ -49,7 +49,7 @@ std::string Utf8(const wchar_t* value) {
 }
 void Status(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel->window, 130), panel->labels[label].c_str()); }
 void Busy(const Owner& panel, bool busy) {
-    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123}) EnableWindow(GetDlgItem(panel->window,id), !busy);
+    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124}) EnableWindow(GetDlgItem(panel->window,id), !busy);
     EnableWindow(GetDlgItem(panel->window,114), busy);
     EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK);
 }
@@ -130,7 +130,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         move(205,0,3*row,width/4,row); move(120,width/4,3*row,width-width/4,row-2);
         move(116,0,4*row,width/3-2,6*row); move(117,width/3,4*row,width/6-2,row-2);
         move(118,width/2,4*row,width/4,row); move(119,3*width/4,4*row,width/4-2,row-2);
-        move(123,0,5*row,width,6*row);
+        move(123,0,5*row,3*width/4-2,6*row);move(124,3*width/4,5*row,width/4-2,row-2);
         move(206,0,6*row,width/2,row); move(207,width/2,6*row,width-width/2,row);
         int panes = height-8*row;
         move(121,0,7*row,width/2-2,panes); move(122,width/2,7*row,width-width/2,panes);
@@ -149,6 +149,15 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             SetDlgItemInt(window,104,request.settings.timeoutMs,FALSE);SetWindowTextW(GetDlgItem(window,119),request.settings.configurationId);SetWindowTextW(GetDlgItem(window,103),L"");Status(panel,AP_SAVED);return 0;
         }
         if (HIWORD(wParam) != BN_CLICKED) return 0;
+        if(id==124) {
+            if(panel->job && (!panel->job->done.load() || !panel->published)) return 0;
+            const LRESULT item=SendDlgItemMessageW(window,123,CB_GETCURSEL,0,0);
+            const int index=static_cast<int>(SendDlgItemMessageW(window,123,CB_GETITEMDATA,static_cast<WPARAM>(item),0));
+            AI_PANEL_SETTINGS expected{};
+            const bool removed=index>=0 && SendMessageW(panel->parent,NP3_WM_AI_PROFILE,index,reinterpret_cast<LPARAM>(&expected)) && SendMessageW(panel->parent,NP3_WM_AI_REMOVE_PROFILE,index,reinterpret_cast<LPARAM>(&expected));
+            if(removed) {Profiles(panel);SetWindowTextW(GetDlgItem(window,130),L"已移出列表；当前设置和密钥保留，可再次保存恢复。");} else Status(panel,AP_ERROR);
+            return 0;
+        }
         if ((id >= 110 && id <=113) || id ==117) {
             const int selected=static_cast<int>(SendDlgItemMessageW(window,116,CB_GETCURSEL,0,0));
             if(id==117 && (selected<0 || selected>AI_ASK-AI_SUMMARIZE)) { Status(panel,AP_ERROR); return 0; }
@@ -243,7 +252,7 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             SendMessageW(actions,CB_SETCURSEL,0,0); control(L"BUTTON",L"执行",BS_PUSHBUTTON|WS_TABSTOP,117);
             control(L"STATIC",L"配置ID（空=旧账号）",0,118);
             control(L"EDIT",settings->configurationId,WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,119); SendMessageW(GetDlgItem(window,119),EM_SETLIMITTEXT,64,0);
-            control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,123); Profiles(panel);
+            control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,123); control(L"BUTTON",L"移出列表",BS_PUSHBUTTON|WS_TABSTOP,124); Profiles(panel);
             control(L"STATIC",labels[AP_ORIGINAL],0,206); control(L"STATIC",labels[AP_RESULT],0,207);
             for(int id:{121,122}) { HWND edit=control(L"RICHEDIT50W",L"",WS_BORDER|WS_VSCROLL|WS_HSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|ES_AUTOHSCROLL|WS_TABSTOP,id); SendMessageW(edit,EM_EXLIMITTEXT,0,2*1024*1024); }
             control(L"STATIC",labels[AP_READY],0,130); Busy(panel,false); if(!SetTimer(window,1,50,nullptr)) throw std::bad_alloc();

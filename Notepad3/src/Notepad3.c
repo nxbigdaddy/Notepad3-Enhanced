@@ -406,6 +406,7 @@ static bool _AiRun(const AI_PANEL_CAPTURE* request);
 static bool _AiApply(const AI_PANEL_APPLY* request);
 static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey);
 static bool _AiReadProfile(int index, AI_PANEL_SETTINGS* settings);
+static bool _AiRemoveProfile(int index, const AI_PANEL_SETTINGS* expected);
 static int _AiLayout(int x, int y, int width, int height);
 static void* _WorkspaceAi(void);
 static void* _WorkspaceBatch(void);
@@ -2671,6 +2672,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     case NP3_WM_AI_APPLY: return _AiApply((const AI_PANEL_APPLY*)lParam);
     case NP3_WM_AI_SAVE: return _AiSave((const AI_PANEL_SAVE*)lParam, wParam != 0);
     case NP3_WM_AI_PROFILE: return _AiReadProfile((int)wParam,(AI_PANEL_SETTINGS*)lParam);
+    case NP3_WM_AI_REMOVE_PROFILE: return _AiRemoveProfile((int)wParam,(const AI_PANEL_SETTINGS*)lParam);
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
     case NP3_WM_LOGFILTER_LOCATE: return _LogFilterLocate((const LOG_PANEL_LOCATION*)lParam);
     case NP3_WM_SEARCH_LOCATE: return _SearchLocate((const SEARCH_LOCATION*)lParam);
@@ -12701,6 +12703,17 @@ static bool _AiReadProfile(int index, AI_PANEL_SETTINGS* settings)
     result.timeoutMs=(DWORD)IniFileGetLong(Paths.IniFile,section,L"TimeoutMs",60000);
     if(AiCredential_AccountProfile(result.endpoint,result.configurationId,identity,COUNTOF(identity))!=ERROR_SUCCESS || !result.model[0] || result.timeoutMs<100 || result.timeoutMs>120000) return false;
     *settings=result;return true;
+}
+static bool _AiRemoveProfile(int index, const AI_PANEL_SETTINGS* expected)
+{
+    if(!expected || index<0 || index>=AI_PROFILE_MAXIMUM || !expected->configurationId[0] || AiPanel_IsBusy(_WorkspaceAi())) return false;
+    if(!OpenSettingsFile(__FUNCTION__)) return false;
+    WCHAR section[32],id[65],endpoint[2049],model[257];
+    StringCchPrintfW(section,COUNTOF(section),L"AIProfile%02d",index);
+    IniSectionGetString(section,L"Id",L"",id,COUNTOF(id));IniSectionGetString(section,L"Endpoint",L"",endpoint,COUNTOF(endpoint));IniSectionGetString(section,L"Model",L"",model,COUNTOF(model));
+    bool matched=!wcscmp(id,expected->configurationId) && !wcscmp(endpoint,expected->endpoint) && !wcscmp(model,expected->model) && IniSectionGetInt(section,L"TimeoutMs",60000)==(int)expected->timeoutMs;
+    bool removed=Globals.bCanSaveIniFile && matched && IniSectionDelete(section,NULL,true);
+    return CloseSettingsFile(__FUNCTION__,removed) && removed;
 }
 static bool _AiWriteProfile(const AI_PANEL_SETTINGS* settings)
 {
