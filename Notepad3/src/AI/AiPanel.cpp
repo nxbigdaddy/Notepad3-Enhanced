@@ -2,6 +2,7 @@
 #include "AiPanel.h"
 #include "../UI/PanelTheme.h"
 #include <richedit.h>
+#include <commctrl.h>
 #include <algorithm>
 #include <atomic>
 #include <memory>
@@ -49,7 +50,7 @@ std::string Utf8(const wchar_t* value) {
 }
 void Status(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel->window, 130), panel->labels[label].c_str()); }
 void Busy(const Owner& panel, bool busy) {
-    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124}) EnableWindow(GetDlgItem(panel->window,id), !busy);
+    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124,125}) EnableWindow(GetDlgItem(panel->window,id), !busy);
     EnableWindow(GetDlgItem(panel->window,114), busy);
     EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK);
 }
@@ -130,7 +131,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         move(205,0,3*row,width/4,row); move(120,width/4,3*row,width-width/4,row-2);
         move(116,0,4*row,width/3-2,6*row); move(117,width/3,4*row,width/6-2,row-2);
         move(118,width/2,4*row,width/4,row); move(119,3*width/4,4*row,width/4-2,row-2);
-        move(123,0,5*row,3*width/4-2,6*row);move(124,3*width/4,5*row,width/4-2,row-2);
+        move(123,0,5*row,width/2-2,6*row);move(124,width/2,5*row,width/6-2,row-2);move(125,2*width/3,5*row,width-width*2/3-2,6*row);
         move(206,0,6*row,width/2,row); move(207,width/2,6*row,width-width/2,row);
         int panes = height-8*row;
         move(121,0,7*row,width/2-2,panes); move(122,width/2,7*row,width-width/2,panes);
@@ -138,6 +139,14 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     }
     if (message == WM_COMMAND && panel) {
         int id = LOWORD(wParam);
+        if(id==125 && HIWORD(wParam)==CBN_SELCHANGE) {
+            if(panel->job && (!panel->job->done.load() || !panel->published)) return 0;
+            const LRESULT selected=SendDlgItemMessageW(window,125,CB_GETCURSEL,0,0);
+            const wchar_t* endpoints[]={L"",L"https://api.moonshot.cn/v1/chat/completions",L"https://api.deepseek.com/chat/completions",L"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",L""};
+            if(selected<1 || selected>4) return 0;
+            SetWindowTextW(GetDlgItem(window,101),endpoints[selected]);SetWindowTextW(GetDlgItem(window,102),L"");SetWindowTextW(GetDlgItem(window,103),L"");SetWindowTextW(GetDlgItem(window,119),L"");
+            SetWindowTextW(GetDlgItem(window,130),L"仅填入地址；填写平台模型、账号ID及密钥后保存。未发起请求。");return 0;
+        }
         if(id==123 && HIWORD(wParam)==CBN_SELCHANGE) {
             if(AiPanel_IsBusy(reinterpret_cast<void*>(GetWindowLongPtrW(window,GWLP_USERDATA)))) return 0;
             const LRESULT item=SendDlgItemMessageW(window,123,CB_GETCURSEL,0,0);
@@ -252,7 +261,10 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             SendMessageW(actions,CB_SETCURSEL,0,0); control(L"BUTTON",L"执行",BS_PUSHBUTTON|WS_TABSTOP,117);
             control(L"STATIC",L"配置ID（空=旧账号）",0,118);
             control(L"EDIT",settings->configurationId,WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,119); SendMessageW(GetDlgItem(window,119),EM_SETLIMITTEXT,64,0);
-            control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,123); control(L"BUTTON",L"移出列表",BS_PUSHBUTTON|WS_TABSTOP,124); Profiles(panel);
+            control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,123); control(L"BUTTON",L"移出列表",BS_PUSHBUTTON|WS_TABSTOP,124);
+            HWND providers=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,125);
+            for(const wchar_t* name:{L"服务地址预设",L"Kimi（中国大陆）",L"DeepSeek",L"Qwen / 百炼（北京）",L"第三方兼容接口"}) SendMessageW(providers,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
+            SendMessageW(providers,CB_SETCURSEL,0,0);SendMessageW(GetDlgItem(window,102),EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"填写平台可用模型ID")); Profiles(panel);
             control(L"STATIC",labels[AP_ORIGINAL],0,206); control(L"STATIC",labels[AP_RESULT],0,207);
             for(int id:{121,122}) { HWND edit=control(L"RICHEDIT50W",L"",WS_BORDER|WS_VSCROLL|WS_HSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|ES_AUTOHSCROLL|WS_TABSTOP,id); SendMessageW(edit,EM_EXLIMITTEXT,0,2*1024*1024); }
             control(L"STATIC",labels[AP_READY],0,130); Busy(panel,false); if(!SetTimer(window,1,50,nullptr)) throw std::bad_alloc();

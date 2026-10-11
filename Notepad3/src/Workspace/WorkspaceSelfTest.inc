@@ -175,8 +175,24 @@ static void _WorkspaceTestAiCapacity(WORKSPACE_TEST_RESULT* result)
     }
     _WorkspaceTestCheck(result,cleaned && _AiSave(&restore,false),"owned capacity fixture cleans temporary slots and restores active account");
 }
+static void _WorkspaceTestAiPresets(HWND panel,WORKSPACE_TEST_RESULT* result)
+{
+    AI_PANEL_SETTINGS saved=_AiSettings();WCHAR endpoint[2049];
+    const WCHAR* expected[]={L"https://api.moonshot.cn/v1/chat/completions",L"https://api.deepseek.com/chat/completions",L"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",L""};
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,125,CB_GETCOUNT,0,0)==5,"provider address selector exposes three regional presets and custom endpoint");
+    for(int index=1;index<=4;++index) {
+        SetWindowTextW(GetDlgItem(panel,102),L"previous-model");SetWindowTextW(GetDlgItem(panel,103),L"owned-draft-key");SetWindowTextW(GetDlgItem(panel,119),L"previous-account");
+        SendDlgItemMessageW(panel,125,CB_SETCURSEL,index,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(125,CBN_SELCHANGE),0);
+        GetWindowTextW(GetDlgItem(panel,101),endpoint,COUNTOF(endpoint));
+        _WorkspaceTestCheck(result,!wcscmp(endpoint,expected[index-1]),"provider preset fills exact documented endpoint or clears custom endpoint");
+        _WorkspaceTestCheck(result,!GetWindowTextLengthW(GetDlgItem(panel,102)) && !GetWindowTextLengthW(GetDlgItem(panel,103)) && !GetWindowTextLengthW(GetDlgItem(panel,119)),"provider change clears prior model account and unsaved key drafts");
+        _WorkspaceTestCheck(result,!wcscmp(Settings2.AIEndpoint,saved.endpoint) && !wcscmp(Settings2.AIModel,saved.model) && !AiPanel_IsBusy(_WorkspaceAi()) && _WorkspaceTestText("alpha\r\nA"),"address preset does not activate persist send or edit document");
+    }
+    SetWindowTextW(GetDlgItem(panel,101),saved.endpoint);SetWindowTextW(GetDlgItem(panel,102),saved.model);SetWindowTextW(GetDlgItem(panel,119),saved.configurationId);SetDlgItemInt(panel,104,saved.timeoutMs,FALSE);SendDlgItemMessageW(panel,125,CB_SETCURSEL,0,0);
+}
 static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_TEST_RESULT* result)
 {
+    _WorkspaceTestAiPresets(panel,result);
     WCHAR idA[65],idB[65],profileA[73],profileB[73],saved[65]; char* key=NULL;
     StringCchPrintfW(idA,COUNTOF(idA),L"fixture-%lu-%llu-a",GetCurrentProcessId(),GetTickCount64());
     StringCchPrintfW(idB,COUNTOF(idB),L"fixture-%lu-%llu-b",GetCurrentProcessId(),GetTickCount64());
@@ -1384,6 +1400,7 @@ static void _WorkspaceSelfTest()
             SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(aiPanel,120),L"delay");
             SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
             _WorkspaceTestCheck(&result,AiPanel_IsBusy(workspace->ai) && !IsWindowEnabled(GetDlgItem(aiPanel,105)),"AI running request disables configuration changes");
+            _WorkspaceTestCheck(&result,!IsWindowEnabled(GetDlgItem(aiPanel,125)),"provider preset cannot change drafts while request is running");
             DWORD waitStart=GetTickCount(); while(GetTickCount()-waitStart<200) { MsgWaitForMultipleObjectsEx(0,NULL,20,QS_ALLINPUT,MWMO_INPUTAVAILABLE); MSG message; while(PeekMessageW(&message,NULL,0,0,PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); } }
             SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(114,BN_CLICKED),0);
             _WorkspaceTestCheck(&result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA") && !IsWindowEnabled(GetDlgItem(aiPanel,115)),"AI panel cancel finishes promptly without applying delayed response");

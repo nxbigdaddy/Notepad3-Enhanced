@@ -1,4 +1,4 @@
-# AI 账号配置（v113）
+# AI 账号配置（v114）
 
 在 AI 面板填写服务地址、模型、超时、配置 ID 与密钥，然后点击保存。配置 ID 只允许 1–64 个英文字母、数字、连字符和下划线，建议使用稳定的 account-1 等标识；留空使用升级前的旧账号。配置 ID 是身份标识，不是 API 密钥。
 
@@ -6,4 +6,10 @@
 
 删除密钥仅删除输入 ID 与服务地址对应的密钥；空 ID 删除旧服务密钥。改变地址会使用另一个凭据身份，原地址的密钥仍保留。普通 INI 只包含非秘密设置；API 密钥保存在 Windows Credential Manager。
 
-服务仍须兼容 Chat Completions 协议，远程地址要求 HTTPS，本地回环允许 HTTP。Kimi、DeepSeek、Qwen 或第三方平台的账号、地域、地址和模型需相互匹配；当前仅完成本地模拟验证，尚未完成供应商实测、预设或模型列表功能。
+服务仍须兼容 Chat Completions 协议，远程地址要求 HTTPS，本地回环允许 HTTP。Kimi、DeepSeek、Qwen 或第三方平台的账号、地域、地址和模型需相互匹配；当前仅完成本地模拟验证，尚未完成供应商实测或模型列表功能。
+
+## 服务地址预设
+
+选择 Kimi 中国大陆、DeepSeek 或 Qwen/百炼北京会填入完整 Chat Completions 地址，并清空旧模型、账号 ID 和未保存密钥。选择第三方兼容接口后手动填写完整地址。预设不会启用或请求；填写可用模型、匹配账号/地域的密钥后点击保存。模型名由用户填写，避免使用过时名称。
+
+预设依据：[Kimi 官方接口](https://platform.kimi.com/docs/api/chat)、[DeepSeek 官方示例](https://api-docs.deepseek.com/api_samples/chat_curl/)、[百炼官方兼容接口](https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope)。百炼北京通用域名仍受支持，官方推荐业务空间专属域名，可在地址栏手动替换。真实供应商验证仍待提供对应凭据后完成；国内其他区域或国际站需填写自己的地址，预设不保证任意模型或协议可用。
