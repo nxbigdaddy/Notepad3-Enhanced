@@ -26,6 +26,23 @@ static bool _WorkspaceTestPanelBrush(HWND panel, HWND child, COLORREF background
     bool matches=brush && GetObjectW(brush,sizeof(info),&info)==sizeof(info) && info.lbColor==background && GetTextColor(dc)==foreground;
     DeleteDC(dc); return matches;
 }
+static bool _WorkspaceTestToolbarGlyph(UINT listMessage,COLORREF expected)
+{
+    HIMAGELIST images=(HIMAGELIST)SendMessageW(Globals.hwndToolbar,listMessage,0,0);
+    int index=(int)SendMessageW(Globals.hwndToolbar,TB_COMMANDTOINDEX,IDT_VIEW_MARKDOWN_PREVIEW,0);
+    TBBUTTON button={0}; int width=0,height=0;
+    if(!images || index<0 || !SendMessageW(Globals.hwndToolbar,TB_GETBUTTON,index,(LPARAM)&button) || !ImageList_GetIconSize(images,&width,&height) || width<=0 || height<=0) return false;
+    HDC dc=CreateCompatibleDC(NULL); BITMAPINFO info={0}; void* pixels=NULL;
+    info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth=width; info.bmiHeader.biHeight=-height; info.bmiHeader.biPlanes=1; info.bmiHeader.biBitCount=32; info.bmiHeader.biCompression=BI_RGB;
+    HBITMAP bitmap=dc?CreateDIBSection(dc,&info,DIB_RGB_COLORS,&pixels,NULL,0):NULL;
+    HGDIOBJ old=bitmap?SelectObject(dc,bitmap):NULL; bool found=false;
+    if(bitmap) {
+        RECT rect={0,0,width,height}; HBRUSH brush=CreateSolidBrush(RGB(255,0,255)); FillRect(dc,&rect,brush); DeleteObject(brush);
+        if(ImageList_Draw(images,button.iBitmap,dc,0,0,ILD_TRANSPARENT)) for(int y=0;y<height && !found;++y) for(int x=0;x<width;++x) if(GetPixel(dc,x,y)==expected) { found=true; break; }
+        SelectObject(dc,old); DeleteObject(bitmap);
+    }
+    if(dc) DeleteDC(dc); return found;
+}
 static bool _WorkspaceTestTreeReady()
 {
     DWORD const start = GetTickCount();
@@ -130,6 +147,8 @@ static void _WorkspaceSelfTest()
     int markdownButtonIndex=(int)SendMessageW(Globals.hwndToolbar,TB_COMMANDTOINDEX,IDT_VIEW_MARKDOWN_PREVIEW,0);
     TBBUTTON markdownButton={0}; HIMAGELIST toolbarImages=(HIMAGELIST)SendMessageW(Globals.hwndToolbar,TB_GETIMAGELIST,0,0);
     _WorkspaceTestCheck(&result,markdownButtonIndex>=0 && SendMessageW(Globals.hwndToolbar,TB_GETBUTTON,markdownButtonIndex,(LPARAM)&markdownButton) && toolbarImages && markdownButton.iBitmap>=0 && markdownButton.iBitmap<ImageList_GetImageCount(toolbarImages) && !(markdownButton.fsStyle&BTNS_SHOWTEXT),"Markdown toolbar shortcut uses an actual image without text label");
+    PANEL_COLORS toolbarPalette={0}; _PanelColors(&toolbarPalette);
+    _WorkspaceTestCheck(&result,_WorkspaceTestToolbarGlyph(TB_GETIMAGELIST,GetModeTextColor(UseDarkMode())) && _WorkspaceTestToolbarGlyph(TB_GETHOTIMAGELIST,GetModeTextColor(UseDarkMode())) && _WorkspaceTestToolbarGlyph(TB_GETDISABLEDIMAGELIST,toolbarPalette.disabled),"M normal hot and disabled image pixels follow active application palette");
     WCHAR savedToolbarButtons[COUNTOF(Settings.ToolbarButtons)]; StringCchCopyW(savedToolbarButtons,COUNTOF(savedToolbarButtons),Settings.ToolbarButtons);
     StringCchCopyW(Settings.ToolbarButtons,COUNTOF(Settings.ToolbarButtons),L"1 2 4 3");
     NMHDR toolbarNotice={Globals.hwndToolbar,IDC_TOOLBAR,TBN_BEGINADJUST}; SendMessageW(Globals.hwndMain,WM_NOTIFY,IDC_TOOLBAR,(LPARAM)&toolbarNotice);
@@ -899,6 +918,7 @@ static void _WorkspaceSelfTest()
             MsgThemeChanged(Globals.hwndMain,0,0);
             PANEL_COLORS current={0}; _PanelColors(&current);
             bool expectedDark=mode==0 || (mode==2 && systemDark);
+            _WorkspaceTestCheck(&result,_WorkspaceTestToolbarGlyph(TB_GETIMAGELIST,GetModeTextColor(UseDarkMode())) && _WorkspaceTestToolbarGlyph(TB_GETHOTIMAGELIST,GetModeTextColor(UseDarkMode())) && _WorkspaceTestToolbarGlyph(TB_GETDISABLEDIMAGELIST,current.disabled),"theme transition recreates M image pixels in current toolbar foreground colors");
             _WorkspaceTestCheck(&result,IsDarkModeSupported() && !!UseDarkMode()==expectedDark && !!current.dark==expectedDark,mode==0?"explicit dark theme works independently of OS light preference":mode==1?"explicit light theme keeps dark capability available":"automatic theme follows OS preference after explicit modes");
             _WorkspaceTestCheck(&result,ListView_GetBkColor(batchList)==current.field && ListView_GetTextColor(batchList)==current.text && ListView_GetBkColor(GetDlgItem(themedLog,107))==current.field && TreeView_GetBkColor(themedTreeView)==current.field && TreeView_GetTextColor(themedTreeView)==current.text && _WorkspaceTestPanelBrush(themedAi,GetDlgItem(themedAi,121),current.field,current.text),"all four extension panels refresh actual palette across theme modes");
             _WorkspaceTestCheck(&result,workspace->documents[0].version==batchThemeVersion && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded() && ListView_GetItemCount(batchList)==1 && ListView_GetCheckState(batchList,0),"theme transitions retain saved editor and confirmed batch proposal");

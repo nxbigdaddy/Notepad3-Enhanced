@@ -3697,10 +3697,12 @@ void CreateBars(HWND hwnd, HINSTANCE hInstance)
         hbmpCopy = NULL;
     }
 
+    PANEL_COLORS toolbarColors={0}; _PanelColors(&toolbarColors);
+    COLORREF const markdownColor=GetModeTextColor(UseDarkMode());
     int const markdownIcon = AddMarkdownToolbarIcon(
-        (HIMAGELIST)SendMessage(Globals.hwndToolbar, TB_GETIMAGELIST, 0, 0), GetSysColor(COLOR_BTNTEXT));
-    AddMarkdownToolbarIcon((HIMAGELIST)SendMessage(Globals.hwndToolbar, TB_GETHOTIMAGELIST, 0, 0), GetSysColor(COLOR_BTNTEXT));
-    AddMarkdownToolbarIcon((HIMAGELIST)SendMessage(Globals.hwndToolbar, TB_GETDISABLEDIMAGELIST, 0, 0), GetSysColor(COLOR_GRAYTEXT));
+        (HIMAGELIST)SendMessage(Globals.hwndToolbar, TB_GETIMAGELIST, 0, 0), markdownColor);
+    AddMarkdownToolbarIcon((HIMAGELIST)SendMessage(Globals.hwndToolbar, TB_GETHOTIMAGELIST, 0, 0), markdownColor);
+    AddMarkdownToolbarIcon((HIMAGELIST)SendMessage(Globals.hwndToolbar, TB_GETDISABLEDIMAGELIST, 0, 0), toolbarColors.disabled);
 
     // Load toolbar labels
     WCHAR tchIndex[16] = { L'\0' };
