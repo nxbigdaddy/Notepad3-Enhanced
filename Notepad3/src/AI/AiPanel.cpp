@@ -49,7 +49,7 @@ std::string Utf8(const wchar_t* value) {
 }
 void Status(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel->window, 130), panel->labels[label].c_str()); }
 void Busy(const Owner& panel, bool busy) {
-    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,120}) EnableWindow(GetDlgItem(panel->window,id), !busy);
+    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120}) EnableWindow(GetDlgItem(panel->window,id), !busy);
     EnableWindow(GetDlgItem(panel->window,114), busy);
     EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK);
 }
@@ -116,6 +116,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         for (int i=0;i<8;++i) move(buttons[i],i*width/8,2*row,width/8-2,row-2);
         move(205,0,3*row,width/4,row); move(120,width/4,3*row,width-width/4,row-2);
         move(116,0,4*row,width/3-2,6*row); move(117,width/3,4*row,width/6-2,row-2);
+        move(118,width/2,4*row,width/4,row); move(119,3*width/4,4*row,width/4-2,row-2);
         move(206,0,5*row,width/2,row); move(207,width/2,5*row,width-width/2,row);
         int panes = height-7*row;
         move(121,0,6*row,width/2-2,panes); move(122,width/2,6*row,width-width/2,panes);
@@ -141,6 +142,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             AI_PANEL_SAVE request{}; wchar_t key[2049]{};
             GetWindowTextW(GetDlgItem(window,101),request.settings.endpoint,2049); GetWindowTextW(GetDlgItem(window,102),request.settings.model,257);
             BOOL valid=FALSE; request.settings.timeoutMs=GetDlgItemInt(window,104,&valid,FALSE);
+            GetWindowTextW(GetDlgItem(window,119),request.settings.configurationId,65);
             GetWindowTextW(GetDlgItem(window,103),key,2049); auto secret=Utf8(key); SecureZeroMemory(key,sizeof(key)); request.secret=secret.c_str();
             bool saved=valid && SendMessageW(panel->parent,NP3_WM_AI_SAVE,id==106,reinterpret_cast<LPARAM>(&request));
             SecureZeroMemory(secret.data(),secret.size());
@@ -174,7 +176,7 @@ extern "C" BOOL AiPanel_Run(void* context,const AI_PANEL_SETTINGS* settings,cons
         auto job=std::make_shared<Job>(); job->source=*source; job->action=action; job->endpoint=settings->endpoint; job->model=Utf8(settings->model); job->timeout=settings->timeoutMs;
         job->original.assign(original?original:"",length); job->instruction=instruction?instruction:"";
         if(job->model.size()>256 || job->instruction.size()>4096) return FALSE;
-        wchar_t profile[73]{}; if(AiCredential_ServiceProfile(settings->endpoint,profile,73)!=ERROR_SUCCESS) return FALSE;
+        wchar_t profile[73]{}; if((settings->configurationId[0]?AiCredential_AccountProfile(settings->endpoint,settings->configurationId,profile,73):AiCredential_ServiceProfile(settings->endpoint,profile,73))!=ERROR_SUCCESS) return FALSE;
         DWORD loaded=AiCredential_Load(profile,&job->secret); if(loaded!=ERROR_SUCCESS && loaded!=ERROR_NOT_FOUND) return FALSE;
         if(!panel->client || panel->endpoint!=settings->endpoint) { panel->client=std::make_shared<Client>(settings->endpoint); panel->endpoint=settings->endpoint; }
         job->client=panel->client;
@@ -215,6 +217,8 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             HWND actions=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,116);
             for(const wchar_t* name : {L"摘要",L"润色",L"扩写",L"缩写",L"纠错",L"当前文件问答"}) SendMessageW(actions,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
             SendMessageW(actions,CB_SETCURSEL,0,0); control(L"BUTTON",L"执行",BS_PUSHBUTTON|WS_TABSTOP,117);
+            control(L"STATIC",L"配置ID（空=旧账号）",0,118);
+            control(L"EDIT",settings->configurationId,WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,119); SendMessageW(GetDlgItem(window,119),EM_SETLIMITTEXT,64,0);
             control(L"STATIC",labels[AP_ORIGINAL],0,206); control(L"STATIC",labels[AP_RESULT],0,207);
             for(int id:{121,122}) { HWND edit=control(L"RICHEDIT50W",L"",WS_BORDER|WS_VSCROLL|WS_HSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|ES_AUTOHSCROLL|WS_TABSTOP,id); SendMessageW(edit,EM_EXLIMITTEXT,0,2*1024*1024); }
             control(L"STATIC",labels[AP_READY],0,130); Busy(panel,false); if(!SetTimer(window,1,50,nullptr)) throw std::bad_alloc();

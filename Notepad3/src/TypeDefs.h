@@ -841,6 +841,7 @@ typedef struct SETTINGS2_T {
     int     HistoryMaximum;
     WCHAR   AIEndpoint[2049];
     WCHAR   AIModel[257];
+    WCHAR   AIConfigurationId[65];
     int     AITimeoutMs;
     bool    DiscardOnClosingUntitledPasteBoard;
     int     ExitOnESCSkipLevel;

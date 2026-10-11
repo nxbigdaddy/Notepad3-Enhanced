@@ -143,6 +143,43 @@ static bool _WorkspaceTestAiReady(void)
     }
     return !AiPanel_IsBusy(_WorkspaceAi());
 }
+static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_TEST_RESULT* result)
+{
+    WCHAR idA[65],idB[65],profileA[73],profileB[73],saved[65]; char* key=NULL;
+    StringCchPrintfW(idA,COUNTOF(idA),L"fixture-%lu-%llu-a",GetCurrentProcessId(),GetTickCount64());
+    StringCchPrintfW(idB,COUNTOF(idB),L"fixture-%lu-%llu-b",GetCurrentProcessId(),GetTickCount64());
+    bool identities=AiCredential_AccountProfile(endpoint,idA,profileA,COUNTOF(profileA))==ERROR_SUCCESS && AiCredential_AccountProfile(endpoint,idB,profileB,COUNTOF(profileB))==ERROR_SUCCESS;
+    _WorkspaceTestCheck(result,identities,"native account test owns two isolated credential identities");
+    if(!identities) return panel;
+    SetWindowTextW(GetDlgItem(panel,119),L"bad/id"); SetWindowTextW(GetDlgItem(panel,103),L"");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,!Settings2.AIConfigurationId[0],"invalid configuration ID cannot replace legacy settings");
+    for(int index=0;index<2;++index) {
+        const WCHAR* id=index?idB:idA; const char* expected=index?"fake-panel-test-key-b":"fake-panel-test-key-a";
+        SetWindowTextW(GetDlgItem(panel,119),id); SetWindowTextW(GetDlgItem(panel,103),index?L"fake-panel-test-key-b":L"fake-panel-test-key-a");
+        SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
+        IniFileGetString(Paths.IniFile,L"Settings2",L"AIConfigurationId",L"",saved,COUNTOF(saved));
+        _WorkspaceTestCheck(result,!wcscmp(saved,id) && !wcscmp(Settings2.AIConfigurationId,id),"account ID persists without key in ordinary settings");
+        bool loaded=AiCredential_Load(index?profileB:profileA,&key)==ERROR_SUCCESS && !strcmp(key,expected); AiCredential_Free(key);key=NULL;
+        _WorkspaceTestCheck(result,loaded && !GetWindowTextLengthW(GetDlgItem(panel,103)),"account save independently reads scoped key and clears key edit");
+        _AiToggle(); _AiToggle(); panel=FindWindowExW(Globals.hwndMain,NULL,L"NP3AiPanel",NULL);
+        GetWindowTextW(GetDlgItem(panel,119),saved,COUNTOF(saved));
+        _WorkspaceTestCheck(result,!wcscmp(saved,id),"reopened AI panel restores saved account identity");
+        SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(panel,120),L"");
+        SendMessageW(panel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0);
+        _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA"),"selected account reaches local service without editing source");
+    }
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(106,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,AiCredential_Load(profileB,&key)==ERROR_NOT_FOUND && !key,"delete key removes selected account only"); AiCredential_Free(key);key=NULL;
+    bool retained=AiCredential_Load(profileA,&key)==ERROR_SUCCESS && !strcmp(key,"fake-panel-test-key-a"); AiCredential_Free(key);
+    _WorkspaceTestCheck(result,retained,"other account survives native delete key action");
+    AiCredential_Delete(profileA); AiCredential_Delete(profileB);
+    SetWindowTextW(GetDlgItem(panel,119),L""); SetWindowTextW(GetDlgItem(panel,103),L"");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,!Settings2.AIConfigurationId[0],"clearing account ID explicitly returns to legacy service identity");
+    return panel;
+}
+
 static bool _WorkspaceTestBatchReady(void)
 {
     DWORD start = GetTickCount();
@@ -1289,6 +1326,7 @@ static void _WorkspaceSelfTest()
             DWORD waitStart=GetTickCount(); while(GetTickCount()-waitStart<200) { MsgWaitForMultipleObjectsEx(0,NULL,20,QS_ALLINPUT,MWMO_INPUTAVAILABLE); MSG message; while(PeekMessageW(&message,NULL,0,0,PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); } }
             SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(114,BN_CLICKED),0);
             _WorkspaceTestCheck(&result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA") && !IsWindowEnabled(GetDlgItem(aiPanel,115)),"AI panel cancel finishes promptly without applying delayed response");
+            aiPanel=_WorkspaceTestAiAccounts(aiPanel,aiUrl,&result);
             SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(106,BN_CLICKED),0);
             _WorkspaceTestCheck(&result,AiCredential_Load(profile,&key) == ERROR_NOT_FOUND && !key,"AI delete-key button removes only fixture service credential");
             AiCredential_Free(key); AiCredential_Delete(profile); _AiToggle();

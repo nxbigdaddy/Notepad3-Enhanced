@@ -12635,6 +12635,7 @@ static AI_PANEL_SETTINGS _AiSettings(void)
     AI_PANEL_SETTINGS result = {0};
     StringCchCopyW(result.endpoint, COUNTOF(result.endpoint), Settings2.AIEndpoint);
     StringCchCopyW(result.model, COUNTOF(result.model), Settings2.AIModel);
+    StringCchCopyW(result.configurationId, COUNTOF(result.configurationId), Settings2.AIConfigurationId);
     result.timeoutMs = Settings2.AITimeoutMs; return result;
 }
 static int _AiLayout(int x, int y, int width, int height) { return AiPanel_Layout(_WorkspaceAi(), x, y, width, height); }
@@ -12690,7 +12691,7 @@ static bool _AiApply(const AI_PANEL_APPLY* request)
 static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
 {
     if (!request || AiPanel_IsBusy(_WorkspaceAi()) || AiEndpoint_Validate(request->settings.endpoint) != AI_OK) return false;
-    WCHAR profile[73]; if (AiCredential_ServiceProfile(request->settings.endpoint, profile, COUNTOF(profile)) != ERROR_SUCCESS) return false;
+    WCHAR profile[73]; if ((request->settings.configurationId[0] ? AiCredential_AccountProfile(request->settings.endpoint, request->settings.configurationId, profile, COUNTOF(profile)) : AiCredential_ServiceProfile(request->settings.endpoint, profile, COUNTOF(profile))) != ERROR_SUCCESS) return false;
     if (removeKey) { DWORD status = AiCredential_Delete(profile); return status == ERROR_SUCCESS || status == ERROR_NOT_FOUND; }
     if (!request->settings.model[0] || request->settings.timeoutMs < 100 || request->settings.timeoutMs > 120000) return false;
     int modelBytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, request->settings.model, -1, NULL, 0, NULL, NULL);
@@ -12706,6 +12707,7 @@ static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
         bool updated = Globals.bCanSaveIniFile && IniSectionSetString(L"Settings2", L"AIEndpoint", request->settings.endpoint);
         updated = updated && IniSectionSetString(L"Settings2", L"AIModel", request->settings.model);
         updated = updated && IniSectionSetInt(L"Settings2", L"AITimeoutMs", (int)request->settings.timeoutMs);
+        updated = updated && IniSectionSetString(L"Settings2", L"AIConfigurationId", request->settings.configurationId);
         saved = CloseSettingsFile(__FUNCTION__, updated) && updated;
     }
     if (!saved && changedKey) { if (previous) AiCredential_Save(profile, previous); else AiCredential_Delete(profile); }
@@ -12713,6 +12715,7 @@ static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
     if (saved) {
         StringCchCopyW(Settings2.AIEndpoint, COUNTOF(Settings2.AIEndpoint), request->settings.endpoint);
         StringCchCopyW(Settings2.AIModel, COUNTOF(Settings2.AIModel), request->settings.model);
+        StringCchCopyW(Settings2.AIConfigurationId, COUNTOF(Settings2.AIConfigurationId), request->settings.configurationId);
         Settings2.AITimeoutMs = request->settings.timeoutMs;
     }
     return saved;
