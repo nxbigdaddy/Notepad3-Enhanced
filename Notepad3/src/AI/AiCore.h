@@ -11,6 +11,9 @@ int AiProtocol_Request(const char* model, int action, const char* input, size_t 
 int AiProtocol_Response(const char* json, size_t length, char** output, size_t* outputLength);
 // Bounded model IDs, one per line; caller owns the result via AiProtocol_Free.
 int AiProtocol_Models(const char* json, size_t length, char** output, size_t* outputLength);
+typedef struct AI_MODEL_PAGE { size_t total, page, pageSize, count; } AI_MODEL_PAGE;
+// Native DashScope page metadata is returned separately; this does not fetch later pages.
+int AiProtocol_ModelPage(const char* json, size_t length, char** output, size_t* outputLength, AI_MODEL_PAGE* page);
 void AiProtocol_Free(char* text);
 // Secrets are isolated by profile and never written to the application's INI.
 DWORD AiCredential_AccountProfile(const wchar_t* endpoint, const wchar_t* configurationId, wchar_t* profile, size_t capacity);

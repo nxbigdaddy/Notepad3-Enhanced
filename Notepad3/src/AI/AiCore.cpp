@@ -126,6 +126,57 @@ public:
     bool Extract(const char* const* path, size_t count, std::string& result) {
         unsigned matches = 0; position = 0; Value(path, 0, count, result, matches, 0); if (matches > 1) throw BadJson{}; return matches == 1 && position == text.size();
     }
+    std::string ModelPage(AI_MODEL_PAGE& page) {
+        std::string result, ignored; unsigned matches = 0, roots = 0; bool success = false;
+        auto number = [&]() {
+            size_t value = 0, digits = 0;
+            while (position < text.size() && text[position] >= '0' && text[position] <= '9') {
+                value = value * 10 + text[position++] - '0';
+                if (value > 1000000 || ++digits > 7) throw BadJson{};
+            }
+            if (!digits) throw BadJson{}; return value;
+        };
+        Require('{');
+        if (Peek() != '}') while (true) {
+            const auto key = String(); Require(':');
+            if (key == "success") {
+                if (success || text.substr(position, 4) != "true") throw BadJson{};
+                position += 4; success = true;
+            } else if (key == "output") {
+                if (++roots != 1) throw BadJson{};
+                unsigned fields = 0; Require('{');
+                if (Peek() != '}') while (true) {
+                    const auto field = String(); Require(':');
+                    unsigned bit = field == "total" ? 1 : field == "page_no" ? 2 : field == "page_size" ? 4 : field == "models" ? 8 : 0;
+                    if (bit && (fields & bit)) throw BadJson{}; fields |= bit;
+                    if (bit == 1) page.total = number();
+                    else if (bit == 2) page.page = number();
+                    else if (bit == 4) page.pageSize = number();
+                    else if (bit == 8) {
+                        Require('[');
+                        if (Peek() != ']') while (true) {
+                            if (++page.count > 512 || Peek() != '{') throw BadJson{};
+                            const char* path[] = {"model"}; std::string id; unsigned found = 0;
+                            Value(path, 0, 1, id, found, 0);
+                            if (found != 1 || id.empty() || id.size() > 256 || !Utf8(id)) throw BadJson{};
+                            for (unsigned char c : id) if (c < 32 || c == 127) throw BadJson{};
+                            result += id; result += '\n';
+                            if (Peek() != ',') break; ++position;
+                        }
+                        Require(']');
+                    } else Value(nullptr, 0, SIZE_MAX, ignored, matches, 0);
+                    if (Peek() != ',') break; ++position;
+                }
+                Require('}'); if (fields != 15) throw BadJson{};
+            } else Value(nullptr, 0, SIZE_MAX, ignored, matches, 0);
+            if (Peek() != ',') break; ++position;
+        }
+        Require('}');
+        if (!success || roots != 1 || position != text.size() || !page.page || !page.pageSize || page.pageSize > 512) throw BadJson{};
+        const size_t offset = (page.page - 1) * page.pageSize;
+        if (offset > page.total || page.count != (std::min)(page.pageSize, page.total - offset)) throw BadJson{};
+        return result;
+    }
 };
 bool Profile(const wchar_t* profile, std::wstring& target) {
     if (!profile || !*profile || wcslen(profile) > 128) return false;
@@ -202,6 +253,22 @@ extern "C" int AiProtocol_Models(const char* json, size_t length, char** output,
         std::unique_ptr<char, decltype(&JsonFormat_Free)> owner(formatted, JsonFormat_Free);
         if (status) return status == 3 ? AI_MEMORY : AI_RESPONSE;
         return Copy(Reader({formatted, size}).Models(), output, outputLength);
+    } catch (const BadJson&) { return AI_RESPONSE; } catch (...) { return AI_MEMORY; }
+}
+extern "C" int AiProtocol_ModelPage(const char* json, size_t length, char** output, size_t* outputLength, AI_MODEL_PAGE* page) {
+    if (!output || !outputLength || !page) return AI_CONFIG;
+    *output = nullptr; *outputLength = 0; *page = {};
+    if (!json && length) return AI_RESPONSE;
+    if (length > 2 * 1024 * 1024) return AI_LIMIT;
+    if (!Utf8({json ? json : "", length})) return AI_TEXT;
+    try {
+        char* formatted = nullptr; size_t size = 0, error = 0;
+        int status = JsonFormat(json ? json : "", length, 1, "", &formatted, &size, &error);
+        std::unique_ptr<char, decltype(&JsonFormat_Free)> owner(formatted, JsonFormat_Free);
+        if (status) return status == 3 ? AI_MEMORY : AI_RESPONSE;
+        AI_MODEL_PAGE candidate{}; const auto ids = Reader({formatted, size}).ModelPage(candidate);
+        status = Copy(ids, output, outputLength); if (status == AI_OK) *page = candidate;
+        return status;
     } catch (const BadJson&) { return AI_RESPONSE; } catch (...) { return AI_MEMORY; }
 }
 extern "C" DWORD AiCredential_ServiceProfile(const wchar_t* endpoint, wchar_t* profile, size_t capacity) {

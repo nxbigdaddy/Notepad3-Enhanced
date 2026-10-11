@@ -29,6 +29,26 @@ int main() {
         models(many + "]}", AI_OK); models(many + ",{\"id\":\"overflow\"}]}", AI_RESPONSE);
         models(std::string(2 * 1024 * 1024 + 1, 'x'), AI_LIMIT);
         models("\xFF", AI_TEXT);
+        AI_MODEL_PAGE page{};
+        auto modelPage = [&](const std::string& json, int expected) {
+            AiProtocol_Free(output);output=nullptr;
+            expect(AiProtocol_ModelPage(json.data(),json.size(),&output,&length,&page)==expected,"native model page status");
+            if(expected!=AI_OK)expect(!output && !length && !page.total && !page.count && !page.page && !page.pageSize,"bad native page publishes no partial metadata or IDs");
+        };
+        modelPage(R"({"success":true,"output":{"total":3,"page_no":1,"page_size":2,"models":[{"model":"a","name":"ignored"},{"model":"中文\uD83D\uDE00"}]}})",AI_OK);
+        expect(page.total==3 && page.page==1 && page.pageSize==2 && page.count==2 && std::string(output,length)=="a\n中文😀\n","native first page IDs and total decoded independently");
+        modelPage(R"({"success":true,"output":{"total":3,"page_no":2,"page_size":2,"models":[{"model":"last"}]}})",AI_OK);
+        expect(page.count==1 && page.page==2 && std::string(output,length)=="last\n","native final partial page retains paging metadata");
+        modelPage(R"({"success":true,"output":{"total":0,"page_no":1,"page_size":20,"models":[]}})",AI_OK);expect(!length && !page.count,"native empty list supported");
+        const std::string valid=R"({"success":true,"output":{"total":1,"page_no":1,"page_size":1,"models":[{"model":"a"}]}})";
+        auto changed=[&](const char* before,const char* after){auto bad=valid;bad.replace(bad.find(before),strlen(before),after);modelPage(bad,AI_RESPONSE);};
+        changed("true","false");changed("\"success\":true","\"success\":true,\"success\":true");
+        changed("\"total\":1","\"total\":1,\"total\":1");changed("\"total\":1,","");
+        changed("\"total\":1","\"total\":-1");changed("\"total\":1","\"total\":1.5");changed("\"total\":1","\"total\":1000001");
+        changed("\"page_no\":1","\"page_no\":0");changed("\"page_no\":1","\"page_no\":3");
+        changed("\"page_size\":1","\"page_size\":0");changed("\"page_size\":1","\"page_size\":513");
+        changed("[{\"model\":\"a\"}]","[]");changed("\"model\":\"a\"","\"model\":\"a\",\"model\":\"b\"");changed("\"model\":\"a\"","\"id\":\"a\"");
+        modelPage("{broken",AI_RESPONSE);modelPage(std::string(2*1024*1024+1,'x'),AI_LIMIT);modelPage("\xFF",AI_TEXT);
         auto diff=np3::AiDifference(L"old\runchanged\rsecond",L"new\runchanged\rthird");
         expect(diff.precise && diff.ranges.size()==2,"two separate changes preserve unchanged paragraph");
         expect(diff.ranges[0].beforeEnd<=4 && diff.ranges[1].beforeStart>=14,"diff ranges exclude middle context");
