@@ -37,9 +37,9 @@ try:
     (folder/'server-verification.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
     print(process.stdout); print(process.stderr)
     assert process.returncode == 0, 'native panel checks failed'
-    assert not server.errors and len(server.requests) == 15, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
+    assert not server.errors and len(server.requests) == 16, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
     assert server.authorizations[:13] == ['Bearer fake-panel-test-key'] * 13
-    assert server.authorizations[13:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b']
+    assert server.authorizations[13:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b', 'Bearer fake-panel-test-key-a']
     assert server.requests[3]['messages'][1]['content'] == '生成中文'
     for index, prompt in enumerate(('Summarize', 'Polish', 'Expand', 'Shorten', 'Correct'), 4):
         assert prompt in server.requests[index]['messages'][0]['content']
@@ -52,6 +52,9 @@ try:
     assert match, 'workspace evidence path missing'
     settings = (pathlib.Path(match.group(1).strip()) / 'test.ini').read_text(encoding='utf-8-sig')
     assert 'panel-test-model' in settings and f'127.0.0.1:{server.server_port}/panel' in settings
+    assert '[AIProfile00]' in settings and '[AIProfile01]' in settings
+    assert 'TimeoutMs=31000' in settings and 'TimeoutMs=32000' in settings
+    assert 'unsaved-key-must-not-transfer' not in settings
     assert 'fake-panel-test-key' not in settings, 'credential leaked into INI'
     print('PASS local AI panel requests independently verified. Evidence:', folder)
 finally:

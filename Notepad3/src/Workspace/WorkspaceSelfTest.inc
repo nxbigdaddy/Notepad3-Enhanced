@@ -155,6 +155,7 @@ static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_
     SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
     _WorkspaceTestCheck(result,!Settings2.AIConfigurationId[0],"invalid configuration ID cannot replace legacy settings");
     for(int index=0;index<2;++index) {
+        SetDlgItemInt(panel,104,index?32000:31000,FALSE);
         const WCHAR* id=index?idB:idA; const char* expected=index?"fake-panel-test-key-b":"fake-panel-test-key-a";
         SetWindowTextW(GetDlgItem(panel,119),id); SetWindowTextW(GetDlgItem(panel,103),index?L"fake-panel-test-key-b":L"fake-panel-test-key-a");
         SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
@@ -169,6 +170,24 @@ static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_
         SendMessageW(panel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0);
         _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA"),"selected account reaches local service without editing source");
     }
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,123,CB_GETCOUNT,0,0)==3,"saved account selector lists two persisted profiles plus placeholder");
+    int itemA=-1,itemB=-1; AI_PANEL_SETTINGS selected={0};
+    for(int item=1;item<3;++item) {
+        int slot=(int)SendDlgItemMessageW(panel,123,CB_GETITEMDATA,item,0);
+        if(_AiReadProfile(slot,&selected)) {
+            if(!wcscmp(selected.configurationId,idA)) itemA=item;
+            if(!wcscmp(selected.configurationId,idB)) itemB=item;
+        }
+    }
+    _WorkspaceTestCheck(result,itemA>0 && itemB>0,"account selector item identities independently read from persisted profiles");
+    SetWindowTextW(GetDlgItem(panel,103),L"unsaved-key-must-not-transfer");SetWindowTextW(GetDlgItem(panel,102),L"unsaved-model");
+    SendDlgItemMessageW(panel,123,CB_SETCURSEL,itemA,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(123,CBN_SELCHANGE),0);
+    _WorkspaceTestCheck(result,!wcscmp(Settings2.AIConfigurationId,idA) && Settings2.AITimeoutMs==31000 && !wcscmp(Settings2.AIModel,L"panel-test-model"),"selector switches stored account model and timeout without resaving draft fields");
+    _WorkspaceTestCheck(result,!GetWindowTextLengthW(GetDlgItem(panel,103)),"switching saved account clears unsaved key instead of transferring it");
+    SciCall_SetSel(0,5);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA"),"saved account quick switch uses original scoped key for actual local request");
+    SendDlgItemMessageW(panel,123,CB_SETCURSEL,itemB,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(123,CBN_SELCHANGE),0);
+    _WorkspaceTestCheck(result,!wcscmp(Settings2.AIConfigurationId,idB) && Settings2.AITimeoutMs==32000,"saved second account switch restores its independent timeout");
     SendMessageW(panel,WM_COMMAND,MAKEWPARAM(106,BN_CLICKED),0);
     _WorkspaceTestCheck(result,AiCredential_Load(profileB,&key)==ERROR_NOT_FOUND && !key,"delete key removes selected account only"); AiCredential_Free(key);key=NULL;
     bool retained=AiCredential_Load(profileA,&key)==ERROR_SUCCESS && !strcmp(key,"fake-panel-test-key-a"); AiCredential_Free(key);

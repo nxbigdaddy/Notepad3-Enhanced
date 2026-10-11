@@ -3,6 +3,8 @@
 #define NP3_WM_AI_CAPTURE (WM_APP + 0x35a)
 #define NP3_WM_AI_APPLY (WM_APP + 0x35b)
 #define NP3_WM_AI_SAVE (WM_APP + 0x35c)
+#define NP3_WM_AI_PROFILE (WM_APP + 0x36a)
+#define AI_PROFILE_MAXIMUM 32
 typedef struct AI_PANEL_SETTINGS { wchar_t endpoint[2049], model[257]; DWORD timeoutMs; wchar_t configurationId[65]; } AI_PANEL_SETTINGS;
 typedef struct AI_PANEL_SAVE { AI_PANEL_SETTINGS settings; const char* secret; } AI_PANEL_SAVE;
 typedef struct AI_PANEL_CAPTURE { int action; const char* instruction; } AI_PANEL_CAPTURE;

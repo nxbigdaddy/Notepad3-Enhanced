@@ -49,9 +49,22 @@ std::string Utf8(const wchar_t* value) {
 }
 void Status(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel->window, 130), panel->labels[label].c_str()); }
 void Busy(const Owner& panel, bool busy) {
-    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120}) EnableWindow(GetDlgItem(panel->window,id), !busy);
+    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123}) EnableWindow(GetDlgItem(panel->window,id), !busy);
     EnableWindow(GetDlgItem(panel->window,114), busy);
     EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK);
+}
+void Profiles(const Owner& panel) {
+    HWND combo=GetDlgItem(panel->window,123); SendMessageW(combo,CB_RESETCONTENT,0,0);
+    SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"切换已保存账号")); SendMessageW(combo,CB_SETITEMDATA,0,static_cast<LPARAM>(-1));
+    for(int index=0;index<AI_PROFILE_MAXIMUM;++index) {
+        AI_PANEL_SETTINGS settings{};
+        if(SendMessageW(panel->parent,NP3_WM_AI_PROFILE,index,reinterpret_cast<LPARAM>(&settings))) {
+            std::wstring label=std::wstring(settings.configurationId)+L" — "+settings.model;
+            const LRESULT item=SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label.c_str()));
+            if(item>=0) SendMessageW(combo,CB_SETITEMDATA,static_cast<WPARAM>(item),index);
+        }
+    }
+    SendMessageW(combo,CB_SETCURSEL,0,0);
 }
 int Canceled(void* context) { return static_cast<Job*>(context)->cancel.load() ? 1 : 0; }
 void Highlight(HWND edit, size_t start, size_t end, COLORREF color, COLORREF foreground) {
@@ -117,13 +130,24 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         move(205,0,3*row,width/4,row); move(120,width/4,3*row,width-width/4,row-2);
         move(116,0,4*row,width/3-2,6*row); move(117,width/3,4*row,width/6-2,row-2);
         move(118,width/2,4*row,width/4,row); move(119,3*width/4,4*row,width/4-2,row-2);
-        move(206,0,5*row,width/2,row); move(207,width/2,5*row,width-width/2,row);
-        int panes = height-7*row;
-        move(121,0,6*row,width/2-2,panes); move(122,width/2,6*row,width-width/2,panes);
-        move(130,0,(std::max)(6*row,height-row),width,row); return 0;
+        move(123,0,5*row,width,6*row);
+        move(206,0,6*row,width/2,row); move(207,width/2,6*row,width-width/2,row);
+        int panes = height-8*row;
+        move(121,0,7*row,width/2-2,panes); move(122,width/2,7*row,width-width/2,panes);
+        move(130,0,(std::max)(7*row,height-row),width,row); return 0;
     }
     if (message == WM_COMMAND && panel) {
         int id = LOWORD(wParam);
+        if(id==123 && HIWORD(wParam)==CBN_SELCHANGE) {
+            if(AiPanel_IsBusy(reinterpret_cast<void*>(GetWindowLongPtrW(window,GWLP_USERDATA)))) return 0;
+            const LRESULT item=SendDlgItemMessageW(window,123,CB_GETCURSEL,0,0);
+            const int index=static_cast<int>(SendDlgItemMessageW(window,123,CB_GETITEMDATA,static_cast<WPARAM>(item),0));
+            AI_PANEL_SAVE request{};request.secret="";
+            if(index<0) return 0;
+            if(!SendMessageW(panel->parent,NP3_WM_AI_PROFILE,index,reinterpret_cast<LPARAM>(&request.settings)) || !SendMessageW(panel->parent,NP3_WM_AI_SAVE,0,reinterpret_cast<LPARAM>(&request))) {Status(panel,AP_ERROR);return 0;}
+            SetWindowTextW(GetDlgItem(window,101),request.settings.endpoint);SetWindowTextW(GetDlgItem(window,102),request.settings.model);
+            SetDlgItemInt(window,104,request.settings.timeoutMs,FALSE);SetWindowTextW(GetDlgItem(window,119),request.settings.configurationId);SetWindowTextW(GetDlgItem(window,103),L"");Status(panel,AP_SAVED);return 0;
+        }
         if (HIWORD(wParam) != BN_CLICKED) return 0;
         if ((id >= 110 && id <=113) || id ==117) {
             const int selected=static_cast<int>(SendDlgItemMessageW(window,116,CB_GETCURSEL,0,0));
@@ -146,7 +170,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             GetWindowTextW(GetDlgItem(window,103),key,2049); auto secret=Utf8(key); SecureZeroMemory(key,sizeof(key)); request.secret=secret.c_str();
             bool saved=valid && SendMessageW(panel->parent,NP3_WM_AI_SAVE,id==106,reinterpret_cast<LPARAM>(&request));
             SecureZeroMemory(secret.data(),secret.size());
-            if (saved) SetWindowTextW(GetDlgItem(window,103),L""); Status(panel,saved?AP_SAVED:AP_ERROR);
+            if (saved) { SetWindowTextW(GetDlgItem(window,103),L""); Profiles(panel); } Status(panel,saved?AP_SAVED:AP_ERROR);
         }
         return 0;
     }
@@ -219,6 +243,7 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             SendMessageW(actions,CB_SETCURSEL,0,0); control(L"BUTTON",L"执行",BS_PUSHBUTTON|WS_TABSTOP,117);
             control(L"STATIC",L"配置ID（空=旧账号）",0,118);
             control(L"EDIT",settings->configurationId,WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,119); SendMessageW(GetDlgItem(window,119),EM_SETLIMITTEXT,64,0);
+            control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,123); Profiles(panel);
             control(L"STATIC",labels[AP_ORIGINAL],0,206); control(L"STATIC",labels[AP_RESULT],0,207);
             for(int id:{121,122}) { HWND edit=control(L"RICHEDIT50W",L"",WS_BORDER|WS_VSCROLL|WS_HSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|ES_AUTOHSCROLL|WS_TABSTOP,id); SendMessageW(edit,EM_EXLIMITTEXT,0,2*1024*1024); }
             control(L"STATIC",labels[AP_READY],0,130); Busy(panel,false); if(!SetTimer(window,1,50,nullptr)) throw std::bad_alloc();

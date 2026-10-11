@@ -405,6 +405,7 @@ static void _AiToggle(void);
 static bool _AiRun(const AI_PANEL_CAPTURE* request);
 static bool _AiApply(const AI_PANEL_APPLY* request);
 static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey);
+static bool _AiReadProfile(int index, AI_PANEL_SETTINGS* settings);
 static int _AiLayout(int x, int y, int width, int height);
 static void* _WorkspaceAi(void);
 static void* _WorkspaceBatch(void);
@@ -2669,6 +2670,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
         _PanelColors((PANEL_COLORS*)lParam); return TRUE;
     case NP3_WM_AI_APPLY: return _AiApply((const AI_PANEL_APPLY*)lParam);
     case NP3_WM_AI_SAVE: return _AiSave((const AI_PANEL_SAVE*)lParam, wParam != 0);
+    case NP3_WM_AI_PROFILE: return _AiReadProfile((int)wParam,(AI_PANEL_SETTINGS*)lParam);
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
     case NP3_WM_LOGFILTER_LOCATE: return _LogFilterLocate((const LOG_PANEL_LOCATION*)lParam);
     case NP3_WM_SEARCH_LOCATE: return _SearchLocate((const SEARCH_LOCATION*)lParam);
@@ -12688,6 +12690,33 @@ static bool _AiApply(const AI_PANEL_APPLY* request)
     }
     return true;
 }
+static bool _AiReadProfile(int index, AI_PANEL_SETTINGS* settings)
+{
+    if(!settings || index<0 || index>=AI_PROFILE_MAXIMUM || Path_IsEmpty(Paths.IniFile)) return false;
+    WCHAR section[32],identity[73]; AI_PANEL_SETTINGS result={0};
+    StringCchPrintfW(section,COUNTOF(section),L"AIProfile%02d",index);
+    IniFileGetString(Paths.IniFile,section,L"Id",L"",result.configurationId,COUNTOF(result.configurationId));
+    IniFileGetString(Paths.IniFile,section,L"Endpoint",L"",result.endpoint,COUNTOF(result.endpoint));
+    IniFileGetString(Paths.IniFile,section,L"Model",L"",result.model,COUNTOF(result.model));
+    result.timeoutMs=(DWORD)IniFileGetLong(Paths.IniFile,section,L"TimeoutMs",60000);
+    if(AiCredential_AccountProfile(result.endpoint,result.configurationId,identity,COUNTOF(identity))!=ERROR_SUCCESS || !result.model[0] || result.timeoutMs<100 || result.timeoutMs>120000) return false;
+    *settings=result;return true;
+}
+static bool _AiWriteProfile(const AI_PANEL_SETTINGS* settings)
+{
+    if(!settings->configurationId[0]) return true;
+    int available=-1,chosen=-1; WCHAR section[32],id[65];
+    for(int index=0;index<AI_PROFILE_MAXIMUM;++index) {
+        StringCchPrintfW(section,COUNTOF(section),L"AIProfile%02d",index);
+        IniSectionGetString(section,L"Id",L"",id,COUNTOF(id));
+        if(!id[0] && available<0) available=index;
+        if(!wcscmp(id,settings->configurationId)){chosen=index;break;}
+    }
+    if(chosen<0) chosen=available;
+    if(chosen<0) return false;
+    StringCchPrintfW(section,COUNTOF(section),L"AIProfile%02d",chosen);
+    return IniSectionSetString(section,L"Id",settings->configurationId) && IniSectionSetString(section,L"Endpoint",settings->endpoint) && IniSectionSetString(section,L"Model",settings->model) && IniSectionSetInt(section,L"TimeoutMs",(int)settings->timeoutMs);
+}
 static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
 {
     if (!request || AiPanel_IsBusy(_WorkspaceAi()) || AiEndpoint_Validate(request->settings.endpoint) != AI_OK) return false;
@@ -12704,7 +12733,8 @@ static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
     }
     bool saved = false;
     if (OpenSettingsFile(__FUNCTION__)) {
-        bool updated = Globals.bCanSaveIniFile && IniSectionSetString(L"Settings2", L"AIEndpoint", request->settings.endpoint);
+        bool updated = Globals.bCanSaveIniFile && _AiWriteProfile(&request->settings);
+        updated = updated && IniSectionSetString(L"Settings2", L"AIEndpoint", request->settings.endpoint);
         updated = updated && IniSectionSetString(L"Settings2", L"AIModel", request->settings.model);
         updated = updated && IniSectionSetInt(L"Settings2", L"AITimeoutMs", (int)request->settings.timeoutMs);
         updated = updated && IniSectionSetString(L"Settings2", L"AIConfigurationId", request->settings.configurationId);
