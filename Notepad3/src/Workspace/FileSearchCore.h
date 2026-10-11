@@ -6,7 +6,7 @@
 #include <vector>
 
 namespace np3 {
-struct SearchFile { std::wstring path; unsigned long long size=0; FILETIME modified{}; };
+struct SearchFile { std::wstring path; unsigned long long size=0; FILETIME modified{}; std::wstring context; size_t line=0,column=0,length=0; };
 struct SearchError { std::wstring path; DWORD code=0; };
 struct SearchOptions {
     std::vector<std::wstring> roots;

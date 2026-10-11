@@ -430,6 +430,7 @@ static void _PanelColors(PANEL_COLORS* colors)
 }
 static bool _LogFilterRun(void);
 static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location);
+static bool _SearchLocate(const SEARCH_LOCATION* location);
 static int _ConfigCheck(int kind, bool showMessage);
 static void _MarkdownExportCommand(bool pdf);
 static void _MarkdownPdfSelfTest();
@@ -2665,6 +2666,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     case NP3_WM_AI_SAVE: return _AiSave((const AI_PANEL_SAVE*)lParam, wParam != 0);
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
     case NP3_WM_LOGFILTER_LOCATE: return _LogFilterLocate((const LOG_PANEL_LOCATION*)lParam);
+    case NP3_WM_SEARCH_LOCATE: return _SearchLocate((const SEARCH_LOCATION*)lParam);
     case NP3_WM_FILETREE_OPEN: {
         HPATHL path = Path_Allocate((const WCHAR*)lParam);
         FileLoad(path, FLF_None, 0, 0); Path_Release(path);
@@ -12587,6 +12589,23 @@ static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location)
     return false;
 }
 
+static bool _SearchLocate(const SEARCH_LOCATION* location)
+{
+    if(!location || !location->path || !location->context || !location->line || !location->column || !location->length || location->line>INT_MAX || location->column>INT_MAX || location->length>4096)return false;
+    HPATHL path=Path_Allocate(location->path);if(!path)return false;
+    bool loaded=FileLoad(path,FLF_None,0,0);Path_Release(path);if(!loaded || SciCall_GetCodePage()!=CP_UTF8)return false;
+    DocLn line=(DocLn)location->line-1;if(line>=SciCall_GetLineCount())return false;
+    DocPos start=SciCall_PositionFromLine(line),end=SciCall_GetLineEndPosition(line);if(end<start || end-start>8*1024*1024)return false;
+    const char* bytes=SciCall_GetRangePointer(start,end-start);int count=end==start?0:MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,bytes,(int)(end-start),NULL,0);if(count<=0)return false;
+    WCHAR* wide=AllocMem(((size_t)count+1)*sizeof(WCHAR),HEAP_ZERO_MEMORY);if(!wide)return false;
+    bool valid=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,bytes,(int)(end-start),wide,count)==count;
+    size_t column=location->column-1,contextStart=column>80?column-80:0,contextLength=wcslen(location->context);
+    valid=valid && column<=(size_t)count && location->length<=(size_t)count-column && contextStart<=(size_t)count && contextLength<=(size_t)count-contextStart && !memcmp(wide+contextStart,location->context,contextLength*sizeof(WCHAR));
+    int prefix=valid && column?WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,wide,(int)column,NULL,0,NULL,NULL):0;
+    int length=valid?WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,wide+column,(int)location->length,NULL,0,NULL,NULL):0;
+    FreeMem(wide);if(!valid || length<=0 || (column && prefix<=0))return false;
+    SciCall_SetSel(start+prefix,start+prefix+length);SciCall_ScrollCaret();SetFocus(Globals.hwndEdit);return true;
+}
 static void* _WorkspaceAi(void) { DOCUMENT_WORKSPACE* workspace = _Workspace(); return workspace ? workspace->ai : NULL; }
 static AI_PANEL_SETTINGS _AiSettings(void)
 {
