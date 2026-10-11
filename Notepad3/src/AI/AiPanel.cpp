@@ -49,7 +49,7 @@ std::string Utf8(const wchar_t* value) {
 }
 void Status(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel->window, 130), panel->labels[label].c_str()); }
 void Busy(const Owner& panel, bool busy) {
-    for (int id : {101,102,103,104,105,106,110,111,112,113,120}) EnableWindow(GetDlgItem(panel->window,id), !busy);
+    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,120}) EnableWindow(GetDlgItem(panel->window,id), !busy);
     EnableWindow(GetDlgItem(panel->window,114), busy);
     EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN);
 }
@@ -115,18 +115,21 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         const int buttons[] = {105,106,110,111,112,113,114,115};
         for (int i=0;i<8;++i) move(buttons[i],i*width/8,2*row,width/8-2,row-2);
         move(205,0,3*row,width/4,row); move(120,width/4,3*row,width-width/4,row-2);
-        move(206,0,4*row,width/2,row); move(207,width/2,4*row,width-width/2,row);
-        int panes = height-6*row;
-        move(121,0,5*row,width/2-2,panes); move(122,width/2,5*row,width-width/2,panes);
-        move(130,0,(std::max)(5*row,height-row),width,row); return 0;
+        move(116,0,4*row,width/3-2,6*row); move(117,width/3,4*row,width/6-2,row-2);
+        move(206,0,5*row,width/2,row); move(207,width/2,5*row,width-width/2,row);
+        int panes = height-7*row;
+        move(121,0,6*row,width/2-2,panes); move(122,width/2,6*row,width-width/2,panes);
+        move(130,0,(std::max)(6*row,height-row),width,row); return 0;
     }
     if (message == WM_COMMAND && panel) {
         int id = LOWORD(wParam);
         if (HIWORD(wParam) != BN_CLICKED) return 0;
-        if (id >= 110 && id <=113) {
+        if ((id >= 110 && id <=113) || id ==117) {
+            const int selected=static_cast<int>(SendDlgItemMessageW(window,116,CB_GETCURSEL,0,0));
+            if(id==117 && (selected<0 || selected>AI_CORRECT-AI_SUMMARIZE)) { Status(panel,AP_ERROR); return 0; }
             wchar_t instruction[4097]{}; GetWindowTextW(GetDlgItem(window,120),instruction,4097); auto text=Utf8(instruction);
             if (text.size()>4096) { Status(panel,AP_ERROR); return 0; }
-            AI_PANEL_CAPTURE request{id-110,text.c_str()};
+            AI_PANEL_CAPTURE request{id==117?AI_SUMMARIZE+selected:id-110,text.c_str()};
             if (!SendMessageW(panel->parent,NP3_WM_AI_CAPTURE,0,reinterpret_cast<LPARAM>(&request))) Status(panel,AP_ERROR);
         } else if (id == 114 && panel->job) panel->job->cancel=true;
         else if (id == 115 && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN) {
@@ -166,7 +169,7 @@ extern "C" int AiPanel_Layout(void* context,int x,int y,int width,int height) {
 extern "C" BOOL AiPanel_Run(void* context,const AI_PANEL_SETTINGS* settings,const AI_PANEL_SOURCE* source,int action,const char* original,size_t length,const char* instruction) {
     auto panel=State(context); if(!panel || !panel->window || AiPanel_IsBusy(context) || !settings || !source || (!original && length) || length>256*1024) return FALSE;
     try {
-        if(action<AI_EXPLAIN || action>AI_GENERATE || AiEndpoint_Validate(settings->endpoint)!=AI_OK || !settings->model[0] || settings->timeoutMs<100 || settings->timeoutMs>120000) return FALSE;
+        if(action<AI_EXPLAIN || action>AI_CORRECT || AiEndpoint_Validate(settings->endpoint)!=AI_OK || !settings->model[0] || settings->timeoutMs<100 || settings->timeoutMs>120000) return FALSE;
         if(action==AI_GENERATE && (!instruction || !*instruction)) return FALSE;
         auto job=std::make_shared<Job>(); job->source=*source; job->action=action; job->endpoint=settings->endpoint; job->model=Utf8(settings->model); job->timeout=settings->timeoutMs;
         job->original.assign(original?original:"",length); job->instruction=instruction?instruction:"";
@@ -209,6 +212,9 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             const int ids[]={105,106,110,111,112,113,114,115}; const int texts[]={AP_SAVE,AP_DELETE,AP_EXPLAIN,AP_TRANSLATE,AP_REWRITE,AP_GENERATE,AP_CANCEL,AP_APPLY};
             for(int i=0;i<8;++i) control(L"BUTTON",labels[texts[i]],BS_PUSHBUTTON|WS_TABSTOP,ids[i]);
             control(L"STATIC",labels[AP_INSTRUCTION],0,205); control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,120); SendMessageW(GetDlgItem(window,120),EM_SETLIMITTEXT,4096,0);
+            HWND actions=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,116);
+            for(const wchar_t* name : {L"摘要",L"润色",L"扩写",L"缩写",L"纠错"}) SendMessageW(actions,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
+            SendMessageW(actions,CB_SETCURSEL,0,0); control(L"BUTTON",L"执行",BS_PUSHBUTTON|WS_TABSTOP,117);
             control(L"STATIC",labels[AP_ORIGINAL],0,206); control(L"STATIC",labels[AP_RESULT],0,207);
             for(int id:{121,122}) { HWND edit=control(L"RICHEDIT50W",L"",WS_BORDER|WS_VSCROLL|WS_HSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|ES_AUTOHSCROLL|WS_TABSTOP,id); SendMessageW(edit,EM_EXLIMITTEXT,0,2*1024*1024); }
             control(L"STATIC",labels[AP_READY],0,130); Busy(panel,false); if(!SetTimer(window,1,50,nullptr)) throw std::bad_alloc();

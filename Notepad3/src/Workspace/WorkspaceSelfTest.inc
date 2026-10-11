@@ -1194,12 +1194,19 @@ static void _WorkspaceSelfTest()
             bool savedKey = AiCredential_Load(profile,&key) == ERROR_SUCCESS && strcmp(key,"fake-panel-test-key") == 0;
             AiCredential_Free(key); key = NULL;
             _WorkspaceTestCheck(&result, savedKey && !wcscmp(savedEndpoint,aiUrl) && GetWindowTextLengthW(GetDlgItem(aiPanel,103)) == 0, "AI panel persists service and scoped key with independent readback");
-            for (int action=AI_EXPLAIN;action<=AI_GENERATE;++action) {
+            for (int action=AI_EXPLAIN;action<=AI_CORRECT;++action) {
                 SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(aiPanel,120),action == AI_GENERATE ? L"生成中文" : L"");
-                SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(110+action,BN_CLICKED),0);
+                if(action>=AI_SUMMARIZE) SendDlgItemMessageW(aiPanel,116,CB_SETCURSEL,action-AI_SUMMARIZE,0);
+                SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(action>=AI_SUMMARIZE?117:110+action,BN_CLICKED),0);
                 bool ready=_WorkspaceTestAiReady(); WCHAR output[128] = {0}; GetWindowTextW(GetDlgItem(aiPanel,122),output,COUNTOF(output));
                 _WorkspaceTestCheck(&result,ready && !wcscmp(output,L"模拟结果") && _WorkspaceTestText("alpha\r\nA"),"AI action reaches local service and previews result without editing");
                 _WorkspaceTestCheck(&result,IsWindowEnabled(GetDlgItem(aiPanel,115)) == (action != AI_EXPLAIN),"AI explain remains view-only while edit results allow manual apply");
+                if(action>=AI_SUMMARIZE) {
+                    SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(115,BN_CLICKED),0);
+                    _WorkspaceTestCheck(&result,_WorkspaceTestText("模拟结果\r\nA"),"new AI text action applies only captured selection");
+                    SciCall_Undo();
+                    _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"new AI text action undoes in one step");
+                }
                 if(action==AI_REWRITE) {
                     PANEL_COLORS aiColors={0}; _PanelColors(&aiColors);
                     CHARFORMAT2W originalFormat = {0}, resultFormat = {0}; originalFormat.cbSize=sizeof(originalFormat); resultFormat.cbSize=sizeof(resultFormat);

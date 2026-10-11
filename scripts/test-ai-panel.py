@@ -34,10 +34,13 @@ try:
     (folder/'server-verification.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
     print(process.stdout); print(process.stderr)
     assert process.returncode == 0, 'native panel checks failed'
-    assert not server.errors and len(server.requests) == 7, 'expected four actions, multi-hunk and grouped rewrites and cancel'
+    assert not server.errors and len(server.requests) == 12, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
     assert server.requests[3]['messages'][1]['content'] == '生成中文'
-    assert server.requests[4]['messages'][1]['content'] == 'old\r\nkeep\r\nsecond'
-    assert server.requests[5]['messages'][1]['content'] == 'old\r\n' * 1200
+    for index, prompt in enumerate(('Summarize', 'Polish', 'Expand', 'Shorten', 'Correct'), 4):
+        assert prompt in server.requests[index]['messages'][0]['content']
+        assert server.requests[index]['messages'][1]['content'] == 'alpha'
+    assert server.requests[9]['messages'][1]['content'] == 'old\r\nkeep\r\nsecond'
+    assert server.requests[10]['messages'][1]['content'] == 'old\r\n' * 1200
     match = re.search(r'Evidence: (.+workspace-test-[a-f0-9]+)', process.stdout)
     assert match, 'workspace evidence path missing'
     settings = (pathlib.Path(match.group(1).strip()) / 'test.ini').read_text(encoding='utf-8-sig')
