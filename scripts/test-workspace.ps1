@@ -73,6 +73,13 @@ foreach ($taskEncryption in @(@('encrypted-a.bin','np3-fixture-a',"alpha`r`nA"),
     if ($LASTEXITCODE -ne 0) { throw "Independent decryption failed: $taskEncrypted" }
     if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($taskDecrypted)) -ne [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($taskEncryption[2]))) { throw "Per-tab encryption key or source bytes differ: $taskEncrypted" }
 }
+foreach ($taskSavedEncryption in @(@('save-encrypted-utf8.txt','np3-fixture-a',($taskExpectedA + [Text.Encoding]::UTF8.GetBytes("`r`nencrypted-save`r`nsecond-A"))), @('save-encrypted-utf16.txt','np3-fixture-b',($taskExpectedB + [Text.Encoding]::Unicode.GetBytes("`r`nencrypted-save"))))) {
+    $taskEncrypted = Join-Path $taskFolder $taskSavedEncryption[0]
+    $taskDecrypted = $taskEncrypted + '.plain'
+    & $taskCrypt df $taskEncrypted $taskDecrypted $taskSavedEncryption[1] | Out-Null
+    if ($LASTEXITCODE -ne 0 -or [Convert]::ToBase64String([IO.File]::ReadAllBytes($taskDecrypted)) -ne [Convert]::ToBase64String($taskSavedEncryption[2])) { throw "Actual encrypted FileSave lost key or encoded bytes: $taskEncrypted" }
+}
+Write-Output 'Actual encrypted FileSave UTF8 BOM and UTF16 LE bytes independently decrypted after A B A saves.'
 Write-Output 'A B A and post-session encryption keys and snapshot bytes independently decrypted and verified.'
 Write-Output "Saved UTF-8 BOM / UTF-16 LE and close-dialog UTF-8 bytes independently verified. Evidence: $taskFolder"
 $taskExportedHtml = [IO.File]::ReadAllText((Join-Path $taskFolder 'buffer-export.html'), [Text.Encoding]::UTF8)

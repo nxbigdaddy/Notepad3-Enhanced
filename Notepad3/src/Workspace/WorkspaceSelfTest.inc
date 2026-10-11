@@ -323,6 +323,27 @@ static void _WorkspaceSelfTest()
         _WorkspaceTestCheck(&result,!IsEncryptionRequired(),"restoring plain contexts leaves no fixture key active");
     }
     Encryption_FreeContext(testEncryptionA); Encryption_FreeContext(testEncryptionB);
+    HPATHL encryptedSaveA=Path_Allocate(folder),encryptedSaveB=Path_Allocate(folder);
+    Path_Append(encryptedSaveA,L"save-encrypted-utf8.txt"); Path_Append(encryptedSaveB,L"save-encrypted-utf16.txt");
+    bool saveFixtures=CopyFileW(Path_Get(a),Path_Get(encryptedSaveA),TRUE) && CopyFileW(Path_Get(b),Path_Get(encryptedSaveB),TRUE);
+    _WorkspaceTestCheck(&result,saveFixtures,"copy independent UTF8 and UTF16 encrypted-save fixtures");
+    if(saveFixtures) {
+        _WorkspaceTestCheck(&result,FileLoad(encryptedSaveA,FLF_DontSave,0,0),"load independent UTF8 encrypted-save source");
+        _WorkspaceTestCheck(&result,Encryption_SeedSelfTestContext(workspace->documents[workspace->active].encryption,false),"seed fixed A key for actual FileSave");
+        Encryption_RestoreContext(workspace->documents[workspace->active].encryption);
+        SciCall_AppendText(16,"\r\nencrypted-save");
+        _WorkspaceTestCheck(&result,FileSave(FSF_SaveAlways) && !IsSaveNeeded(),"actual FileSave encrypts UTF8 source with A context");
+        _WorkspaceTestCheck(&result,FileLoad(encryptedSaveB,FLF_DontSave,0,0),"load independent UTF16 encrypted-save source");
+        _WorkspaceTestCheck(&result,Encryption_SeedSelfTestContext(workspace->documents[workspace->active].encryption,true),"seed fixed B key for actual FileSave");
+        Encryption_RestoreContext(workspace->documents[workspace->active].encryption);
+        SciCall_AppendText(16,"\r\nencrypted-save");
+        _WorkspaceTestCheck(&result,FileSave(FSF_SaveAlways) && !IsSaveNeeded(),"actual FileSave encrypts UTF16 source with B context");
+        _WorkspaceTestCheck(&result,_WorkspaceSwitch(2) && IsEncryptionRequired(),"switching saved encrypted tabs restores A context");
+        SciCall_AppendText(10,"\r\nsecond-A");
+        _WorkspaceTestCheck(&result,FileSave(FSF_SaveAlways) && !IsSaveNeeded(),"second actual FileSave retains A key after B save");
+        _WorkspaceTestCheck(&result,_WorkspaceCloseActive() && _WorkspaceCloseActive() && workspace->count==2 && !IsEncryptionRequired(),"closing encrypted fixtures restores original plain workspace context");
+    }
+    Path_Release(encryptedSaveA); Path_Release(encryptedSaveB);
     _WorkspaceTestCheck(&result, FileLoad(a, FLF_None, 0, 0), "open existing A activates tab");
     _WorkspaceTestCheck(&result, workspace->count == 2 && workspace->active == 0 && SciCall_GetDocPointer() == handleA, "duplicate open does not add tab");
     FileWatching.FileWatchingMode = FWM_DONT_CARE; InstallFileWatching(false);
