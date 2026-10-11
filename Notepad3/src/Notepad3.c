@@ -12595,11 +12595,18 @@ static bool _AiApply(const AI_PANEL_APPLY* request)
     if (source->start < 0 || source->end < source->start || source->end > length || (size_t)(source->end - source->start) != request->originalLength) return false;
     const char* original = SciCall_GetRangePointer((DocPos)source->start, (DocPos)request->originalLength);
     if (request->originalLength && (!original || !request->original || memcmp(original, request->original, request->originalLength))) return false;
+    bool const changed=request->originalLength!=request->resultLength || memcmp(request->original,request->result,request->resultLength)!=0;
+    unsigned long long const beforeVersion=doc->version;
     UndoTransActionBegin();
     SciCall_SetTargetRange((DocPos)source->start, (DocPos)source->end);
     Sci_ReplaceTargetTestChgHist((DocPos)request->resultLength, request->result);
     SciCall_SetSel((DocPos)source->start, (DocPos)(source->start + request->resultLength));
-    EndUndoTransAction(); return true;
+    EndUndoTransAction();
+    if(changed) {
+        if(doc->version==beforeVersion) _WorkspaceEdited();
+        MarkdownPreview_Changed(Globals.hwndMain);
+    }
+    return true;
 }
 static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
 {

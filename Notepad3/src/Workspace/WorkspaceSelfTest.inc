@@ -565,9 +565,12 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result, !_AiApply(&aiApply) && _WorkspaceTestText("alpha\r\nA"), "AI apply rejects oversized result before reading bytes");
     aiApply.result = "translated"; aiApply.resultLength = 10;
     _WorkspaceTestCheck(&result, _AiApply(&aiApply) && _WorkspaceTestText("translated\r\nA") && IsSaveNeeded(), "confirmed AI replacement updates selected text and dirty state");
+    _WorkspaceTestCheck(&result,workspace->documents[workspace->active].version==aiApply.source.version+1,"AI quiet transaction advances source version exactly once");
     _WorkspaceTestCheck(&result, !_AiApply(&aiApply) && _WorkspaceTestText("translated\r\nA"), "AI result cannot be applied twice");
     SciCall_Undo();
     _WorkspaceTestCheck(&result, _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(), "AI replacement is undone in one step");
+    SciCall_SetSel(aiApply.source.anchor,aiApply.source.caret);
+    _WorkspaceTestCheck(&result,!_AiApply(&aiApply) && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"undo to identical bytes does not revive old AI source version");
     FileLoad(b, FLF_DontSave, 0, 0); SciCall_SetSel(0,4);
     AI_PANEL_SOURCE closedAiSource = {workspace->documents[workspace->active].id,workspace->documents[workspace->active].version,0,4,0,4};
     AI_PANEL_APPLY closedAiApply = {closedAiSource,"beta",4,"replacement",11};
@@ -712,6 +715,13 @@ static void _WorkspaceSelfTest()
         _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false) && MarkdownPreview_ScrollTo(Globals.hwndMain,800) && _WorkspaceTestPreviewReady(false) && MarkdownPreview_GetScroll(Globals.hwndMain,&previewScroll) && previewScroll>=799 && previewScroll<=801,"actual WebView long document scrolls to requested position");
         SciCall_BeginUndoAction(); SciCall_AppendText(8,"\nupdated"); SciCall_EndUndoAction();
         _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false) && MarkdownPreview_GetScroll(Globals.hwndMain,&previewScroll) && previewScroll>=799 && previewScroll<=801,"live editor update retains actual long preview scroll after render completion");
+        SciCall_SetSel(0,4); AI_PANEL_SOURCE previewSource={workspace->documents[workspace->active].id,workspace->documents[workspace->active].version,0,4,0,4};
+        AI_PANEL_APPLY previewAi={previewSource,"Long",4,"AI!!",4};
+        _WorkspaceTestCheck(&result,_AiApply(&previewAi) && !MarkdownPreview_IsRendered(Globals.hwndMain) && _WorkspaceTestPreviewReady(false) && MarkdownPreview_GetScroll(Globals.hwndMain,&previewScroll) && previewScroll>=799 && previewScroll<=801,"AI quiet application schedules actual preview refresh and retains scroll");
+        DocPos previewLength=SciCall_GetLength(); char* previewOriginal=AllocMem((size_t)previewLength+1,HEAP_ZERO_MEMORY); if(previewOriginal) SciCall_GetText(previewLength+1,previewOriginal);
+        BATCH_CHANGE previewChange={workspace->documents[workspace->active].id,workspace->documents[workspace->active].version,previewOriginal,(size_t)previewLength,"# Batch preview\n\nconfirmed.\n",27}; BATCH_APPLY previewBatch={&previewChange,1};
+        _WorkspaceTestCheck(&result,previewOriginal && _BatchApply(&previewBatch)==1 && workspace->documents[workspace->active].version==previewChange.version+1 && !MarkdownPreview_IsRendered(Globals.hwndMain) && _WorkspaceTestPreviewReady(false) && MarkdownPreview_GetScroll(Globals.hwndMain,&previewScroll) && previewScroll==0,"single-document batch quiet application advances version and refreshes preview");
+        FreeMem(previewOriginal); SciCall_Undo(); SciCall_Undo();
         SciCall_Undo(); SciCall_Undo();
         _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false) && MarkdownPreview_GetScroll(Globals.hwndMain,&previewScroll) && previewScroll==0,"shortened preview clamps restored scroll to actual document extent");
         MarkdownPreview_Toggle(Globals.hwndMain); SciCall_Undo();
@@ -749,8 +759,10 @@ static void _WorkspaceSelfTest()
     SetWindowTextW(GetDlgItem(batchPanel,103),L"Y");
     _WorkspaceTestCheck(&result,!IsWindowEnabled(GetDlgItem(batchPanel,112)),"changing batch options invalidates earlier confirmation");
     SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0); _WorkspaceTestBatchReady();
+    unsigned long long batchVersionBeforeA=workspace->documents[0].version,batchVersionBeforeB=workspace->documents[1].version;
     SendMessageW(batchPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
     _WorkspaceTestCheck(&result,_WorkspaceTestText("betY\r\nB") && IsSaveNeeded(),"batch confirms replacement in second document");
+    _WorkspaceTestCheck(&result,workspace->documents[0].version==batchVersionBeforeA+1 && workspace->documents[1].version==batchVersionBeforeB+1,"batch quiet transactions advance each changed document version exactly once");
     _WorkspaceSwitch(0); _WorkspaceTestCheck(&result,_WorkspaceTestText("YlphY\r\nA") && IsSaveNeeded(),"batch confirms replacement in first document");
     SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"batch first document has independent single undo"); _WorkspaceSwitch(1);
     SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("beta\r\nB") && !IsSaveNeeded(),"batch second document has independent single undo");

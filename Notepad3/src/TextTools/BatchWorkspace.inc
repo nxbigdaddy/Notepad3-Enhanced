@@ -106,6 +106,10 @@ static LRESULT _BatchApplyTransaction(const BATCH_APPLY* request, size_t failure
         Sci_ReplaceTargetTestChgHist((DocPos)change->resultLength, change->result ? change->result : "");
         EndUndoTransAction();
         bool changed = !_BatchTextMatches(Globals.hwndEdit, change->original, change->originalLength);
+        if(changed) {
+            if(w->documents[indices[i]].version==change->version) _WorkspaceEdited();
+            MarkdownPreview_Changed(Globals.hwndMain);
+        }
         if (changed) applied = i + 1;
         if (SciCall_GetStatus() != SC_STATUS_OK || !_BatchTextMatches(Globals.hwndEdit, change->result, change->resultLength)) { success = false; break; }
         if (failureAfter && failureAfter == i + 1) { success = false; break; }
