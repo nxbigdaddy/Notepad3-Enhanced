@@ -13,6 +13,22 @@ int main() {
     bool created = false;
     auto response = [&](const std::string& json, int expected) { AiProtocol_Free(output); output = nullptr; expect(AiProtocol_Response(json.data(), json.size(), &output, &length) == expected, "response status"); };
     try {
+        auto models = [&](const std::string& json, int expected) {
+            AiProtocol_Free(output); output = nullptr;
+            expect(AiProtocol_Models(json.data(), json.size(), &output, &length) == expected, "model list status");
+            if (expected != AI_OK) expect(!output && !length, "invalid model list publishes no partial IDs");
+        };
+        models(R"({"object":"list","data":[{"id":"a","extra":{"id":"ignored"}},{"id":"中文\uD83D\uDE00"}]})", AI_OK);
+        expect(std::string(output, length) == "a\n中文😀\n", "model IDs decoded without nested metadata");
+        models(R"({"data":[]})", AI_OK); expect(length == 0, "empty model list supported");
+        for (const char* invalid : {"{}", "[]", "{broken", R"({"data":{}})", R"({"data":[],"data":[]})", R"({"data":[{}]})", R"({"data":[{"id":null}]})", R"({"data":[{"id":""}]})", R"({"data":[{"id":"a","id":"b"}]})", R"({"data":[{"id":"a\n injected"}]})", R"({"data":[{"id":"\u0000"}]})", R"({"data":[{"id":"\uD800"}]})"}) models(invalid, AI_RESPONSE);
+        models("{\"data\":[{\"id\":\"" + std::string(256, 'x') + "\"}]}", AI_OK);
+        models("{\"data\":[{\"id\":\"" + std::string(257, 'x') + "\"}]}", AI_RESPONSE);
+        std::string many = "{\"data\":[";
+        for (int i = 0; i < 512; ++i) { if(i) many += ','; many += "{\"id\":\"m\"}"; }
+        models(many + "]}", AI_OK); models(many + ",{\"id\":\"overflow\"}]}", AI_RESPONSE);
+        models(std::string(2 * 1024 * 1024 + 1, 'x'), AI_LIMIT);
+        models("\xFF", AI_TEXT);
         auto diff=np3::AiDifference(L"old\runchanged\rsecond",L"new\runchanged\rthird");
         expect(diff.precise && diff.ranges.size()==2,"two separate changes preserve unchanged paragraph");
         expect(diff.ranges[0].beforeEnd<=4 && diff.ranges[1].beforeStart>=14,"diff ranges exclude middle context");

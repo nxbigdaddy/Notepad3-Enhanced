@@ -9,6 +9,8 @@ enum AI_STATUS { AI_OK, AI_CONFIG, AI_LIMIT, AI_TEXT, AI_RESPONSE, AI_INCOMPLETE
 int AiEndpoint_Validate(const wchar_t* endpoint);
 int AiProtocol_Request(const char* model, int action, const char* input, size_t length, const char* instruction, char** output, size_t* outputLength);
 int AiProtocol_Response(const char* json, size_t length, char** output, size_t* outputLength);
+// Bounded model IDs, one per line; caller owns the result via AiProtocol_Free.
+int AiProtocol_Models(const char* json, size_t length, char** output, size_t* outputLength);
 void AiProtocol_Free(char* text);
 // Secrets are isolated by profile and never written to the application's INI.
 DWORD AiCredential_AccountProfile(const wchar_t* endpoint, const wchar_t* configurationId, wchar_t* profile, size_t capacity);
