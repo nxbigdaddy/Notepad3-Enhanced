@@ -269,6 +269,33 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result, SciCall_GetReadOnly() && IsSaveNeeded() && _WorkspaceTestText("beta\r\nB"), "B state retained after A save");
     SciCall_SetReadOnly(false);
     _WorkspaceTestCheck(&result, FileSave(FSF_SaveAlways), "save B");
+    _WorkspaceCapture();
+    void* savedEncryptionA=workspace->documents[0].encryption;
+    void* savedEncryptionB=workspace->documents[1].encryption;
+    void* testEncryptionA=Encryption_CreateContext(); void* testEncryptionB=Encryption_CreateContext();
+    bool encryptionReady=Encryption_SeedSelfTestContext(testEncryptionA,false) && Encryption_SeedSelfTestContext(testEncryptionB,true);
+    _WorkspaceTestCheck(&result,encryptionReady,"create marker-authorized distinct non-secret encryption fixtures");
+    if(encryptionReady) {
+        workspace->documents[0].encryption=testEncryptionA; workspace->documents[1].encryption=testEncryptionB;
+        Encryption_RestoreContext(testEncryptionB);
+        for(int encryptedIndex=0;encryptedIndex<3;++encryptedIndex) {
+            int documentIndex=encryptedIndex==1?1:0;
+            _WorkspaceSwitch(documentIndex);
+            HPATHL encryptedOutput=Path_Allocate(folder);
+            Path_Append(encryptedOutput,encryptedIndex==0?L"encrypted-a.bin":encryptedIndex==1?L"encrypted-b.bin":L"encrypted-a-again.bin");
+            HANDLE encryptedFile=Path_CreateFile(encryptedOutput,GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,NULL);
+            DocPos encryptedLength=SciCall_GetLength(); size_t encryptedWritten=0;
+            bool encryptedSaved=IS_VALID_HANDLE(encryptedFile) && IsEncryptionRequired() && EncryptAndWriteFile(Globals.hwndEdit,encryptedFile,(BYTE*)SciCall_GetRangePointer(0,encryptedLength),(size_t)encryptedLength,&encryptedWritten);
+            if(IS_VALID_HANDLE(encryptedFile)) CloseHandle(encryptedFile);
+            _WorkspaceTestCheck(&result,encryptedSaved,"actual encryption writer uses active per-tab context across A B A switches");
+            _WorkspaceTestCheck(&result,!IsSaveNeeded() && _WorkspaceTestText(documentIndex?"beta\r\nB":"alpha\r\nA"),"encrypted snapshot writing preserves saved source text and savepoint");
+            Path_Release(encryptedOutput);
+        }
+        workspace->documents[0].encryption=savedEncryptionA; workspace->documents[1].encryption=savedEncryptionB;
+        Encryption_RestoreContext(workspace->documents[workspace->active].encryption);
+        _WorkspaceTestCheck(&result,!IsEncryptionRequired(),"restoring plain contexts leaves no fixture key active");
+    }
+    Encryption_FreeContext(testEncryptionA); Encryption_FreeContext(testEncryptionB);
     _WorkspaceTestCheck(&result, FileLoad(a, FLF_None, 0, 0), "open existing A activates tab");
     _WorkspaceTestCheck(&result, workspace->count == 2 && workspace->active == 0 && SciCall_GetDocPointer() == handleA, "duplicate open does not add tab");
     FileWatching.FileWatchingMode = FWM_DONT_CARE; InstallFileWatching(false);

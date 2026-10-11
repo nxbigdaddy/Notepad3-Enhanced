@@ -60,6 +60,20 @@ typedef struct ENCRYPTION_CONTEXT {
 } ENCRYPTION_CONTEXT;
 
 void* Encryption_CreateContext() { return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ENCRYPTION_CONTEXT)); }
+bool Encryption_SeedSelfTestContext(void* context, bool second)
+{
+    WCHAR marker[MAX_PATH];
+    DWORD length=GetEnvironmentVariableW(L"NP3_WORKSPACE_SELFTEST_DIR",marker,MAX_PATH);
+    if(!context || !length || length>=MAX_PATH-24) return false;
+    if(FAILED(StringCchCatW(marker,MAX_PATH,L"\\workspace-test.marker"))) return false;
+    DWORD attributes=GetFileAttributesW(marker);
+    if(attributes==INVALID_FILE_ATTRIBUTES || (attributes&FILE_ATTRIBUTE_DIRECTORY)) return false;
+    ENCRYPTION_CONTEXT* state=(ENCRYPTION_CONTEXT*)context;
+    SecureZeroMemory(state,sizeof(*state));
+    state->useFileKey=true;
+    strcpy_s(state->fileKey,sizeof(state->fileKey),second?"np3-fixture-b":"np3-fixture-a");
+    return true;
+}
 void Encryption_CaptureContext(void* context)
 {
     ENCRYPTION_CONTEXT* state = (ENCRYPTION_CONTEXT*)context;

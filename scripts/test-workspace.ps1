@@ -1,4 +1,4 @@
-param([string]$Executable = 'artifacts/log-filter-panel-x64-v24/Notepad3.exe', [string]$AiEndpoint = '', [switch]$Preview, [ValidateSet('auto','dark','light')][string]$ThemeMode)
+param([string]$Executable = 'Notepad3/Bin/Release_x64_v143/Notepad3.exe', [string]$AiEndpoint = '', [switch]$Preview, [ValidateSet('auto','dark','light')][string]$ThemeMode)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -57,6 +57,15 @@ foreach ($taskPair in @(@('a.txt', $taskExpectedA), @('b.txt', $taskExpectedB), 
     $taskActual = [IO.File]::ReadAllBytes((Join-Path $taskFolder $taskPair[0]))
     if ([Convert]::ToBase64String($taskActual) -ne [Convert]::ToBase64String($taskPair[1])) { throw "Saved bytes differ for $($taskPair[0]): $taskFolder" }
 }
+$taskCrypt = Join-Path (Split-Path $taskExe -Parent) 'np3encrypt.exe'
+foreach ($taskEncryption in @(@('encrypted-a.bin','np3-fixture-a',"alpha`r`nA"), @('encrypted-b.bin','np3-fixture-b',"beta`r`nB"), @('encrypted-a-again.bin','np3-fixture-a',"alpha`r`nA"))) {
+    $taskEncrypted = Join-Path $taskFolder $taskEncryption[0]
+    $taskDecrypted = $taskEncrypted + '.plain'
+    & $taskCrypt df $taskEncrypted $taskDecrypted $taskEncryption[1] | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Independent decryption failed: $taskEncrypted" }
+    if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($taskDecrypted)) -ne [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($taskEncryption[2]))) { throw "Per-tab encryption key or source bytes differ: $taskEncrypted" }
+}
+Write-Output 'Distinct A B A per-tab encryption keys and snapshot bytes independently decrypted and verified.'
 Write-Output "Saved UTF-8 BOM / UTF-16 LE and close-dialog UTF-8 bytes independently verified. Evidence: $taskFolder"
 $taskExportedHtml = [IO.File]::ReadAllText((Join-Path $taskFolder 'buffer-export.html'), [Text.Encoding]::UTF8)
 if (!$taskExportedHtml.Contains('<h1>导出验证</h1>') -or $taskExportedHtml.Contains('np3-preview.invalid')) { throw 'Exported unsaved buffer HTML content incorrect' }

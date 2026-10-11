@@ -39,6 +39,8 @@ void ResetEncryption();
 
 // Per-document encryption context. Never persist this buffer to a session file.
 void* Encryption_CreateContext();
+// Fixed non-secret fixtures; available only in marker-authorized workspace self-tests.
+bool Encryption_SeedSelfTestContext(void* context, bool second);
 void Encryption_CaptureContext(void* context);
 void Encryption_RestoreContext(const void* context);
 void Encryption_FreeContext(void* context);
