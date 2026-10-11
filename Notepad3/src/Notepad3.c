@@ -49,6 +49,7 @@
 #include "Notepad3Util.h"
 #include "Markdown/MarkdownPreview.h"
 #include "Workspace/FileTree.h"
+#include "Workspace/FileSearchPanel.h"
 #include "TextTools/LogFilterPanel.h"
 #include "TextTools/BatchPanel.h"
 #include "UI/PanelTheme.h"
@@ -3978,6 +3979,7 @@ LRESULT MsgThemeChanged(HWND hwnd, WPARAM wParam,LPARAM lParam)
         EditUpdateVisibleIndicators();
 
         PanelTheme_RefreshChildren(hwnd);
+        FileSearch_Refresh(hwnd);
         MarkdownPreview_Changed(hwnd);
 
         UpdateUI(hwnd);

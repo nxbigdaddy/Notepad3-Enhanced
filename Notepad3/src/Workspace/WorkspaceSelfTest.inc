@@ -97,6 +97,17 @@ static bool _WorkspaceTestTreeReady()
     }
     return !FileTree_IsLoading(Globals.hwndMain);
 }
+static bool _WorkspaceTestSearchReady(HWND window)
+{
+    DWORD start=GetTickCount(); WCHAR status[256];
+    while(IsWindow(window) && GetTickCount()-start<5000){
+        GetDlgItemTextW(window,107,status,COUNTOF(status));
+        if(wcsstr(status,L"搜索完成") || wcsstr(status,L"已停止"))return true;
+        MsgWaitForMultipleObjectsEx(0,NULL,25,QS_ALLINPUT,MWMO_INPUTAVAILABLE);
+        MSG message; while(PeekMessageW(&message,NULL,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}
+    }
+    return false;
+}
 static bool _WorkspaceTestAiReady(void)
 {
     DWORD start = GetTickCount();
@@ -700,6 +711,22 @@ static void _WorkspaceSelfTest()
     _WorkspaceTestCheck(&result, FileTree_IsOpen(Globals.hwndMain) && _WorkspaceTestTreeReady(), "native file tree loads asynchronously");
     HWND panel = FindWindowExW(Globals.hwndMain, NULL, L"NP3WorkspaceFileTree", NULL);
     HWND tree = FindWindowExW(panel, NULL, WC_TREEVIEWW, NULL);
+    WCHAR searchRoot[MAX_PATH_EXPLICIT]; StringCchPrintfW(searchRoot,COUNTOF(searchRoot),L"%s\\nested",folder);
+    HWND search=FileSearch_Show(Globals.hwndMain,searchRoot);
+    _WorkspaceTestCheck(&result,search && FileSearch_Show(Globals.hwndMain,folder)==search && (GetWindowLongPtrW(GetDlgItem(search,106),GWL_STYLE)&LVS_OWNERDATA),"file search creates reusable native virtual result window");
+    SendMessageW(search,WM_COMMAND,104,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==0,"file search defaults to markdown and excludes text fixture");
+    SetDlgItemTextW(search,102,L"*.txt"); SendMessageW(search,WM_COMMAND,104,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==1,"file search asynchronously lists matching nested text file");
+    SetDlgItemTextW(search,103,L"does-not-match");SendMessageW(search,WM_COMMAND,104,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==0,"file search path keyword filters results");
+    SetDlgItemTextW(search,102,L"bad?type"); SendMessageW(search,WM_COMMAND,104,0);
+    WCHAR searchStatus[256];GetDlgItemTextW(search,107,searchStatus,COUNTOF(searchStatus));
+    _WorkspaceTestCheck(&result,wcsstr(searchStatus,L"格式无效")!=NULL,"file search rejects invalid extension input without starting scan");
+    DestroyWindow(search);
+    search=FileSearch_Show(Globals.hwndMain,searchRoot);
+    _WorkspaceTestCheck(&result,search && ListView_GetItemCount(GetDlgItem(search,106))==0,"file search closes and recreates without stale results");
+    DestroyWindow(search);
     HWND treeGrip=FindWindowExW(panel,NULL,L"STATIC",NULL); RECT treeBefore,treeAfter; GetWindowRect(panel,&treeBefore);
     if(treeGrip) { SendMessageW(treeGrip,WM_LBUTTONDOWN,MK_LBUTTON,0); SendMessageW(treeGrip,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(80,0)); }
     GetWindowRect(panel,&treeAfter);
