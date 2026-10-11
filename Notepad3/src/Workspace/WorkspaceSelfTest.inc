@@ -181,6 +181,22 @@ static void _WorkspaceSelfTest()
     bool const isolated = workspace && workspace->count == 1 && Path_IsEmpty(Paths.CurrentFile) && !IsSaveNeeded() && SciCall_GetLength() == 0;
     _WorkspaceTestCheck(&result, isolated, "isolated empty startup");
     if (!isolated) { CloseHandle(result.log); return; }
+    WCHAR searchSettingsStage[32]={0};
+    if(GetEnvironmentVariableW(L"NP3_SEARCH_SETTINGS_TEST",searchSettingsStage,COUNTOF(searchSettingsStage))){
+        HWND searchSettings=FileSearch_Show(Globals.hwndMain,folder);
+        bool write=!lstrcmpW(searchSettingsStage,L"write"),custom=write || !lstrcmpW(searchSettingsStage,L"read");
+        if(write){SetDlgItemTextW(searchSettings,102,L"*.md;*.txt");SetDlgItemTextW(searchSettings,108,L"缓存;.git");const int ids[]={109,111,113,114};for(int i=0;i<4;++i)SendDlgItemMessageW(searchSettings,ids[i],BM_SETCHECK,i?BST_CHECKED:BST_UNCHECKED,0);SendMessageW(searchSettings,WM_COMMAND,104,0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(searchSettings) && ListView_GetItemCount(GetDlgItem(searchSettings,106))==1,"accepted search settings execute actual fixture scan");
+            DestroyWindow(searchSettings);searchSettings=FileSearch_Show(Globals.hwndMain,folder);
+        }
+        WCHAR types[4097],excluded[4097],query[64];GetDlgItemTextW(searchSettings,102,types,COUNTOF(types));GetDlgItemTextW(searchSettings,108,excluded,COUNTOF(excluded));GetDlgItemTextW(searchSettings,110,query,COUNTOF(query));
+        UINT expected=custom?14:!lstrcmpW(searchSettingsStage,L"high")?15:1,actual=0;const int ids[]={109,111,113,114};for(int i=0;i<4;++i)if(SendDlgItemMessageW(searchSettings,ids[i],BM_GETCHECK,0,0)==BST_CHECKED)actual|=1u<<i;
+        _WorkspaceTestCheck(&result,searchSettings && !lstrcmpW(types,custom?L"*.md;*.txt":L"*.md") && !lstrcmpW(excluded,custom?L"缓存;.git":L".git;node_modules;.np3-extension-backups;render-assets"),"search window restores custom or default file filters and exclusions");
+        _WorkspaceTestCheck(&result,actual==expected && Settings2.SearchFlags==(int)expected,"search window restores persisted flags and clamps unsupported flag range");
+        _WorkspaceTestCheck(&result,!query[0] && ListView_GetItemCount(GetDlgItem(searchSettings,106))==0 && workspace->count==1 && SciCall_GetLength()==0 && !IsSaveNeeded(),"settings restoration does not auto scan persist body queries or change document");
+        DestroyWindow(searchSettings);char summary[128];DWORD written;StringCchPrintfA(summary,COUNTOF(summary),"RESULT checks=%i failures=%i\r\n",result.checks,result.failures);WriteFile(result.log,summary,(DWORD)strlen(summary),&written,NULL);CloseHandle(result.log);
+        _WorkspaceDispose();DestroyWindow(Globals.hwndMain);return;
+    }
     WCHAR reopenStage[32]={0};
     if(GetEnvironmentVariableW(L"NP3_WORKSPACE_OPTION_TEST",reopenStage,COUNTOF(reopenStage))) {
         SendMessageW(Globals.hwndMain,WM_INITMENU,(WPARAM)Globals.hMainMenu,0);
@@ -732,6 +748,8 @@ static void _WorkspaceSelfTest()
     WCHAR searchRoot[MAX_PATH_EXPLICIT]; StringCchPrintfW(searchRoot,COUNTOF(searchRoot),L"%s\\nested",folder);
     HWND search=FileSearch_Show(Globals.hwndMain,searchRoot);
     _WorkspaceTestCheck(&result,search && FileSearch_Show(Globals.hwndMain,folder)==search && (GetWindowLongPtrW(GetDlgItem(search,106),GWL_STYLE)&LVS_OWNERDATA),"file search creates reusable native virtual result window");
+    const WCHAR* presetValues[]={L"*.md;*.markdown",L"*.md;*.markdown;*.txt;*.log",L"*.json;*.ini;*.yaml;*.yml;*.toml",L"*"};WCHAR presetActual[256];
+    for(int preset=0;preset<4;++preset){SendMessageW(search,WM_COMMAND,116+preset,0);GetDlgItemTextW(search,102,presetActual,COUNTOF(presetActual));_WorkspaceTestCheck(&result,!lstrcmpW(presetActual,presetValues[preset]) && ListView_GetItemCount(GetDlgItem(search,106))==0,"preset menu command fills editable types without automatic scanning");}SetDlgItemTextW(search,102,L"*.md");
     SendMessageW(search,WM_COMMAND,104,0);
     _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==0,"file search defaults to markdown and excludes text fixture");
     SetDlgItemTextW(search,102,L"*.txt"); SendMessageW(search,WM_COMMAND,104,0);

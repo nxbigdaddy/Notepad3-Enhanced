@@ -2667,6 +2667,12 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
     case NP3_WM_LOGFILTER_LOCATE: return _LogFilterLocate((const LOG_PANEL_LOCATION*)lParam);
     case NP3_WM_SEARCH_LOCATE: return _SearchLocate((const SEARCH_LOCATION*)lParam);
+    case NP3_WM_SEARCH_STATE: {
+        SEARCH_STATE* state=(SEARCH_STATE*)lParam;if(!state)return FALSE;
+        if(!wParam){StringCchCopyW(state->types,COUNTOF(state->types),Settings2.SearchTypes);StringCchCopyW(state->excluded,COUNTOF(state->excluded),Settings2.SearchExcluded);state->flags=Settings2.SearchFlags;return TRUE;}
+        size_t length=0;if(state->flags>15 || FAILED(StringCchLengthW(state->types,COUNTOF(state->types),&length)) || FAILED(StringCchLengthW(state->excluded,COUNTOF(state->excluded),&length)))return FALSE;
+        StringCchCopyW(Settings2.SearchTypes,COUNTOF(Settings2.SearchTypes),state->types);StringCchCopyW(Settings2.SearchExcluded,COUNTOF(Settings2.SearchExcluded),state->excluded);Settings2.SearchFlags=state->flags;return TRUE;
+    }
     case NP3_WM_FILETREE_OPEN: {
         HPATHL path = Path_Allocate((const WCHAR*)lParam);
         FileLoad(path, FLF_None, 0, 0); Path_Release(path);

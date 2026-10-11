@@ -1493,6 +1493,9 @@ void LoadSettings()
     Settings2.ReopenWorkspace = IniSectionGetBool(IniSecSettings2, L"ReopenWorkspace", true);
     Settings2.FileTreeWidth = clampi(IniSectionGetInt(IniSecSettings2, L"FileTreeWidth", 240), 120, 10000);
     IniSectionGetString(IniSecSettings2, L"FileTreeRoot", L"", Settings2.FileTreeRoot, COUNTOF(Settings2.FileTreeRoot));
+    IniSectionGetString(IniSecSettings2,L"SearchTypes",L"*.md",Settings2.SearchTypes,COUNTOF(Settings2.SearchTypes));
+    IniSectionGetString(IniSecSettings2,L"SearchExcluded",L".git;node_modules;.np3-extension-backups;render-assets",Settings2.SearchExcluded,COUNTOF(Settings2.SearchExcluded));
+    Settings2.SearchFlags=clampi(IniSectionGetInt(IniSecSettings2,L"SearchFlags",1),0,15);
     IniSectionGetString(IniSecSettings2, L"AIEndpoint", L"", Settings2.AIEndpoint, COUNTOF(Settings2.AIEndpoint));
     IniSectionGetString(IniSecSettings2, L"AIModel", L"", Settings2.AIModel, COUNTOF(Settings2.AIModel));
     Settings2.AITimeoutMs = clampi(IniSectionGetInt(IniSecSettings2, L"AITimeoutMs", 60000), 100, 120000);
@@ -2131,6 +2134,9 @@ static bool _SaveSettings(bool bForceSaveSettings)
     IniSectionSetInt(L"Settings2", L"FileTreeWidth", Settings2.FileTreeWidth);
     IniSectionSetBool(L"Settings2", L"ReopenWorkspace", Settings2.ReopenWorkspace);
     IniSectionSetString(L"Settings2", L"FileTreeRoot", Settings2.FileTreeRoot);
+    IniSectionSetString(L"Settings2",L"SearchTypes",Settings2.SearchTypes);
+    IniSectionSetString(L"Settings2",L"SearchExcluded",Settings2.SearchExcluded);
+    IniSectionSetInt(L"Settings2",L"SearchFlags",Settings2.SearchFlags);
 
     SAVE_VALUE_IF_NOT_EQ_DEFAULT(Bool, SaveSettings);
     SAVE_VALUE_IF_NOT_EQ_DEFAULT(Bool, SaveRecentFiles);

@@ -36,7 +36,7 @@ int Scale(HWND window,int value){return MulDiv(value,GetDpiForWindow(window),96)
 void Layout(Panel* state) {
     RECT client{};GetClientRect(state->window,&client);int margin=Scale(state->window,12),width=(std::max)(0,static_cast<int>(client.right)-2*margin);
     MoveWindow(state->roots,margin,Scale(state->window,36),width,Scale(state->window,52),TRUE);
-    MoveWindow(state->types,margin,Scale(state->window,116),Scale(state->window,180),Scale(state->window,26),TRUE);
+    MoveWindow(state->types,margin,Scale(state->window,116),Scale(state->window,148),Scale(state->window,26),TRUE);
     MoveWindow(state->query,margin+Scale(state->window,192),Scale(state->window,116),(std::max)(0,width-Scale(state->window,192)),Scale(state->window,26),TRUE);
     MoveWindow(GetDlgItem(state->window,108),margin+Scale(state->window,100),Scale(state->window,154),(std::max)(0,width-Scale(state->window,100)),Scale(state->window,26),TRUE);
     MoveWindow(GetDlgItem(state->window,110),margin+Scale(state->window,100),Scale(state->window,190),(std::max)(0,width-Scale(state->window,100)),Scale(state->window,26),TRUE);
@@ -108,6 +108,7 @@ void Start(Panel* state) {
     state->job=job;state->contentMode=!content.query.empty();state->files.clear();ListView_SetItemCountEx(state->list,0,LVSICF_NOSCROLL);
     const wchar_t* titles[]={state->contentMode?L"行:列":L"大小（字节）",state->contentMode?L"匹配上下文":L"修改时间"};for(int i=0;i<2;++i){LVCOLUMNW column{};column.mask=LVCF_TEXT;column.pszText=const_cast<wchar_t*>(titles[i]);ListView_SetColumn(state->list,i+2,&column);}
     SetWindowTextW(state->status,L"搜索中… 可停止或重新搜索");
+    SEARCH_STATE saved{};StringCchCopyW(saved.types,4097,Text(state->types).c_str());StringCchCopyW(saved.excluded,4097,excluded.c_str());saved.flags=(options.recursive?1:0)|(content.caseSensitive?2:0)|(content.wholeWord?4:0)|(content.regex?8:0);SendMessageW(state->parent,NP3_WM_SEARCH_STATE,1,reinterpret_cast<LPARAM>(&saved));
 }
 void Drain(Panel* state) {
     auto job=state->job;if(!job)return;
@@ -134,6 +135,7 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
             state->roots=Child(window,L"EDIT",L"",WS_TABSTOP|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL,101,12,36,700,52);SendMessageW(state->roots,EM_SETLIMITTEXT,65536,0);
             Child(window,L"STATIC",L"文件格式",0,0,12,94,180,22);Child(window,L"STATIC",L"文件名或路径关键词",0,0,204,94,400,22);
             state->types=Child(window,L"EDIT",L"*.md",WS_TABSTOP|ES_AUTOHSCROLL,102,12,116,180,26);SendMessageW(state->types,EM_SETLIMITTEXT,4096,0);
+            Child(window,L"BUTTON",L"▼",WS_TABSTOP,115,164,116,28,26);
             state->query=Child(window,L"EDIT",L"",WS_TABSTOP|ES_AUTOHSCROLL,103,204,116,500,26);SendMessageW(state->query,EM_SETLIMITTEXT,4096,0);
             Child(window,L"STATIC",L"排除目录",0,0,12,156,96,22);
             HWND exclusions=Child(window,L"EDIT",L".git;node_modules;.np3-extension-backups;render-assets",WS_TABSTOP|ES_AUTOHSCROLL,108,112,154,600,26);SendMessageW(exclusions,EM_SETLIMITTEXT,4096,0);
@@ -147,11 +149,15 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
             const wchar_t* names[]={L"名称",L"完整路径",L"大小（字节）",L"修改时间"};int widths[]={180,370,100,160};
             for(int i=0;i<4;++i){LVCOLUMNW column{};column.mask=LVCF_TEXT|LVCF_WIDTH;column.pszText=const_cast<wchar_t*>(names[i]);column.cx=Scale(window,widths[i]);ListView_InsertColumn(state->list,i,&column);}
             state->status=Child(window,L"STATIC",L"填写目录后点击搜索；双击或 Enter 打开文件。",0,107,12,486,700,22);
+            SEARCH_STATE saved{};if(SendMessageW(state->parent,NP3_WM_SEARCH_STATE,0,reinterpret_cast<LPARAM>(&saved))){SetWindowTextW(state->types,saved.types);SetWindowTextW(exclusions,saved.excluded);const int ids[]={109,111,113,114};for(int i=0;i<4;++i)SendDlgItemMessageW(window,ids[i],BM_SETCHECK,(saved.flags&(1u<<i))?BST_CHECKED:BST_UNCHECKED,0);}
             state->theme.Update(window,state->parent);return 0;
         }
         if(message==WM_SIZE){Layout(state);return 0;}
         if(message==WM_TIMER){Drain(state);return 0;}
-        if(message==WM_COMMAND){if(LOWORD(wParam)==104)Start(state);else if(LOWORD(wParam)==105 && state->job)state->job->cancel=true;return 0;}
+        if(message==WM_COMMAND){if(LOWORD(wParam)==104)Start(state);else if(LOWORD(wParam)==105 && state->job)state->job->cancel=true;
+            else if(LOWORD(wParam)>=116 && LOWORD(wParam)<=119){const wchar_t* values[]={L"*.md;*.markdown",L"*.md;*.markdown;*.txt;*.log",L"*.json;*.ini;*.yaml;*.yml;*.toml",L"*"};SetWindowTextW(state->types,values[LOWORD(wParam)-116]);}
+            else if(LOWORD(wParam)==115){HMENU menu=CreatePopupMenu();if(menu){const wchar_t* names[]={L"Markdown",L"文本与日志",L"配置文件",L"所有格式"};for(int i=0;i<4;++i)AppendMenuW(menu,MF_STRING,116+i,names[i]);RECT button{};GetWindowRect(GetDlgItem(window,115),&button);UINT choice=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_NONOTIFY,button.left,button.bottom,0,window,nullptr);DestroyMenu(menu);if(choice>=116 && choice<=119)SendMessageW(window,WM_COMMAND,choice,0);}}
+            return 0;}
         if(message==WM_NOTIFY){auto* header=reinterpret_cast<NMHDR*>(lParam);if(header->hwndFrom!=state->list)return 0;
             if(header->code==LVN_GETDISPINFOW){auto* info=reinterpret_cast<NMLVDISPINFOW*>(lParam);if((info->item.mask&LVIF_TEXT) && info->item.iItem>=0 && static_cast<size_t>(info->item.iItem)<state->files.size()){
                 const auto& file=state->files[info->item.iItem];if(state->contentMode && info->item.iSubItem==2)state->display=std::to_wstring(file.line)+L":"+std::to_wstring(file.column);else if(state->contentMode && info->item.iSubItem==3)state->display=file.context;else if(info->item.iSubItem==0)state->display=Name(file.path);else if(info->item.iSubItem==1)state->display=file.path;else if(info->item.iSubItem==2)state->display=std::to_wstring(file.size);else {FILETIME local{};SYSTEMTIME time{};wchar_t value[64]{};if(FileTimeToLocalFileTime(&file.modified,&local)&&FileTimeToSystemTime(&local,&time))StringCchPrintfW(value,64,L"%04u-%02u-%02u %02u:%02u",time.wYear,time.wMonth,time.wDay,time.wHour,time.wMinute);state->display=value;}info->item.pszText=const_cast<wchar_t*>(state->display.c_str());}return 0;}
