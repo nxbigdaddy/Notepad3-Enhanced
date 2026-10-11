@@ -140,27 +140,37 @@ static void _WorkspaceRecoveryClose()
 }
 static void _WorkspaceNormalRestoreLatest(WORKSPACE_RECOVERY* recovery)
 {
-    HPATHL pattern = Path_Copy(recovery->directory); Path_Append(pattern, L"np3-*.np3workspace");
-    WIN32_FIND_DATAW found; HANDLE search = Path_FindFirstFile(pattern, &found); Path_Release(pattern);
-    if (!IS_VALID_HANDLE(search)) return;
-    HPATHL latest = NULL; HANDLE held = INVALID_HANDLE_VALUE; FILETIME stamp = { 0 };
+    HPATHL pattern=Path_Copy(recovery->directory); Path_Append(pattern,L"np3-*.np3workspace");
+    WIN32_FIND_DATAW found; HANDLE search=Path_FindFirstFile(pattern,&found); Path_Release(pattern);
+    if(!IS_VALID_HANDLE(search)) return;
+    HPATHL latest=NULL; HANDLE held=INVALID_HANDLE_VALUE; NP3_SESSION selected=NULL;
+    FILETIME stamp={0},invalidStamp={0}; uint32_t invalidError=0; WCHAR invalidName[64]={0};
     do {
-        if (found.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) continue;
-        if (latest && CompareFileTime(&found.ftLastWriteTime, &stamp) <= 0) continue;
-        HPATHL path = Path_Copy(recovery->directory); Path_Append(path, found.cFileName);
-        HPATHL lock = Path_Copy(path); Path_RenameExtension(lock, L".lock");
-        HANDLE claim = Path_CreateFile(lock, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-        Path_Release(lock);
-        if (IS_VALID_HANDLE(claim)) {
-            if (IS_VALID_HANDLE(held)) CloseHandle(held);
-            Path_Release(latest); latest = path; held = claim; stamp = found.ftLastWriteTime;
-        } else Path_Release(path);
-    } while (FindNextFileW(search, &found));
+        if((found.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT)) || !_WorkspaceHistoryName(found.cFileName)) continue;
+        int const order=latest?CompareFileTime(&found.ftLastWriteTime,&stamp):1;
+        if(latest && (order<0 || (order==0 && wcscmp(found.cFileName,Path_FindFileName(latest))<=0))) continue;
+        HPATHL path=Path_Copy(recovery->directory); bool ready=path && Path_Append(path,found.cFileName);
+        HPATHL lock=ready?Path_Copy(path):NULL; bool lockReady=lock && Path_RenameExtension(lock,L".lock");
+        HANDLE claim=lockReady?_WorkspaceHistoryClaim(lock):INVALID_HANDLE_VALUE; Path_Release(lock);
+        if(IS_VALID_HANDLE(claim)) {
+            NP3_SESSION candidate=NULL; uint32_t error=0;
+            if(_WorkspaceNormalArchiveRead(path,&candidate,&error)) {
+                if(IS_VALID_HANDLE(held)) CloseHandle(held); Session_Free(selected); Path_Release(latest);
+                latest=path; held=claim; selected=candidate; stamp=found.ftLastWriteTime; path=NULL;
+            } else {
+                int const invalidOrder=CompareFileTime(&found.ftLastWriteTime,&invalidStamp);
+                if(!invalidError || invalidOrder>0 || (invalidOrder==0 && wcscmp(found.cFileName,invalidName)>0)) { invalidError=error; invalidStamp=found.ftLastWriteTime; StringCchCopyW(invalidName,COUNTOF(invalidName),found.cFileName); }
+                CloseHandle(claim);
+            }
+        }
+        Path_Release(path);
+    } while(FindNextFileW(search,&found));
     FindClose(search);
-    if (latest) {
-        uint32_t error = 0;
-        if (!_WorkspaceNormalLoad(latest, &error)) _WorkspaceRecoveryReport(recovery, error);
-        Path_Release(latest); CloseHandle(held);
+    int const failureOrder=selected?CompareFileTime(&invalidStamp,&stamp):1;
+    if(invalidError && (!selected || failureOrder>0 || (failureOrder==0 && wcscmp(invalidName,Path_FindFileName(latest))>0))) _WorkspaceRecoveryReport(recovery,invalidError);
+    if(selected) {
+        uint32_t error=0; if(!_WorkspaceNormalApply(selected,&error)) _WorkspaceRecoveryReport(recovery,error);
+        Session_Free(selected); Path_Release(latest); CloseHandle(held);
     }
 }
 static void _WorkspaceRecoveryStart()

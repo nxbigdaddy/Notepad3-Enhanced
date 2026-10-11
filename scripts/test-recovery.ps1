@@ -122,3 +122,17 @@ foreach ($taskPair in @(@('np3-400000-0000000000000013.np3workspace','corrupt-be
     if ([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $taskHistoryRoot $taskPair[0]))) -ne [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $taskHistoryRoot $taskPair[1])))) { throw "Protected history file bytes changed: $($taskPair[0])" }
 }
 Write-Output "History surviving names and retained/protected bytes independently verified. Evidence: $taskHistoryRoot"
+
+$taskFallback = Start-RecoveryTest 'fallback'
+if (!$taskFallback.WaitForExit(30000)) { throw "Archive fallback test still running: PID $($taskFallback.Id)" }
+Read-RecoveryResult 'fallback'
+$taskFallbackRoot = Join-Path $taskFolder 'fallback'
+foreach ($taskIndex in 1..5) {
+    $taskArchive = Join-Path $taskFallbackRoot ('np3-400000-{0:x16}.np3workspace' -f $taskIndex)
+    $taskBefore = Join-Path $taskFallbackRoot ("archive-$taskIndex-before.np3session")
+    if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($taskArchive)) -ne [Convert]::ToBase64String([IO.File]::ReadAllBytes($taskBefore))) { throw "Fallback modified archive bytes: $taskIndex" }
+}
+$taskBadRoot = Join-Path $taskFallbackRoot 'all-invalid'
+if ([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $taskBadRoot 'np3-400000-0000000000000001.np3workspace'))) -ne [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $taskBadRoot 'before.np3session')))) { throw 'All-invalid fallback modified original archive bytes' }
+if ([IO.File]::ReadAllText((Join-Path $taskFallbackRoot 'source.md')) -ne 'fallback document') { throw 'Fallback changed original disk source content' }
+Write-Output "Valid fallback, active-owner protection and unchanged source/archive bytes verified. Evidence: $taskFallbackRoot"

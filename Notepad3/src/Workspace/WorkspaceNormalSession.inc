@@ -36,18 +36,19 @@ static bool _WorkspaceNormalSave(const HPATHL path, uint32_t* error)
     else *error = ERROR_INVALID_DATA;
     Session_Free(session); return success;
 }
-static bool _WorkspaceNormalLoad(const HPATHL path, uint32_t* error)
+static bool _WorkspaceNormalArchiveRead(const HPATHL path,NP3_SESSION* result,uint32_t* error)
 {
-    NP3_SESSION session = NULL;
-    if (!Session_Load(Path_Get(path), &session, error)) return false;
-    // Validate the entire archive before opening any file.
-    for (size_t i = 0; i < Session_Count(session); ++i) {
-        NP3_SESSION_DOCUMENT entry = { 0 }; Session_Get(session, i, &entry);
-        bool const empty = !entry.path[0] && !entry.textLength && !entry.flags;
-        if (!empty && !(entry.flags & NP3_SESSION_DISK_BACKED)) {
-            Session_Free(session); *error = ERROR_INVALID_DATA; return false;
-        }
+    NP3_SESSION session=NULL; *result=NULL;
+    if(!Session_Load(Path_Get(path),&session,error)) return false;
+    for(size_t i=0;i<Session_Count(session);++i) {
+        NP3_SESSION_DOCUMENT entry={0}; Session_Get(session,i,&entry);
+        bool const empty=!entry.path[0] && !entry.textLength && !entry.flags;
+        if(entry.textLength || (!empty && !(entry.flags&NP3_SESSION_DISK_BACKED))) { Session_Free(session); *error=ERROR_INVALID_DATA; return false; }
     }
+    *result=session; return true;
+}
+static bool _WorkspaceNormalApply(NP3_SESSION session,uint32_t* error)
+{
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     int const original = workspace->active;
     bool const explicitDocument = Path_IsNotEmpty(Paths.CurrentFile) || SciCall_GetLength() != 0 || IsSaveNeeded();
@@ -85,5 +86,11 @@ static bool _WorkspaceNormalLoad(const HPATHL path, uint32_t* error)
     if (explicitDocument) _WorkspaceSwitch(original);
     else if (selected >= 0) _WorkspaceSwitch(selected);
     if (!explicitDocument) { _WorkspaceSessionRestoreLayout(session, true); SetFocus(Globals.hwndEdit); }
-    Session_Free(session); return success;
+    return success;
+}
+
+static bool _WorkspaceNormalLoad(const HPATHL path,uint32_t* error)
+{
+    NP3_SESSION session=NULL; if(!_WorkspaceNormalArchiveRead(path,&session,error)) return false;
+    bool const restored=_WorkspaceNormalApply(session,error); Session_Free(session); return restored;
 }

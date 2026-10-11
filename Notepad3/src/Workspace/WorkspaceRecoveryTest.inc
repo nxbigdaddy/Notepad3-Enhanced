@@ -39,6 +39,7 @@ static void _WorkspaceRecoveryTest()
     bool const failure = wcscmp(mode, L"failure") == 0;
     bool const initFailure = wcscmp(mode,L"init-failure")==0;
     bool const history = wcscmp(mode,L"history")==0;
+    bool const fallback = wcscmp(mode,L"fallback")==0;
     bool const splitSeed = wcscmp(mode, L"split-seed") == 0;
     bool const splitVerify = wcscmp(mode, L"split-verify") == 0;
     bool const splitImport = wcscmp(mode, L"split-import") == 0;
@@ -47,8 +48,41 @@ static void _WorkspaceRecoveryTest()
     bool const normalExplicit = wcscmp(mode, L"normal-explicit") == 0;
     bool const normalMissing = wcscmp(mode, L"normal-missing") == 0;
     bool const normalDisabled = wcscmp(mode, L"normal-disabled") == 0;
-    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || initFailure || history || splitSeed || splitVerify || splitImport || normalSeed || normalVerify || normalExplicit || normalMissing || normalDisabled, "recognized recovery test mode");
-    if(history) {
+    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || initFailure || history || fallback || splitSeed || splitVerify || splitImport || normalSeed || normalVerify || normalExplicit || normalMissing || normalDisabled, "recognized recovery test mode");
+    if(fallback) {
+        WORKSPACE_RECOVERY scenario={0}; scenario.directory=Path_Copy(recovery->directory); Path_Append(scenario.directory,L"fallback"); Path_CreateDirectoryEx(scenario.directory); scenario.isolatedTest=true;
+        HPATHL source=Path_Copy(scenario.directory); Path_Append(source,L"source.md"); HANDLE file=Path_CreateFile(source,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL); DWORD written=0;
+        if(IS_VALID_HANDLE(file)) { WriteFile(file,"fallback document",17,&written,NULL); CloseHandle(file); }
+        NP3_SESSION normal=Session_Create(),draft=Session_Create(); NP3_SESSION_DOCUMENT entry={0}; entry.path=Path_Get(source); entry.flags=NP3_SESSION_DISK_BACKED|NP3_SESSION_READONLY; entry.encoding=CPI_UTF8; entry.codePage=SC_CP_UTF8; entry.tabWidth=4; entry.indent=4; entry.anchor=2; entry.caret=5; entry.zoom=1;
+        bool fallbackFixtures=written==17 && normal && draft && Session_Add(normal,&entry);
+        HPATHL archives[5]={0}; archives[0]=_WorkspaceHistoryTestArchive(scenario.directory,1,10,normal);
+        Session_Free(normal); normal=Session_Create(); entry.zoom=3; fallbackFixtures=fallbackFixtures && Session_Add(normal,&entry); archives[1]=_WorkspaceHistoryTestArchive(scenario.directory,2,20,normal);
+        archives[2]=_WorkspaceHistoryTestArchive(scenario.directory,3,30,NULL);
+        Session_Free(normal); normal=Session_Create(); entry.zoom=6; fallbackFixtures=fallbackFixtures && Session_Add(normal,&entry); archives[3]=_WorkspaceHistoryTestArchive(scenario.directory,4,40,normal);
+        entry.path=L""; entry.flags=NP3_SESSION_MODIFIED; entry.text="history draft"; entry.textLength=13; fallbackFixtures=fallbackFixtures && Session_Add(draft,&entry);
+        HPATHL newestLock=Path_Copy(archives[3]); Path_RenameExtension(newestLock,L".lock"); HANDLE held=_WorkspaceHistoryClaim(newestLock);
+        for(int i=0;i<4;++i) { WCHAR copy[64]; StringCchPrintfW(copy,COUNTOF(copy),L"archive-%i-before.np3session",i+1); fallbackFixtures=archives[i] && _WorkspaceHistoryTestCopy(archives[i],scenario.directory,copy) && fallbackFixtures; }
+        _WorkspaceTestCheck(&result,fallbackFixtures && IS_VALID_HANDLE(held),"fallback fixture contains older valid records newer corruption and an active newest owner");
+        int originalCount=workspace->count,originalActive=workspace->active,originalUndo=SciCall_GetUndoCurrent(); sptr_t originalDoc=SciCall_GetDocPointer(); unsigned long long originalVersion=_WorkspaceVersion();
+        _WorkspaceNormalRestoreLatest(&scenario);
+        _WorkspaceTestCheck(&result,workspace->count==originalCount+1 && workspace->active==originalActive && SciCall_GetDocPointer()==originalDoc && _WorkspaceVersion()==originalVersion && SciCall_GetUndoCurrent()==originalUndo,"corrupt latest archive falls back while preserving explicit incoming document binding version and undo");
+        _WorkspaceTestCheck(&result,_WorkspaceSwitch(originalCount) && _WorkspaceTestText("fallback document") && SciCall_GetZoom()==3 && SciCall_GetAnchor()==2 && SciCall_GetCurrentPos()==5 && SciCall_GetReadOnly(),"latest usable older archive restores exact disk content selection zoom and read-only state");
+        _WorkspaceTestCheck(&result,scenario.errorReports==1 && scenario.lastError!=0 && Path_IsExistingFile(archives[2]),"newer corruption reports once and retains damaged source for inspection");
+        _WorkspaceCloseActive(); _WorkspaceSwitch(originalActive); unsigned int beforeReports=scenario.errorReports;
+        _WorkspaceNormalRestoreLatest(&scenario); _WorkspaceTestCheck(&result,scenario.errorReports==beforeReports,"repeated same damaged latest archive does not repeat warning");
+        _WorkspaceSwitch(originalCount); _WorkspaceCloseActive(); _WorkspaceSwitch(originalActive);
+        if(IS_VALID_HANDLE(held)) CloseHandle(held);
+        archives[4]=_WorkspaceHistoryTestArchive(scenario.directory,5,50,draft);
+        _WorkspaceTestCheck(&result,archives[4] && _WorkspaceHistoryTestCopy(archives[4],scenario.directory,L"archive-5-before.np3session"),"newest protected draft is a valid session but not normal-exit metadata");
+        _WorkspaceNormalRestoreLatest(&scenario);
+        _WorkspaceTestCheck(&result,workspace->count==originalCount+1 && _WorkspaceSwitch(originalCount) && _WorkspaceTestText("fallback document") && SciCall_GetZoom()==6,"released newest valid owner restores ahead of older records while incompatible newer draft is skipped");
+        _WorkspaceCloseActive(); _WorkspaceSwitch(originalActive);
+        WORKSPACE_RECOVERY badOnly={0}; badOnly.directory=Path_Copy(scenario.directory); Path_Append(badOnly.directory,L"all-invalid"); Path_CreateDirectoryEx(badOnly.directory); badOnly.isolatedTest=true;
+        HPATHL bad=_WorkspaceHistoryTestArchive(badOnly.directory,1,60,draft); bool badCopied=bad && _WorkspaceHistoryTestCopy(bad,badOnly.directory,L"before.np3session");
+        _WorkspaceNormalRestoreLatest(&badOnly);
+        _WorkspaceTestCheck(&result,badCopied && badOnly.errorReports==1 && workspace->count==originalCount && workspace->active==originalActive && SciCall_GetDocPointer()==originalDoc && _WorkspaceVersion()==originalVersion && SciCall_GetUndoCurrent()==originalUndo && Path_IsExistingFile(bad),"all-invalid archives leave current workspace untouched and preserve original records");
+        Path_Release(bad); Path_Release(badOnly.directory); Path_Release(scenario.directory); Path_Release(source); Path_Release(newestLock); for(int i=0;i<5;++i) Path_Release(archives[i]); Session_Free(normal); Session_Free(draft);
+    } else if(history) {
         _WorkspaceTestCheck(&result,_WorkspaceHistoryName(L"np3-4294967295-0123456789abcdef.np3workspace") && !_WorkspaceHistoryName(L"np3-4294967296-0123456789abcdef.np3workspace") && !_WorkspaceHistoryName(L"np3-0-0123456789abcdef.np3workspace") && !_WorkspaceHistoryName(L"np3-user-not-generated.np3workspace"),"history ownership requires exact generated filename and a valid nonzero DWORD process ID");
         HPATHL directory=Path_Copy(recovery->directory); Path_Append(directory,L"history"); Path_CreateDirectoryEx(directory);
         NP3_SESSION normal=Session_Create(),draft=Session_Create(); NP3_SESSION_DOCUMENT entry={0};
