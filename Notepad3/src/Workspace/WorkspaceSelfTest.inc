@@ -1173,7 +1173,24 @@ static void _WorkspaceSelfTest()
             _WorkspaceTestCheck(&result,IsDarkModeSupported() && !!UseDarkMode()==expectedDark && !!current.dark==expectedDark,mode==0?"explicit dark theme works independently of OS light preference":mode==1?"explicit light theme keeps dark capability available":"automatic theme follows OS preference after explicit modes");
             _WorkspaceTestCheck(&result,ListView_GetBkColor(batchList)==current.field && ListView_GetTextColor(batchList)==current.text && ListView_GetBkColor(GetDlgItem(themedLog,107))==current.field && TreeView_GetBkColor(themedTreeView)==current.field && TreeView_GetTextColor(themedTreeView)==current.text && _WorkspaceTestPanelBrush(themedAi,GetDlgItem(themedAi,121),current.field,current.text),"all four extension panels refresh actual palette across theme modes");
             _WorkspaceTestCheck(&result,workspace->documents[0].version==batchThemeVersion && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded() && ListView_GetItemCount(batchList)==1 && ListView_GetCheckState(batchList,0),"theme transitions retain saved editor and confirmed batch proposal");
-            if(testPreviewTheme) _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false) && MarkdownPreview_IsThemeApplied(Globals.hwndMain),"WebView DOM background foreground and color scheme follow application theme");
+            if(testPreviewTheme) {
+                _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false) && MarkdownPreview_IsThemeApplied(Globals.hwndMain),"WebView DOM background foreground and color scheme follow application theme");
+                HWND previewWindow=FindWindowExW(Globals.hwndMain,NULL,L"NP3MarkdownPreview",NULL);
+                int previewGripWidth=MulDiv(6,GetDpiForWindow(previewWindow),96);
+                BITMAPINFO previewPaintInfo={0}; previewPaintInfo.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+                previewPaintInfo.bmiHeader.biWidth=previewGripWidth+4; previewPaintInfo.bmiHeader.biHeight=-4;
+                previewPaintInfo.bmiHeader.biPlanes=1; previewPaintInfo.bmiHeader.biBitCount=32; previewPaintInfo.bmiHeader.biCompression=BI_RGB;
+                HDC previewPaintDc=CreateCompatibleDC(NULL); void* previewPaintPixels=NULL;
+                HBITMAP previewPaintBitmap=previewPaintDc?CreateDIBSection(previewPaintDc,&previewPaintInfo,DIB_RGB_COLORS,&previewPaintPixels,NULL,0):NULL;
+                HGDIOBJ previewPaintOld=previewPaintBitmap?SelectObject(previewPaintDc,previewPaintBitmap):NULL;
+                if(previewPaintBitmap) SendMessageW(previewWindow,WM_PRINTCLIENT,(WPARAM)previewPaintDc,PRF_CLIENT);
+                _WorkspaceTestCheck(&result,previewPaintBitmap && GetPixel(previewPaintDc,0,1)==current.panel && GetPixel(previewPaintDc,previewGripWidth/2,1)==current.disabled && GetPixel(previewPaintDc,previewGripWidth+1,1)==current.field,"Markdown divider background center line and host field draw actual application theme pixels");
+                DWORD previewPaintGdi=GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS);
+                if(previewPaintBitmap) for(int paintRepeat=0;paintRepeat<40;++paintRepeat) SendMessageW(previewWindow,WM_ERASEBKGND,(WPARAM)previewPaintDc,0);
+                _WorkspaceTestCheck(&result,previewPaintBitmap && GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS)==previewPaintGdi && workspace->documents[0].version==batchThemeVersion && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"repeated Markdown host painting retains GDI resources and original saved document");
+                if(previewPaintOld) SelectObject(previewPaintDc,previewPaintOld);
+                if(previewPaintBitmap) DeleteObject(previewPaintBitmap); if(previewPaintDc) DeleteDC(previewPaintDc);
+            }
             SendMessageW(Globals.hwndMain,WM_SETTINGCHANGE,0,(LPARAM)L"ImmersiveColorSet");
             PANEL_COLORS afterSetting={0}; _PanelColors(&afterSetting);
             _WorkspaceTestCheck(&result,!!afterSetting.dark==expectedDark && ListView_GetBkColor(batchList)==afterSetting.field && TreeView_GetBkColor(themedTreeView)==afterSetting.field && workspace->documents[0].version==batchThemeVersion && _WorkspaceTestText("alpha\r\nA"),"system color notification refreshes panels while preserving chosen theme and editor");

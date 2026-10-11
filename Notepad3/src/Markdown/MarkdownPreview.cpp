@@ -271,6 +271,30 @@ void Start(const std::shared_ptr<Preview>& state)
     Trace("environment-start", result);
     if (FAILED(result)) Failed(state, L"WebView2 Runtime is unavailable. Editing remains available.");
 }
+void PaintPreview(const std::shared_ptr<Preview>& state, HDC dc)
+{
+    if (!dc) return;
+    PANEL_COLORS colors{};
+    if (!SendMessageW(state->parent, NP3_WM_PANEL_COLORS, 0, reinterpret_cast<LPARAM>(&colors))) {
+        colors.panel = GetSysColor(COLOR_3DFACE); colors.field = GetSysColor(COLOR_WINDOW);
+        colors.text = GetSysColor(COLOR_WINDOWTEXT); colors.disabled = GetSysColor(COLOR_GRAYTEXT);
+    }
+    RECT bounds; GetClientRect(state->window, &bounds);
+    HBRUSH brush = reinterpret_cast<HBRUSH>(GetStockObject(DC_BRUSH));
+    COLORREF previousBrush = SetDCBrushColor(dc, colors.field);
+    FillRect(dc, &bounds, brush);
+    RECT divider = bounds; divider.right = MulDiv(6, GetDpiForWindow(state->window), 96);
+    SetDCBrushColor(dc, colors.panel); FillRect(dc, &divider, brush);
+    RECT line = divider; line.left = divider.right / 2;
+    line.right = (std::min)(divider.right, line.left + (std::max)(1, MulDiv(1, GetDpiForWindow(state->window), 96)));
+    SetDCBrushColor(dc, colors.disabled); FillRect(dc, &line, brush);
+    SetDCBrushColor(dc, previousBrush);
+    COLORREF previousText = SetTextColor(dc, colors.text);
+    int previousMode = SetBkMode(dc, TRANSPARENT);
+    bounds.left += 12; bounds.top += 12; bounds.right -= 12;
+    DrawTextW(dc, state->message.c_str(), -1, &bounds, DT_WORDBREAK);
+    SetBkMode(dc, previousMode); SetTextColor(dc, previousText);
+}
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
     auto state = State(window);
@@ -285,6 +309,11 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     switch (message) {
     case WM_CREATE: Start(state); return 0;
     case WM_SIZE: Resize(state); return 0;
+    case NP3_WM_PANEL_REFRESH:
+    case WM_SYSCOLORCHANGE:
+    case WM_THEMECHANGED: InvalidateRect(window, nullptr, TRUE); return 0;
+    case WM_ERASEBKGND: PaintPreview(state, reinterpret_cast<HDC>(wParam)); return TRUE;
+    case WM_PRINTCLIENT: PaintPreview(state, reinterpret_cast<HDC>(wParam)); return 0;
     case WM_SETCURSOR: {
         POINT point; GetCursorPos(&point); ScreenToClient(window, &point);
         if (point.x < MulDiv(6, GetDpiForWindow(window), 96)) {
@@ -332,14 +361,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     case WM_PAINT: {
         PAINTSTRUCT paint;
         HDC dc = BeginPaint(window, &paint);
-        RECT bounds;
-        GetClientRect(window, &bounds);
-        RECT divider = bounds;
-        divider.right = MulDiv(6, GetDpiForWindow(window), 96);
-        FillRect(dc, &divider, GetSysColorBrush(COLOR_3DFACE));
-        bounds.left += 12; bounds.top += 12; bounds.right -= 12;
-        SetBkMode(dc, TRANSPARENT);
-        DrawTextW(dc, state->message.c_str(), -1, &bounds, DT_WORDBREAK);
+        PaintPreview(state, dc);
         EndPaint(window, &paint);
         return 0;
     }
