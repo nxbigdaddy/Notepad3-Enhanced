@@ -127,6 +127,20 @@ static void _WorkspaceSelfTest()
         StringCchPrintfA(summary,COUNTOF(summary),"RESULT checks=%i failures=%i\r\n",result.checks,result.failures); WriteFile(result.log,summary,(DWORD)strlen(summary),&written,NULL); CloseHandle(result.log);
         _WorkspaceDispose(); DestroyWindow(Globals.hwndMain); return;
     }
+    int markdownButtonIndex=(int)SendMessageW(Globals.hwndToolbar,TB_COMMANDTOINDEX,IDT_VIEW_MARKDOWN_PREVIEW,0);
+    TBBUTTON markdownButton={0}; HIMAGELIST toolbarImages=(HIMAGELIST)SendMessageW(Globals.hwndToolbar,TB_GETIMAGELIST,0,0);
+    _WorkspaceTestCheck(&result,markdownButtonIndex>=0 && SendMessageW(Globals.hwndToolbar,TB_GETBUTTON,markdownButtonIndex,(LPARAM)&markdownButton) && toolbarImages && markdownButton.iBitmap>=0 && markdownButton.iBitmap<ImageList_GetImageCount(toolbarImages) && !(markdownButton.fsStyle&BTNS_SHOWTEXT),"Markdown toolbar shortcut uses an actual image without text label");
+    WCHAR savedToolbarButtons[COUNTOF(Settings.ToolbarButtons)]; StringCchCopyW(savedToolbarButtons,COUNTOF(savedToolbarButtons),Settings.ToolbarButtons);
+    StringCchCopyW(Settings.ToolbarButtons,COUNTOF(Settings.ToolbarButtons),L"1 2 4 3");
+    NMHDR toolbarNotice={Globals.hwndToolbar,IDC_TOOLBAR,TBN_BEGINADJUST}; SendMessageW(Globals.hwndMain,WM_NOTIFY,IDC_TOOLBAR,(LPARAM)&toolbarNotice);
+    toolbarNotice.code=TBN_RESET; SendMessageW(Globals.hwndMain,WM_NOTIFY,IDC_TOOLBAR,(LPARAM)&toolbarNotice);
+    _WorkspaceTestCheck(&result,SendMessageW(Globals.hwndToolbar,TB_COMMANDTOINDEX,IDT_VIEW_MARKDOWN_PREVIEW,0)==0 && SendMessageW(Globals.hwndToolbar,TB_BUTTONCOUNT,0,0)==5,"restoring legacy custom toolbar retains M shortcut and four existing buttons");
+    SendMessageW(Globals.hwndMain,WM_NOTIFY,IDC_TOOLBAR,(LPARAM)&toolbarNotice);
+    _WorkspaceTestCheck(&result,SendMessageW(Globals.hwndToolbar,TB_COMMANDTOINDEX,IDT_VIEW_MARKDOWN_PREVIEW,0)>=0,"second toolbar reset also retains Markdown shortcut");
+    StringCchCopyW(Settings.ToolbarButtons,COUNTOF(Settings.ToolbarButtons),savedToolbarButtons);
+    toolbarNotice.code=TBN_BEGINADJUST; SendMessageW(Globals.hwndMain,WM_NOTIFY,IDC_TOOLBAR,(LPARAM)&toolbarNotice);
+    toolbarNotice.code=TBN_RESET; SendMessageW(Globals.hwndMain,WM_NOTIFY,IDC_TOOLBAR,(LPARAM)&toolbarNotice);
+    toolbarNotice.code=TBN_ENDADJUST; SendMessageW(Globals.hwndMain,WM_NOTIFY,IDC_TOOLBAR,(LPARAM)&toolbarNotice);
     HPATHL a = Path_Allocate(folder); Path_Append(a, L"a.txt");
     HPATHL b = Path_Allocate(folder); Path_Append(b, L"b.txt");
     _WorkspaceTestCheck(&result, FileLoad(a, FLF_None, 0, 0), "load A");
@@ -725,7 +739,8 @@ static void _WorkspaceSelfTest()
     if(GetEnvironmentVariableW(L"NP3_MARKDOWN_CHECK_PREVIEW",NULL,0)) {
         const char* markdown="# 原生 Markdown 图表与公式\n\n```mermaid\nflowchart LR\n A[开始] --> B[结束]\n```\n\n行内公式 $E=mc^2$\n\n$$\\frac{1}{2}+\\sum_{i=1}^{n} i$$\n";
         UndoTransActionBegin(); SciCall_SetTargetRange(0,SciCall_GetLength()); Sci_ReplaceTargetTestChgHist((DocPos)strlen(markdown),markdown); EndUndoTransAction();
-        MarkdownPreview_Toggle(Globals.hwndMain); bool ready=_WorkspaceTestPreviewReady(false);
+        SendWMCommand(Globals.hwndMain,IDT_VIEW_MARKDOWN_PREVIEW); bool ready=_WorkspaceTestPreviewReady(false);
+        _WorkspaceTestCheck(&result,MarkdownPreview_IsOpen(Globals.hwndMain) && (SendMessageW(Globals.hwndToolbar,TB_GETSTATE,IDT_VIEW_MARKDOWN_PREVIEW,0)&TBSTATE_CHECKED),"M toolbar command opens preview and updates checked state");
         _WorkspaceTestCheck(&result,ready,"actual WebView2 preview completes offline advanced rendering");
         WCHAR capturePath[32768]; StringCchPrintfW(capturePath,COUNTOF(capturePath),L"%s\\preview.png",folder);
         bool capture=ready && MarkdownPreview_Capture(Globals.hwndMain,capturePath) && _WorkspaceTestPreviewReady(true);

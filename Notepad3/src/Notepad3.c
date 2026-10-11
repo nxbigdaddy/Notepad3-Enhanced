@@ -3524,6 +3524,18 @@ static int AddMarkdownToolbarIcon(HIMAGELIST images, COLORREF color)
     return index;
 }
 
+static void EnsureMarkdownToolbarButton()
+{
+    if (SendMessage(Globals.hwndToolbar, TB_COMMANDTOINDEX, IDT_VIEW_MARKDOWN_PREVIEW, 0) == -1) {
+        for (int i = 0; i < COUNTOF(s_tbbMainWnd); ++i) {
+            if (s_tbbMainWnd[i].idCommand == IDT_VIEW_MARKDOWN_PREVIEW) {
+                SendMessage(Globals.hwndToolbar, TB_INSERTBUTTON, 0, (LPARAM)&s_tbbMainWnd[i]);
+                break;
+            }
+        }
+    }
+}
+
 void CreateBars(HWND hwnd, HINSTANCE hInstance)
 {
     DWORD dwToolbarStyle = NP3_WS_TOOLBAR /*| TBSTYLE_CUSTOMERASE */ | TBSTYLE_TRANSPARENT;
@@ -3727,14 +3739,7 @@ void CreateBars(HWND hwnd, HINSTANCE hInstance)
         SendMessage(Globals.hwndToolbar, TB_ADDBUTTONS, COUNTOF(s_tbbMainWnd), (LPARAM)s_tbbMainWnd);
     }
 
-    if (SendMessage(Globals.hwndToolbar, TB_COMMANDTOINDEX, IDT_VIEW_MARKDOWN_PREVIEW, 0) == -1) {
-        for (int i = 0; i < COUNTOF(s_tbbMainWnd); ++i) {
-            if (s_tbbMainWnd[i].idCommand == IDT_VIEW_MARKDOWN_PREVIEW) {
-                SendMessage(Globals.hwndToolbar, TB_INSERTBUTTON, 0, (LPARAM)&s_tbbMainWnd[i]);
-                break;
-            }
-        }
-    }
+    EnsureMarkdownToolbarButton();
     CloseSettingsFile(__func__, bDirtyFlag);
 
     // ------------------------------
@@ -10608,6 +10613,7 @@ LRESULT MsgNotify(HWND hwnd, WPARAM wParam, LPARAM lParam)
                     SendMessage(Globals.hwndToolbar, TB_ADDBUTTONS, COUNTOF(s_tbbMainWnd), (LPARAM)s_tbbMainWnd);
                 }
             }
+            EnsureMarkdownToolbarButton();
             s_tb_reset_already = !s_tb_reset_already;
         }
         break;
