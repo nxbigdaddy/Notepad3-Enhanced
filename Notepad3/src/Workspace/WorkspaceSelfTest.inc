@@ -705,6 +705,15 @@ static void _WorkspaceSelfTest()
         WCHAR capturePath[32768]; StringCchPrintfW(capturePath,COUNTOF(capturePath),L"%s\\preview.png",folder);
         bool capture=ready && MarkdownPreview_Capture(Globals.hwndMain,capturePath) && _WorkspaceTestPreviewReady(true);
         _WorkspaceTestCheck(&result,capture && MarkdownPreview_IsCaptureSuccessful(Globals.hwndMain) && GetFileAttributesW(capturePath)!=INVALID_FILE_ATTRIBUTES,"actual native preview captures PNG after graph and formula layout");
+        char* longMarkdown=AllocMem(65536,HEAP_ZERO_MEMORY);
+        if(longMarkdown) for(int paragraph=0;paragraph<300;++paragraph) StringCchCatA(longMarkdown,65536,"Long document paragraph with enough content to verify browser scroll retention after live editing.\n\n");
+        SciCall_BeginUndoAction(); SciCall_SetTargetRange(0,SciCall_GetLength()); if(longMarkdown) Sci_ReplaceTargetTestChgHist((DocPos)strlen(longMarkdown),longMarkdown); SciCall_EndUndoAction(); FreeMem(longMarkdown);
+        double previewScroll=0;
+        _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false) && MarkdownPreview_ScrollTo(Globals.hwndMain,800) && _WorkspaceTestPreviewReady(false) && MarkdownPreview_GetScroll(Globals.hwndMain,&previewScroll) && previewScroll>=799 && previewScroll<=801,"actual WebView long document scrolls to requested position");
+        SciCall_BeginUndoAction(); SciCall_AppendText(8,"\nupdated"); SciCall_EndUndoAction();
+        _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false) && MarkdownPreview_GetScroll(Globals.hwndMain,&previewScroll) && previewScroll>=799 && previewScroll<=801,"live editor update retains actual long preview scroll after render completion");
+        SciCall_Undo(); SciCall_Undo();
+        _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false) && MarkdownPreview_GetScroll(Globals.hwndMain,&previewScroll) && previewScroll==0,"shortened preview clamps restored scroll to actual document extent");
         MarkdownPreview_Toggle(Globals.hwndMain); SciCall_Undo();
         _WorkspaceTestCheck(&result,!MarkdownPreview_IsOpen(Globals.hwndMain) && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"advanced preview and capture preserve source undo and saved state");
     }

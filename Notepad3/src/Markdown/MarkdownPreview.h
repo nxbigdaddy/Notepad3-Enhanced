@@ -9,6 +9,9 @@ void MarkdownPreview_Toggle(HWND parent);
 BOOL MarkdownPreview_IsOpen(HWND parent);
 BOOL MarkdownPreview_IsRendered(HWND parent);
 BOOL MarkdownPreview_IsThemeApplied(HWND parent);
+BOOL MarkdownPreview_ScrollTo(HWND parent, double position);
+// Read the browser position recorded by the latest completed restore or ScrollTo.
+BOOL MarkdownPreview_GetScroll(HWND parent, double* position);
 BOOL MarkdownPreview_Capture(HWND parent, const WCHAR* destination);
 BOOL MarkdownPreview_IsCaptureDone(HWND parent);
 BOOL MarkdownPreview_IsCaptureSuccessful(HWND parent);

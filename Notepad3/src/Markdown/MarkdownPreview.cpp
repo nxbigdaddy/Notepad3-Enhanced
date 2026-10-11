@@ -45,6 +45,8 @@ struct Preview {
     bool dragging = false;
     unsigned long long renderVersion = 0, navigationVersion = 0, navigationId = 0;
     double scrollToRestore = 0;
+    double actualScroll = 0;
+    bool refreshPending = false;
     bool loaded = false, advanced = false, renderAdvanced = false, polling = false, rendered = false, captureDone = false, tracedPending = false;
     ULONGLONG renderDeadline = 0;
     HRESULT captureResult = E_PENDING;
@@ -67,10 +69,18 @@ void VerifyTheme(const std::shared_ptr<Preview>& state) {
 }
 
 void RestoreScroll(const std::shared_ptr<Preview>& state) {
-    wchar_t script[160]; swprintf_s(script, L"window.scrollTo(0,%.0f)", state->scrollToRestore);
+    wchar_t script[160]; swprintf_s(script, L"window.scrollTo(0,%.0f);window.scrollY", state->scrollToRestore);
     const auto version=state->renderVersion; const std::weak_ptr<Preview> weak=state;
     HRESULT status=state->web->ExecuteScript(script,Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-        [weak,version](HRESULT status,LPCWSTR)->HRESULT { auto live=weak.lock(); if(live && live->window && live->renderVersion==version) Trace("scroll-restore-completed",status); return S_OK; }).Get());
+        [weak,version](HRESULT status,LPCWSTR json)->HRESULT {
+            auto live=weak.lock(); if(live && live->window && live->renderVersion==version) {
+                wchar_t* end=nullptr; double value=json?std::wcstod(json,&end):-1;
+                if(SUCCEEDED(status) && json && end!=json && *end==0 && std::isfinite(value) && value>=0 && value<=1e9) {
+                    live->actualScroll=value; live->rendered=true;
+                }
+                Trace("scroll-restore-completed",status);
+            } return S_OK;
+        }).Get());
     if(FAILED(status)) Trace("scroll-restore-start",status);
 }
 std::wstring AssetsDirectory() {
@@ -95,7 +105,7 @@ void PollRender(const std::shared_ptr<Preview>& state) {
                 if(!wcsstr(json,L"\"done\":true")) { if(!live->tracedPending) { char pending[128]={}; if(WideCharToMultiByte(CP_UTF8,0,json,-1,pending,sizeof(pending),nullptr,nullptr)) Trace(pending); live->tracedPending=true; } return S_OK; }
                 KillTimer(live->window,RenderTimer); char event[128] = {};
                 if(WideCharToMultiByte(CP_UTF8,0,json,-1,event,sizeof(event),nullptr,nullptr)) Trace(event);
-                live->rendered=true; Trace("advanced-render-completed"); RestoreScroll(live);
+                Trace("advanced-render-completed"); RestoreScroll(live);
             }
             return S_OK;
         }).Get());
@@ -199,7 +209,7 @@ void Start(const std::shared_ptr<Preview>& state)
                                         if (success) {
                                             VerifyTheme(live);
                                             if(live->renderAdvanced) { live->renderDeadline=GetTickCount64()+15000; live->polling=false; SetTimer(live->window,RenderTimer,50,nullptr); }
-                                            else { live->rendered=true; RestoreScroll(live); }
+                                            else { RestoreScroll(live); }
                                         }
                                     }
                                     COREWEBVIEW2_WEB_ERROR_STATUS error;
@@ -352,7 +362,15 @@ extern "C" int MarkdownPreview_Layout(HWND parent, int x, int y, int width, int 
     MoveWindow(window, x + width - reserved, y, reserved, height, TRUE);
     return reserved;
 }
-extern "C" BOOL MarkdownPreview_IsRendered(HWND parent) { auto state=State(Find(parent)); return state && state->rendered; }
+extern "C" BOOL MarkdownPreview_IsRendered(HWND parent) { auto state=State(Find(parent)); return state && state->rendered && !state->refreshPending; }
+extern "C" BOOL MarkdownPreview_GetScroll(HWND parent,double* position) {
+    auto state=State(Find(parent)); if(!position || !state || !state->rendered || state->refreshPending) return FALSE;
+    *position=state->actualScroll; return TRUE;
+}
+extern "C" BOOL MarkdownPreview_ScrollTo(HWND parent,double position) {
+    auto state=State(Find(parent)); if(!state || !state->web || !state->rendered || state->refreshPending || !std::isfinite(position) || position<0 || position>1e9) return FALSE;
+    state->scrollToRestore=position; state->rendered=false; RestoreScroll(state); return TRUE;
+}
 extern "C" BOOL MarkdownPreview_IsThemeApplied(HWND parent) {
     auto state=State(Find(parent)); PANEL_COLORS current{};
     return state && state->themeVerified && SendMessageW(parent,NP3_WM_PANEL_COLORS,0,reinterpret_cast<LPARAM>(&current)) && current.dark==state->colors.dark && current.field==state->colors.field && current.text==state->colors.text;
@@ -382,7 +400,7 @@ extern "C" BOOL MarkdownPreview_Capture(HWND parent,const WCHAR* destination) {
 }
 extern "C" void MarkdownPreview_Changed(HWND parent)
 {
-    if (HWND window = Find(parent)) SetTimer(window, RefreshTimer, 350, nullptr);
+    if (HWND window = Find(parent)) { auto state=State(window); if(state) state->refreshPending=true; SetTimer(window, RefreshTimer, 350, nullptr); }
 }
 extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t length, const WCHAR* directory, const WCHAR* documentKey)
 {
@@ -406,6 +424,7 @@ extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t len
         const bool preserveScroll = state->loaded && sameDocument;
         state->documentKey = key;
         KillTimer(state->window, RenderTimer); state->polling=false; state->rendered=false; state->tracedPending=false;
+        state->refreshPending=false;
         const auto version = ++state->renderVersion;
         const std::weak_ptr<Preview> weakState = state;
         auto navigate = [weakState, version, wide, folder](double scroll) {
