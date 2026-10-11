@@ -9,6 +9,7 @@ static LRESULT CALLBACK _WorkspaceTestDpiMessage(HWND window,UINT message,WPARAM
     return DefSubclassProc(window,message,wParam,lParam);
 }
 static UINT_PTR workspaceCloseTestTimer;
+static const WCHAR* workspaceCloseTestFilename=L"close-flow.txt";
 static int workspaceCloseTestChoice, workspaceCloseTestClicks;
 static BOOL CALLBACK _WorkspaceTestCloseDialog(HWND dialog, LPARAM unused)
 {
@@ -19,7 +20,7 @@ static BOOL CALLBACK _WorkspaceTestCloseDialog(HWND dialog, LPARAM unused)
     GetDlgItemTextW(dialog,IDC_INFOBOXTEXT,message,COUNTOF(message));
     // The upstream Yes/No/Cancel resource uses IDOK for its affirmative button.
     int affirmative=GetDlgItem(dialog,IDYES)?IDYES:IDOK;
-    if(!wcsstr(message,L"close-flow.txt") || !GetDlgItem(dialog,affirmative) || !GetDlgItem(dialog,IDNO) || !GetDlgItem(dialog,IDCANCEL)) return TRUE;
+    if(!wcsstr(message,workspaceCloseTestFilename) || !GetDlgItem(dialog,affirmative) || !GetDlgItem(dialog,IDNO) || !GetDlgItem(dialog,IDCANCEL)) return TRUE;
     HWND button=GetDlgItem(dialog,workspaceCloseTestChoice==IDYES?affirmative:workspaceCloseTestChoice);
     if(!IsWindowEnabled(button) || !IsWindowVisible(dialog)) return TRUE;
     KillTimer(NULL,workspaceCloseTestTimer); workspaceCloseTestTimer=0;

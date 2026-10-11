@@ -3,6 +3,7 @@ typedef struct PDF_TEST {
     HPATHL directory, target;
     HANDLE locked;
     int phase;
+    bool closingDialog;
     sptr_t document;
     unsigned long long version;
 } PDF_TEST;
@@ -49,6 +50,20 @@ static void _MarkdownPdfSelfTestPrinting(HWND window)
     if(test) { char note[100]; DWORD written; StringCchPrintfA(note,COUNTOF(note),"PRINT submission phase=%i window=%p\r\n",test->phase,window); WriteFile(test->result.log,note,(DWORD)strlen(note),&written,NULL); }
     if(test && test->phase==3) {
         _WorkspaceTestCheck(&test->result,window && MarkdownPdf_IsBusy(Globals.hwndMain),"main close observes actual submitted PDF print");
+        if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CANCEL",NULL,0)) {
+            unsigned long long before=workspace->documents[workspace->active].version;
+            workspaceCloseTestFilename=L"source.md"; workspaceCloseTestChoice=IDCANCEL; workspaceCloseTestClicks=0;
+            workspaceCloseTestTimer=SetTimer(NULL,0,25,_WorkspaceTestCloseTimer);
+            _WorkspaceTestCheck(&test->result,workspaceCloseTestTimer!=0,"arm actual dirty-document close Cancel button");
+            if(workspaceCloseTestTimer) {
+                test->closingDialog=true; SendMessageW(Globals.hwndMain,WM_CLOSE,0,0); test->closingDialog=false;
+                if(workspaceCloseTestTimer) KillTimer(NULL,workspaceCloseTestTimer);
+                workspaceCloseTestTimer=0;
+            }
+            workspaceCloseTestFilename=L"close-flow.txt";
+            _WorkspaceTestCheck(&test->result,workspaceCloseTestClicks==1 && IsWindow(Globals.hwndMain) && _Workspace()==workspace,"actual Cancel button keeps main window and workspace during submitted PDF print");
+            _WorkspaceTestCheck(&test->result,SciCall_GetDocPointer()==test->document && workspace->documents[workspace->active].version==before && IsSaveNeeded() && SciCall_CanUndo(),"canceled close preserves dirty source binding version and undo");
+        }
         SciCall_Undo();
         _WorkspaceTestCheck(&test->result,!IsSaveNeeded(),"main close fixture restores source savepoint before normal close");
         HWND parent=Globals.hwndMain;
@@ -69,6 +84,10 @@ static bool _MarkdownPdfSelfTestDone(uint32_t error)
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     PDF_TEST* test = workspace ? workspace->pdfTest : NULL;
     if (!test) return false;
+    if(test->phase==3 && test->closingDialog) {
+        _WorkspaceTestCheck(&test->result,error!=0,"print completing inside canceled close dialog cannot replace locked baseline");
+        return true;
+    }
     if(test->phase<0) {
         char note[96]; DWORD written;
         StringCchPrintfA(note,COUNTOF(note),"EXPECTED FAILURE error=%08lx\r\n",(unsigned long)error);
@@ -117,7 +136,7 @@ static bool _MarkdownPdfSelfTestDone(uint32_t error)
         _WorkspaceTestCheck(&test->result, error != 0 && Path_IsExistingFile(test->target), "locked PDF replacement reports failure and retains output");
         WCHAR closeMode[8];
         if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE",closeMode,COUNTOF(closeMode))) {
-            if(IS_VALID_HANDLE(test->locked)) { CloseHandle(test->locked); test->locked=NULL; }
+            if(IS_VALID_HANDLE(test->locked) && !GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE_CANCEL",NULL,0)) { CloseHandle(test->locked); test->locked=NULL; }
             const char* canceled="\r\nCANCELLED OUTPUT MUST NOT APPEAR";
             SciCall_AppendText(strlen(canceled),canceled); test->phase=3;
             uint32_t startError=0;
