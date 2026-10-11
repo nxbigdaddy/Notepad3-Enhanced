@@ -2,6 +2,7 @@
 #include "../Notepad3/src/Workspace/HistoryCore.h"
 #include <cstdio>
 int wmain(int argc,wchar_t** argv) {
+    if(argc==3 && !wcscmp(argv[1],L"--empty")){std::vector<np3::HistoryEntry> entries;DWORD error=0;return np3::HistoryRead(argv[2],entries,error) && entries.empty()?0:1;}
     if(argc==5 && !wcscmp(argv[1],L"--pinned")){
         std::vector<np3::HistoryEntry> entries;DWORD error=0;
         if(!np3::HistoryRead(argv[2],entries,error))return 1;

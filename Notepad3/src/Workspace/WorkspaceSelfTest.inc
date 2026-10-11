@@ -255,6 +255,24 @@ static void _WorkspaceSelfTest()
         Settings2.HistoryEnabled=enabled;
         _WorkspaceTestCheck(&result,FileLoad(source,FLF_Reload|FLF_DontSave,0,0) && HistoryService_Flush(5000) && (!enabled || (HistoryService_GetEntry(store,Path_Get(source),&count) && count==2)),"reload does not add a new history open");
         _WorkspaceTestCheck(&result,FileLoad(source,FLF_New|FLF_DontSave,0,0) && HistoryService_Flush(5000) && (!enabled || (HistoryService_GetEntry(store,Path_Get(source),&count) && count==2)),"untitled document creation does not record supplied path");
+        if(!lstrcmpW(historyStage,L"clear")){
+            HWND panel=(HWND)SendMessageW(Globals.hwndMain,NP3_WM_HISTORY_SHOW,0,0);WCHAR display[256];
+            _WorkspaceTestCheck(&result,_WorkspaceTestHistoryReady(panel) && ListView_GetItemCount(GetDlgItem(panel,106))==1,"clear fixture starts with a persisted history record");
+            SetDlgItemTextW(panel,114,L"2");SendMessageW(panel,WM_COMMAND,115,0);
+            _WorkspaceTestCheck(&result,Settings2.HistoryMaximum==2,"capacity button applies valid history bound");
+            const WCHAR* invalid[]={L"0",L"10001",L"oops",L""};
+            for(int i=0;i<4;++i){SetDlgItemTextW(panel,114,invalid[i]);SendMessageW(panel,WM_COMMAND,115,0);GetDlgItemTextW(panel,107,display,COUNTOF(display));_WorkspaceTestCheck(&result,Settings2.HistoryMaximum==2 && wcsstr(display,L"1–10000"),"invalid capacity keeps previous valid setting");}
+            DestroyWindow(panel);panel=(HWND)SendMessageW(Globals.hwndMain,NP3_WM_HISTORY_SHOW,0,0);GetDlgItemTextW(panel,114,display,COUNTOF(display));
+            _WorkspaceTestCheck(&result,_WorkspaceTestHistoryReady(panel) && !lstrcmpW(display,L"2"),"recreated history panel restores applied capacity");
+            SendMessageW(panel,WM_COMMAND,112,0);
+            _WorkspaceTestCheck(&result,IsWindowVisible(GetDlgItem(panel,116)) && HistoryService_GetEntry(store,Path_Get(source),&count) && count==2,"first clear click asks inline confirmation without mutation");
+            SendMessageW(panel,WM_COMMAND,116,0);
+            _WorkspaceTestCheck(&result,!IsWindowVisible(GetDlgItem(panel,116)) && HistoryService_GetEntry(store,Path_Get(source),&count),"cancel clear retains persisted metadata");
+            SendMessageW(panel,WM_COMMAND,112,0);SendMessageW(panel,WM_COMMAND,112,0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestHistoryReady(panel) && ListView_GetItemCount(GetDlgItem(panel,106))==0 && !HistoryService_GetEntry(store,Path_Get(source),&count),"confirmed clear removes all history records on disk and in window");
+            _WorkspaceTestCheck(&result,Path_IsExistingFile(source) && workspace->count==2 && SciCall_GetLength()==0,"clear preserves original file and independent untitled document");
+            DestroyWindow(panel);
+        }
         Path_Release(source);
         char summary[128];DWORD written;StringCchPrintfA(summary,COUNTOF(summary),"RESULT checks=%i failures=%i\r\n",result.checks,result.failures);WriteFile(result.log,summary,(DWORD)strlen(summary),&written,NULL);CloseHandle(result.log);
         _WorkspaceDispose();DestroyWindow(Globals.hwndMain);return;

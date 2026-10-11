@@ -23,6 +23,7 @@ struct Panel {
     std::shared_ptr<Job> job;
     np3::PanelTheme theme;
     int sortColumn=2; bool ascending=false;
+    ULONGLONG clearUntil=0;
 };
 Panel* State(HWND window){return reinterpret_cast<Panel*>(GetWindowLongPtrW(window,GWLP_USERDATA));}
 int Scale(HWND window,int value){return MulDiv(value,GetDpiForWindow(window),96);}
@@ -67,13 +68,31 @@ void Refresh(Panel* s,const np3::HistoryChange* change=nullptr){
         }catch(...){job->error=ERROR_NOT_ENOUGH_MEMORY;}
         job->done=true;
     }).detach();s->job=job;
-    for(int id:{104,110,111})EnableWindow(GetDlgItem(s->window,id),FALSE);
+    for(int id:{104,110,111,112,115})EnableWindow(GetDlgItem(s->window,id),FALSE);
 }
 void Layout(Panel* s){RECT r{};GetClientRect(s->window,&r);int m=Scale(s->window,12),width=(std::max)(0,static_cast<int>(r.right)-2*m);
     MoveWindow(GetDlgItem(s->window,102),m,Scale(s->window,38),Scale(s->window,144),Scale(s->window,26),TRUE);
     MoveWindow(GetDlgItem(s->window,101),m+Scale(s->window,156),Scale(s->window,38),(std::max)(0,width-Scale(s->window,156)),Scale(s->window,26),TRUE);
-    MoveWindow(GetDlgItem(s->window,106),m,Scale(s->window,104),width,(std::max)(0,static_cast<int>(r.bottom)-Scale(s->window,140)),TRUE);
+    MoveWindow(GetDlgItem(s->window,106),m,Scale(s->window,142),width,(std::max)(0,static_cast<int>(r.bottom)-Scale(s->window,178)),TRUE);
     MoveWindow(GetDlgItem(s->window,107),m,r.bottom-Scale(s->window,28),width,Scale(s->window,22),TRUE);
+}
+void CancelClear(Panel* s){s->clearUntil=0;SetDlgItemTextW(s->window,112,L"清空历史");ShowWindow(GetDlgItem(s->window,116),SW_HIDE);}
+void Clear(Panel* s){
+    if(s->job)return;
+    if(!s->clearUntil || GetTickCount64()>s->clearUntil){
+        s->clearUntil=GetTickCount64()+15000;SetDlgItemTextW(s->window,112,L"确认清空");ShowWindow(GetDlgItem(s->window,116),SW_SHOW);
+        SetDlgItemTextW(s->window,107,L"再次点击“确认清空”将移除全部历史（含置顶），不会删除原文件；15 秒后取消。");return;
+    }
+    CancelClear(s);np3::HistoryChange change;change.action=np3::HistoryAction::Clear;Refresh(s,&change);
+}
+void Capacity(Panel* s){
+    if(s->job)return;
+    std::wstring value=Text(s->window,114);
+    if(value.empty() || value.find_first_not_of(L"0123456789")!=std::wstring::npos || value.size()>5){SetDlgItemTextW(s->window,107,L"历史上限必须是 1–10000 的整数。");return;}
+    unsigned long maximum=wcstoul(value.c_str(),nullptr,10);
+    if(maximum<1 || maximum>10000){SetDlgItemTextW(s->window,107,L"历史上限必须是 1–10000 的整数。");return;}
+    HISTORY_STATE settings{};SendMessageW(s->parent,NP3_WM_HISTORY_STATE,0,reinterpret_cast<LPARAM>(&settings));settings.maximum=static_cast<int>(maximum);
+    if(SendMessageW(s->parent,NP3_WM_HISTORY_STATE,1,reinterpret_cast<LPARAM>(&settings)))SetDlgItemTextW(s->window,107,L"历史上限已设置；下次历史写入时生效，置顶记录优先保留。");
 }
 void Mutate(Panel* s,np3::HistoryAction action){
     if(s->job)return;
@@ -94,23 +113,30 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam){Pane
             Child(window,L"BUTTON",L"刷新",0,104,12,72,80,26);Child(window,L"BUTTON",L"记录打开历史",BS_AUTOCHECKBOX,109,108,72,150,26);
             Child(window,L"BUTTON",L"置顶/取消",0,110,276,72,100,26);
             Child(window,L"BUTTON",L"移除记录",0,111,392,72,100,26);
+            Child(window,L"BUTTON",L"清空历史",0,112,12,108,92,26);
+            Child(window,L"STATIC",L"条数上限",0,0,120,112,72,22);
+            Child(window,L"EDIT",L"500",ES_AUTOHSCROLL,114,200,108,76,26);SendDlgItemMessageW(window,114,EM_SETLIMITTEXT,5,0);
+            Child(window,L"BUTTON",L"应用上限",0,115,292,108,100,26);
+            Child(window,L"BUTTON",L"取消清空",0,116,408,108,100,26);ShowWindow(GetDlgItem(window,116),SW_HIDE);
             HWND list=Child(window,WC_LISTVIEWW,L"",LVS_REPORT|LVS_OWNERDATA|LVS_SINGLESEL|LVS_SHOWSELALWAYS,106,12,104,700,350);ListView_SetExtendedListViewStyle(list,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
             const wchar_t* titles[]={L"文件",L"路径",L"最近打开",L"次数",L"状态"};const int widths[]={140,320,160,60,120};
             for(int i=0;i<5;++i){LVCOLUMNW c{};c.mask=LVCF_TEXT|LVCF_WIDTH;c.pszText=const_cast<wchar_t*>(titles[i]);c.cx=Scale(window,widths[i]);ListView_InsertColumn(list,i,&c);}
             Child(window,L"STATIC",L"",0,107,12,470,700,22);
             HISTORY_STATE settings{};SendMessageW(s->parent,NP3_WM_HISTORY_STATE,0,reinterpret_cast<LPARAM>(&settings));SendDlgItemMessageW(window,109,BM_SETCHECK,settings.enabled?BST_CHECKED:BST_UNCHECKED,0);EnableWindow(GetDlgItem(window,109),settings.recentEnabled);
+            SetDlgItemTextW(window,114,std::to_wstring(settings.maximum).c_str());
             s->theme.Update(window,s->parent);SetTimer(window,1,100,nullptr);Refresh(s);Layout(s);return 0;
         }
         if(message==WM_SIZE && s){Layout(s);return 0;}
         if(message==WM_GETMINMAXINFO){auto info=reinterpret_cast<MINMAXINFO*>(lParam);info->ptMinTrackSize={Scale(window,560),Scale(window,320)};return 0;}
+        if(message==WM_TIMER && s && s->clearUntil && GetTickCount64()>s->clearUntil){CancelClear(s);SetDlgItemTextW(window,107,L"清空确认已超时，历史未清除。");}
         if(message==WM_TIMER && s && s->job && s->job->done){auto job=s->job;s->job.reset();
-            for(int id:{104,110,111})EnableWindow(GetDlgItem(window,id),TRUE);
+            for(int id:{104,110,111,112,115})EnableWindow(GetDlgItem(window,id),TRUE);
             if(!job->error){auto previous=std::move(s->rows);s->rows=std::move(job->rows);if(!Filter(s)){s->rows=std::move(previous);return 0;}}
             wchar_t status[200];DWORD error=job->error?job->error:HistoryService_Error();
             if(error)StringCchPrintfW(status,200,L"历史读写错误 %lu；已有记录保留。",error);
             else StringCchPrintfW(status,200,L"%zu 条历史记录。双击或 Enter 打开；失效记录保留。",s->rows.size());SetDlgItemTextW(window,107,status);return 0;
         }
-        if(message==WM_COMMAND && s){int id=LOWORD(wParam);if(id==104)Refresh(s);else if(id==110)Mutate(s,np3::HistoryAction::Pin);else if(id==111)Mutate(s,np3::HistoryAction::Remove);else if((id==101 || id==102) && HIWORD(wParam)==EN_CHANGE)Filter(s);else if(id==109){HISTORY_STATE settings{};SendMessageW(s->parent,NP3_WM_HISTORY_STATE,0,reinterpret_cast<LPARAM>(&settings));settings.enabled=SendDlgItemMessageW(window,109,BM_GETCHECK,0,0)==BST_CHECKED;SendMessageW(s->parent,NP3_WM_HISTORY_STATE,1,reinterpret_cast<LPARAM>(&settings));}return 0;}
+        if(message==WM_COMMAND && s){int id=LOWORD(wParam);if(id!=112 && id!=116 && HIWORD(wParam)!=EN_CHANGE)CancelClear(s);if(id==112)Clear(s);else if(id==116){CancelClear(s);SetDlgItemTextW(window,107,L"已取消清空，历史未清除。");}else if(id==115)Capacity(s);else if(id==104)Refresh(s);else if(id==110)Mutate(s,np3::HistoryAction::Pin);else if(id==111)Mutate(s,np3::HistoryAction::Remove);else if((id==101 || id==102) && HIWORD(wParam)==EN_CHANGE)Filter(s);else if(id==109){HISTORY_STATE settings{};SendMessageW(s->parent,NP3_WM_HISTORY_STATE,0,reinterpret_cast<LPARAM>(&settings));settings.enabled=SendDlgItemMessageW(window,109,BM_GETCHECK,0,0)==BST_CHECKED;SendMessageW(s->parent,NP3_WM_HISTORY_STATE,1,reinterpret_cast<LPARAM>(&settings));}return 0;}
         if(message==WM_NOTIFY && s){auto hdr=reinterpret_cast<NMHDR*>(lParam);if(hdr->idFrom==106){
             if(hdr->code==LVN_GETDISPINFOW){auto info=reinterpret_cast<NMLVDISPINFOW*>(lParam);if((info->item.mask&LVIF_TEXT) && info->item.iItem>=0 && static_cast<size_t>(info->item.iItem)<s->visible.size()){
                 const Row& row=s->rows[s->visible[info->item.iItem]];s->display=row.entry.path;

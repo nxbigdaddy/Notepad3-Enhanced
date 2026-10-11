@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Path $fixture | Out-Null
 $document=Join-Path $fixture '中文.md'
 [IO.File]::WriteAllText($document,'history fixture',[Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $fixture 'other.txt'),'owned history removal fixture',[Text.UTF8Encoding]::new($false))
-foreach($stage in @('enabled','disabled','recent-off','low','high')){
+foreach($stage in @('enabled','disabled','recent-off','low','high','clear')){
     $ini=Join-Path $fixture ($stage+'.ini')
     $enabled=if($stage -eq 'disabled'){'false'}else{'true'}
     $recent=if($stage -eq 'recent-off'){'false'}else{'true'}
@@ -28,6 +28,9 @@ foreach($stage in @('enabled','disabled','recent-off','low','high')){
     if($process.ExitCode -ne 0 -or $log -notmatch 'RESULT checks=\d+ failures=0'){throw $log}
     if($stage -in @('disabled','recent-off')){
         if(Test-Path -LiteralPath ($ini+'.history')){throw 'Disabled recording created history'}
+    }elseif($stage -eq 'clear'){
+        & (Join-Path $root 'artifacts/history_service_test.exe') --empty ($ini+'.history')
+        if($LASTEXITCODE){throw 'Independent cleared history readback failed'}
     }else{
         & (Join-Path $root 'artifacts/history_service_test.exe') --read ($ini+'.history') $document 2
         if($LASTEXITCODE){throw 'Independent process history readback failed'}
