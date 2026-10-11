@@ -434,6 +434,8 @@ static bool _LogFilterRun(void);
 static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location);
 static bool _SearchLocate(const SEARCH_LOCATION* location);
 static bool _WorkspaceHistoryStore(WCHAR* store,size_t capacity);
+static void _WorkspaceHistoryPosition(void);
+static bool _WorkspaceHistoryOpen(const HISTORY_LOCATION* location);
 static int _ConfigCheck(int kind, bool showMessage);
 static void _MarkdownExportCommand(bool pdf);
 static void _MarkdownPdfSelfTest();
@@ -2674,6 +2676,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
         WCHAR store[32768];
         return _WorkspaceHistoryStore(store,COUNTOF(store))?(LRESULT)HistoryPanel_Show(hwnd,store):0;
     }
+    case NP3_WM_HISTORY_OPEN: return _WorkspaceHistoryOpen((const HISTORY_LOCATION*)lParam);
     case NP3_WM_HISTORY_STATE: {
         HISTORY_STATE* state=(HISTORY_STATE*)lParam;if(!state)return FALSE;
         if(!wParam){state->enabled=Settings2.HistoryEnabled;state->recentEnabled=Settings.SaveRecentFiles;state->maximum=Settings2.HistoryMaximum;return TRUE;}

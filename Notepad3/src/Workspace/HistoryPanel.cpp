@@ -103,7 +103,8 @@ void Mutate(Panel* s,np3::HistoryAction action){
 void Open(Panel* s){int selected=ListView_GetNextItem(GetDlgItem(s->window,106),-1,LVNI_SELECTED);if(selected<0 || static_cast<size_t>(selected)>=s->visible.size())return;
     Row row=s->rows[s->visible[selected]];
     if(row.missing){SetDlgItemTextW(s->window,107,L"文件不存在或不可访问；记录仍保留。");return;}
-    SendMessageW(s->parent,NP3_WM_FILETREE_OPEN,0,reinterpret_cast<LPARAM>(row.entry.path.c_str()));
+    HISTORY_LOCATION location{row.entry.path.c_str(),row.entry.line,row.entry.column};
+    SendMessageW(s->parent,NP3_WM_HISTORY_OPEN,0,reinterpret_cast<LPARAM>(&location));
 }
 LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam){Panel* s=State(window);
     try{

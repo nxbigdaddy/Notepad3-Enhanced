@@ -8,7 +8,8 @@ New-Item -ItemType Directory -Path $fixture | Out-Null
 $document=Join-Path $fixture '中文.md'
 [IO.File]::WriteAllText($document,'history fixture',[Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $fixture 'other.txt'),'owned history removal fixture',[Text.UTF8Encoding]::new($false))
-foreach($stage in @('enabled','disabled','recent-off','low','high','clear')){
+[IO.File]::WriteAllText((Join-Path $fixture 'position.md'),"first`r`n`t中文 abc`r`nlast",[Text.UTF8Encoding]::new($false))
+foreach($stage in @('enabled','disabled','recent-off','low','high','clear','position')){
     $ini=Join-Path $fixture ($stage+'.ini')
     $enabled=if($stage -eq 'disabled'){'false'}else{'true'}
     $recent=if($stage -eq 'recent-off'){'false'}else{'true'}

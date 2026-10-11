@@ -274,6 +274,24 @@ static void _WorkspaceSelfTest()
             DestroyWindow(panel);
         }
         Path_Release(source);
+        if(!lstrcmpW(historyStage,L"position")){
+            HPATHL reading=Path_Allocate(folder);Path_Append(reading,L"position.md");
+            _WorkspaceTestCheck(&result,FileLoad(reading,FLF_None,0,0),"position fixture opens in independent document");
+            DocPos caret=SciCall_FindColumn(1,6);SciCall_SetSel(caret,caret);unsigned long long expectedColumn=(unsigned long long)SciCall_GetColumn(caret)+1;
+            int index=workspace->active;unsigned long long savedLine=0,savedColumn=0;
+            _WorkspaceTestCheck(&result,_WorkspaceSwitch(0) && HistoryService_Flush(5000) && HistoryService_GetPosition(store,Path_Get(reading),&savedLine,&savedColumn) && savedLine==2 && savedColumn==expectedColumn,"tab switch persists Unicode and tab-aware reading coordinates");
+            _WorkspaceTestCheck(&result,_WorkspaceSwitch(index) && _WorkspaceCloseActive() && HistoryService_Flush(5000),"closing read document persists position without changing other tabs");
+            HWND panel=(HWND)SendMessageW(Globals.hwndMain,NP3_WM_HISTORY_SHOW,0,0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestHistoryReady(panel),"history window reloads recorded reading position from disk");
+            SetDlgItemTextW(panel,101,L"position.md");HWND list=GetDlgItem(panel,106);ListView_SetItemState(list,0,LVIS_SELECTED,LVIS_SELECTED);NMHDR notice={list,106,NM_RETURN};SendMessageW(panel,WM_NOTIFY,106,(LPARAM)&notice);
+            _WorkspaceTestCheck(&result,SciCall_GetCurrentPos()==caret && SciCall_LineFromPosition(SciCall_GetCurrentPos())==1 && (unsigned long long)SciCall_GetColumn(SciCall_GetCurrentPos())+1==expectedColumn,"history Enter restores position after actual close and reopen");
+            SciCall_SetSel(0,3);int countBefore=workspace->count;SendMessageW(panel,WM_NOTIFY,106,(LPARAM)&notice);
+            _WorkspaceTestCheck(&result,workspace->count==countBefore && SciCall_GetAnchor()==0 && SciCall_GetCurrentPos()==3,"history activation of already open tab preserves current selection");
+            int readingIndex=workspace->active;_WorkspaceCloseActive();HISTORY_LOCATION beyond={Path_Get(reading),~0ULL,~0ULL};
+            _WorkspaceTestCheck(&result,SendMessageW(Globals.hwndMain,NP3_WM_HISTORY_OPEN,0,(LPARAM)&beyond) && SciCall_GetCurrentPos()==SciCall_GetLength(),"stale oversized reading coordinates clamp safely to document end");
+            _WorkspaceTestCheck(&result,workspace->active==readingIndex && !IsSaveNeeded() && _WorkspaceTestText("first\r\n\t\xe4\xb8\xad\xe6\x96\x87 abc\r\nlast"),"position restore retains exact UTF8 bytes and saved state");
+            DestroyWindow(panel);Path_Release(reading);
+        }
         char summary[128];DWORD written;StringCchPrintfA(summary,COUNTOF(summary),"RESULT checks=%i failures=%i\r\n",result.checks,result.failures);WriteFile(result.log,summary,(DWORD)strlen(summary),&written,NULL);CloseHandle(result.log);
         _WorkspaceDispose();DestroyWindow(Globals.hwndMain);return;
     }

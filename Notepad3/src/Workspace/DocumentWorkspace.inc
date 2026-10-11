@@ -519,6 +519,7 @@ static bool _WorkspaceSwitch(int index)
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace || workspace->transitioning || index < 0 || index >= workspace->count) return false;
     if (index == workspace->active) return true;
+    _WorkspaceHistoryPosition();
     workspace->transitioning = true;
     _WorkspaceCapture();
     AutoSaveStop(); InstallFileWatching(false); KillTimer(Globals.hwndMain, ID_LOGROTATETIMER);
@@ -540,6 +541,7 @@ static bool _WorkspaceCloseActive()
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace || workspace->transitioning || !FileSave(FSF_Ask)) return false;
+    _WorkspaceHistoryPosition();
     AutoSaveStop(); InstallFileWatching(false); KillTimer(Globals.hwndMain, ID_LOGROTATETIMER);
     workspace->transitioning = true;
     if (workspace->count == 1) {
@@ -573,6 +575,7 @@ static bool _WorkspaceCanClose(FileSaveFlags flags)
 }
 static void _WorkspaceDispose()
 {
+    _WorkspaceHistoryPosition();
     // Bounded wait only: the worker owns all strings and never accesses the UI.
     HistoryService_Flush(2000);
     MarkdownPdf_Cancel(Globals.hwndMain);
@@ -588,6 +591,12 @@ static void _WorkspaceDispose()
 static bool _WorkspaceHistoryStore(WCHAR* store,size_t capacity)
 {
     return Path_IsNotEmpty(Paths.IniFile) && SUCCEEDED(StringCchPrintfW(store,capacity,L"%s.history",Path_Get(Paths.IniFile)));
+}
+static void _WorkspaceHistoryPosition(void)
+{
+    if (!_Workspace() || !Settings2.HistoryEnabled || !Settings.SaveRecentFiles || Path_IsEmpty(Paths.CurrentFile)) return;
+    WCHAR store[32768];DocPos const caret=SciCall_GetCurrentPos();
+    if(_WorkspaceHistoryStore(store,COUNTOF(store)))HistoryService_Position(store,Path_Get(Paths.CurrentFile),(size_t)Settings2.HistoryMaximum,(unsigned long long)SciCall_LineFromPosition(caret)+1,(unsigned long long)SciCall_GetColumn(caret)+1);
 }
 static void _WorkspaceHistoryOpened(const HPATHL path,FileLoadFlags flags)
 {
@@ -638,6 +647,7 @@ bool FileLoad(const HPATHL path, const FileLoadFlags flags, const DocPos positio
     }
     doc->id = ++workspace->nextId;
     int const previous = workspace->active;
+    _WorkspaceHistoryPosition();
     workspace->transitioning = true;
     _WorkspaceCapture();
     AutoSaveStop(); InstallFileWatching(false); KillTimer(Globals.hwndMain, ID_LOGROTATETIMER);
@@ -658,6 +668,23 @@ bool FileLoad(const HPATHL path, const FileLoadFlags flags, const DocPos positio
     _WorkspaceRefresh(); UpdateToolbar_Now(Globals.hwndMain);
     MarkdownPreview_Changed(Globals.hwndMain);
     return result;
+}
+
+static bool _WorkspaceHistoryOpen(const HISTORY_LOCATION* location)
+{
+    if(!location || !location->path || !*location->path)return false;
+    HPATHL path=Path_Allocate(location->path);if(!path)return false;
+    DOCUMENT_WORKSPACE* workspace=_Workspace();bool existing=false;
+    if(workspace)for(int i=0;i<workspace->count;++i)if(Path_IsNotEmpty(workspace->documents[i].path) && !Path_StrgComparePath(path,workspace->documents[i].path,Paths.WorkingDirectory,true))existing=true;
+    bool loaded=FileLoad(path,FLF_None,0,0);Path_Release(path);
+    if(!loaded)return false;
+    if(!existing && location->line && location->column){
+        unsigned long long line=location->line-1,column=location->column-1;
+        unsigned long long last=(unsigned long long)(SciCall_GetLineCount()-1);if(line>last)line=last;
+        if(column>INT_MAX)column=INT_MAX;
+        DocPos position=SciCall_FindColumn((DocLn)line,(DocPos)column);SciCall_SetSel(position,position);SciCall_ScrollCaret();
+    }
+    return true;
 }
 
 static void _WorkspaceCycle(int direction)
