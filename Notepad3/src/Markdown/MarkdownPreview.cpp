@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <deque>
 #include <cstdio>
 
 using Microsoft::WRL::Callback;
@@ -53,9 +54,23 @@ struct Preview {
     PANEL_COLORS colors{};
     bool themeVerified=false;
     std::wstring documentKey;
+    std::wstring loadedDocumentKey;
+    std::deque<std::pair<std::wstring,double>> documentScroll;
     std::wstring message = L"Starting Markdown preview...";
     ~Preview() { if (loader) FreeLibrary(loader); }
 };
+double SavedScroll(const std::shared_ptr<Preview>& state,const std::wstring& key) {
+    for(const auto& entry:state->documentScroll) if(entry.first==key) return entry.second;
+    return 0;
+}
+void RememberScroll(const std::shared_ptr<Preview>& state,const std::wstring& key,double position) noexcept {
+    if(key.empty()) return;
+    try {
+        for(auto item=state->documentScroll.begin();item!=state->documentScroll.end();++item) if(item->first==key) { state->documentScroll.erase(item); break; }
+        state->documentScroll.emplace_back(key,position);
+        if(state->documentScroll.size()>64) state->documentScroll.pop_front();
+    } catch(...) { Trace("scroll-cache-failed",E_OUTOFMEMORY); }
+}
 void VerifyTheme(const std::shared_ptr<Preview>& state) {
     wchar_t script[512]; auto colors=state->colors;
     swprintf_s(script,L"getComputedStyle(document.body).backgroundColor==='rgb(%u, %u, %u)' && getComputedStyle(document.body).color==='rgb(%u, %u, %u)' && getComputedStyle(document.documentElement).colorScheme==='%s'",GetRValue(colors.field),GetGValue(colors.field),GetBValue(colors.field),GetRValue(colors.text),GetGValue(colors.text),GetBValue(colors.text),colors.dark?L"dark":L"light");
@@ -206,6 +221,7 @@ void Start(const std::shared_ptr<Preview>& state)
                                     UINT64 id = 0; args->get_NavigationId(&id);
                                     if (live && live->window && live->web && id == live->navigationId && live->navigationVersion == live->renderVersion) {
                                         live->loaded = success != FALSE;
+                                        if(success) live->loadedDocumentKey=live->documentKey;
                                         if (success) {
                                             VerifyTheme(live);
                                             if(live->renderAdvanced) { live->renderDeadline=GetTickCount64()+15000; live->polling=false; SetTimer(live->window,RenderTimer,50,nullptr); }
@@ -421,7 +437,9 @@ extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t len
         const std::wstring folder = directory ? directory : L"";
         const std::wstring key = documentKey ? documentKey : L"";
         const bool sameDocument = key == state->documentKey;
-        const bool preserveScroll = state->loaded && sameDocument;
+        const bool preserveScroll = state->loaded;
+        const std::wstring previousKey=state->loadedDocumentKey;
+        const double savedScroll=SavedScroll(state,key);
         state->documentKey = key;
         KillTimer(state->window, RenderTimer); state->polling=false; state->rendered=false; state->tracedPending=false;
         state->refreshPending=false;
@@ -437,6 +455,7 @@ extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t len
                     L"np3-preview.invalid", folder.c_str(), COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
             }
             live->scrollToRestore = scroll;
+            live->loaded=false;
             ++live->pendingRenderNavigations;
             if (FAILED(live->web->NavigateToString(wide.c_str()))) {
                 --live->pendingRenderNavigations;
@@ -445,17 +464,19 @@ extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t len
         };
         if (preserveScroll) {
             const HRESULT result = state->web->ExecuteScript(L"window.scrollY", Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-                [navigate, previous = state->scrollToRestore](HRESULT status, LPCWSTR json) -> HRESULT {
+                [navigate,weakState,version,previousKey,key,savedScroll, previous = state->actualScroll](HRESULT status, LPCWSTR json) -> HRESULT {
+                    auto live=weakState.lock(); if(!live || !live->window || live->renderVersion!=version) return S_OK;
                     double scroll = previous;
                     if (SUCCEEDED(status) && json) {
                         wchar_t* end = nullptr;
                         const double value = std::wcstod(json, &end);
                         if (end != json && *end == 0 && std::isfinite(value) && value >= 0 && value <= 1e9) scroll = value;
                     }
-                    navigate(scroll);
+                    RememberScroll(live,previousKey,scroll);
+                    navigate(previousKey==key?scroll:savedScroll);
                     return S_OK;
                 }).Get());
-            if (FAILED(result)) navigate(state->scrollToRestore);
-        } else navigate(sameDocument ? state->scrollToRestore : 0);
+            if (FAILED(result)) navigate(previousKey==key?state->actualScroll:savedScroll);
+        } else navigate(sameDocument ? state->scrollToRestore : savedScroll);
     } catch (...) { Failed(state, L"Cannot render Markdown preview."); }
 }

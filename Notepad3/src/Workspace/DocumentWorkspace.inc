@@ -536,8 +536,10 @@ bool FileLoad(const HPATHL path, const FileLoadFlags flags, const DocPos positio
     if (!_WorkspaceEnsure()) { InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_WORKSPACE_LIMIT); return false; }
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (flags & FLF_Reload) {
+        unsigned long long const beforeVersion = _WorkspaceVersion();
         bool const result = _FileLoadSingle(path, flags, position, line);
-        _WorkspaceCapture(); _WorkspaceRefresh(); return result;
+        if(result && _WorkspaceVersion()==beforeVersion) _WorkspaceEdited();
+        _WorkspaceCapture(); _WorkspaceRefresh(); MarkdownPreview_Changed(Globals.hwndMain); return result;
     }
     HPATHL resolved = Path_Copy(path);
     if (!resolved) return false;
@@ -554,7 +556,7 @@ bool FileLoad(const HPATHL path, const FileLoadFlags flags, const DocPos positio
     bool const reuseEmpty = workspace->count == 1 && Path_IsEmpty(Paths.CurrentFile) && SciCall_GetLength() == 0 && !IsSaveNeeded();
     if (reuseEmpty) {
         bool const result = _FileLoadSingle(resolved, flags | FLF_DontSave, position, line);
-        Path_Release(resolved); _WorkspaceCapture(); _WorkspaceRefresh(); return result;
+        Path_Release(resolved); _WorkspaceCapture(); _WorkspaceRefresh(); MarkdownPreview_Changed(Globals.hwndMain); return result;
     }
     if (workspace->count >= WORKSPACE_DOCUMENT_LIMIT) {
         Path_Release(resolved); InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_WORKSPACE_LIMIT); return false;
@@ -586,6 +588,7 @@ bool FileLoad(const HPATHL path, const FileLoadFlags flags, const DocPos positio
     }
     workspace->transitioning = false;
     _WorkspaceRefresh(); UpdateToolbar_Now(Globals.hwndMain);
+    MarkdownPreview_Changed(Globals.hwndMain);
     return result;
 }
 
