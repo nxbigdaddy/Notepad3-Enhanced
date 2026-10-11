@@ -119,6 +119,21 @@ static bool _WorkspaceTestHistoryReady(HWND window)
     }
     return false;
 }
+static void _WorkspaceTestSearchErrors(HWND search,const WCHAR* searchRoot,const WCHAR* folder,WORKSPACE_TEST_RESULT* result)
+{
+    WCHAR errorRoots[MAX_PATH_EXPLICIT*2];StringCchPrintfW(errorRoots,COUNTOF(errorRoots),L"%s\r\n%s\\missing-search-root",searchRoot,folder);
+    SetDlgItemTextW(search,101,errorRoots);SetDlgItemTextW(search,102,L"*.txt");SetDlgItemTextW(search,103,L"");SetDlgItemTextW(search,110,L"");SendDlgItemMessageW(search,109,BM_SETCHECK,BST_UNCHECKED,0);SendMessageW(search,WM_COMMAND,104,0);
+    _WorkspaceTestCheck(result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==1,"search retains valid root results alongside missing root error");
+    WCHAR errorDetails[4096];GetDlgItemTextW(search,121,errorDetails,COUNTOF(errorDetails));
+    WCHAR missingRoot[MAX_PATH_EXPLICIT],errorCode[32];StringCchPrintfW(missingRoot,COUNTOF(missingRoot),L"%s\\missing-search-root",folder);GetFileAttributesW(missingRoot);StringCchPrintfW(errorCode,COUNTOF(errorCode),L"[%lu]",GetLastError());
+    _WorkspaceTestCheck(result,wcsstr(errorDetails,L"missing-search-root") && wcsstr(errorDetails,errorCode),"search error details contain actual failing path and Windows error code");
+    SendMessageW(search,WM_COMMAND,120,0);
+    _WorkspaceTestCheck(result,IsWindowVisible(GetDlgItem(search,121)) && !IsWindowVisible(GetDlgItem(search,106)) && (GetWindowLongPtrW(GetDlgItem(search,121),GWL_STYLE)&ES_READONLY),"error details toggle exposes read-only report without destroying results");
+    SendMessageW(search,WM_COMMAND,120,0);
+    _WorkspaceTestCheck(result,IsWindowVisible(GetDlgItem(search,106)) && ListView_GetItemCount(GetDlgItem(search,106))==1,"return from error details retains valid search results");
+    SetDlgItemTextW(search,101,searchRoot);SendMessageW(search,WM_COMMAND,104,0);bool cleanSearch=_WorkspaceTestSearchReady(search);GetDlgItemTextW(search,121,errorDetails,COUNTOF(errorDetails));
+    _WorkspaceTestCheck(result,cleanSearch && wcsstr(errorDetails,L"没有搜索错误") && !wcsstr(errorDetails,L"missing-search-root"),"new successful search replaces previous error report");
+}
 static bool _WorkspaceTestAiReady(void)
 {
     DWORD start = GetTickCount();
@@ -937,6 +952,7 @@ static void _WorkspaceSelfTest()
     ListView_SetItemState(GetDlgItem(search,106),0,LVIS_SELECTED|LVIS_FOCUSED,LVIS_SELECTED|LVIS_FOCUSED);SendMessageW(search,WM_NOTIFY,106,(LPARAM)&searchOpen);
     _WorkspaceTestCheck(&result,workspace->count==searchOriginalCount+1 && SciCall_GetSelectionStart()==8 && SciCall_GetSelectionEnd()==14 && _WorkspaceTestText(unicodeSearchText),"native regex Unicode match selects actual Chinese UTF8 bytes");
     if(workspace->count>searchOriginalCount){SciCall_SetSavePoint();_WorkspaceCloseActive();}
+    _WorkspaceTestSearchErrors(search,searchRoot,folder,&result);
     DestroyWindow(search);
     search=FileSearch_Show(Globals.hwndMain,searchRoot);
     _WorkspaceTestCheck(&result,search && ListView_GetItemCount(GetDlgItem(search,106))==0,"file search closes and recreates without stale results");

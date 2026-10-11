@@ -29,6 +29,7 @@ struct Panel {
     std::wstring display;
     int sortColumn=0; bool ascending=true;
     bool contentMode=false;
+    bool showErrors=false;
 };
 Panel* State(HWND window){return reinterpret_cast<Panel*>(GetWindowLongPtrW(window,GWLP_USERDATA));}
 std::wstring Text(HWND control){int length=GetWindowTextLengthW(control);std::vector<wchar_t> text(static_cast<size_t>(length)+1);GetWindowTextW(control,text.data(),length+1);return text.data();}
@@ -40,7 +41,8 @@ void Layout(Panel* state) {
     MoveWindow(state->query,margin+Scale(state->window,192),Scale(state->window,116),(std::max)(0,width-Scale(state->window,192)),Scale(state->window,26),TRUE);
     MoveWindow(GetDlgItem(state->window,108),margin+Scale(state->window,100),Scale(state->window,154),(std::max)(0,width-Scale(state->window,100)),Scale(state->window,26),TRUE);
     MoveWindow(GetDlgItem(state->window,110),margin+Scale(state->window,100),Scale(state->window,190),(std::max)(0,width-Scale(state->window,100)),Scale(state->window,26),TRUE);
-    MoveWindow(state->list,margin,Scale(state->window,268),width,(std::max)(0,static_cast<int>(client.bottom)-Scale(state->window,304)),TRUE);
+    MoveWindow(state->list,margin,Scale(state->window,304),width,(std::max)(0,static_cast<int>(client.bottom)-Scale(state->window,340)),TRUE);
+    MoveWindow(GetDlgItem(state->window,121),margin,Scale(state->window,304),width,(std::max)(0,static_cast<int>(client.bottom)-Scale(state->window,340)),TRUE);
     MoveWindow(state->status,margin,client.bottom-Scale(state->window,28),width,Scale(state->window,22),TRUE);
 }
 std::wstring Name(const std::wstring& path){size_t separator=path.find_last_of(L"\\/");return separator==std::wstring::npos?path:path.substr(separator+1);}
@@ -106,6 +108,7 @@ void Start(Panel* state) {
         job->done=true;
     }).detach();
     state->job=job;state->contentMode=!content.query.empty();state->files.clear();ListView_SetItemCountEx(state->list,0,LVSICF_NOSCROLL);
+    SetDlgItemTextW(state->window,121,L"搜索进行中，完成后显示错误详情。");
     const wchar_t* titles[]={state->contentMode?L"行:列":L"大小（字节）",state->contentMode?L"匹配上下文":L"修改时间"};for(int i=0;i<2;++i){LVCOLUMNW column{};column.mask=LVCF_TEXT;column.pszText=const_cast<wchar_t*>(titles[i]);ListView_SetColumn(state->list,i+2,&column);}
     SetWindowTextW(state->status,L"搜索中… 可停止或重新搜索");
     SEARCH_STATE saved{};StringCchCopyW(saved.types,4097,Text(state->types).c_str());StringCchCopyW(saved.excluded,4097,excluded.c_str());saved.flags=(options.recursive?1:0)|(content.caseSensitive?2:0)|(content.wholeWord?4:0)|(content.regex?8:0);SendMessageW(state->parent,NP3_WM_SEARCH_STATE,1,reinterpret_cast<LPARAM>(&saved));
@@ -119,7 +122,16 @@ void Drain(Panel* state) {
     wchar_t message[256];
     StringCchPrintfW(message,256,L"%s · %llu %s%s · %llu 个错误 · %llu 个跳过",failed?L"搜索失败":done?(summary.cancelled?L"已停止":L"搜索完成"):L"搜索中",static_cast<unsigned long long>(state->files.size()),state->contentMode?L"个匹配":L"个文件",summary.limited?L"（达到结果上限）":L"",static_cast<unsigned long long>(summary.errors.size()),static_cast<unsigned long long>(done?job->skipped:0));
     SetWindowTextW(state->status,message);
-    if(done){KillTimer(state->window,1);Sort(state);}
+    if(done){
+        std::wstring details=failed?L"后台搜索失败，部分结果可能不完整。\r\n":L"";
+        if(summary.errors.empty() && !failed)details=L"没有搜索错误。\r\n";
+        size_t shown=0;
+        for(const auto& error:summary.errors){if(shown>=100 || details.size()>30000)break;wchar_t description[512]{};FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,nullptr,error.code,0,description,512,nullptr);
+            details+=error.path.substr(0,1024);if(error.path.size()>1024)details+=L"…";details+=L"\r\n  ["+std::to_wstring(error.code)+L"] "+description+L"\r\n";++shown;
+        }
+        if(shown<summary.errors.size())details+=L"其余 "+std::to_wstring(summary.errors.size()-shown)+L" 项错误未展开（显示上限）。\r\n";
+        SetDlgItemTextW(state->window,121,details.c_str());KillTimer(state->window,1);Sort(state);
+    }
 }
 HWND Child(HWND parent,const wchar_t* type,const wchar_t* text,DWORD style,int id,int x,int y,int w,int h){return CreateWindowExW(type==std::wstring(L"EDIT")?WS_EX_CLIENTEDGE:0,type,text,WS_CHILD|WS_VISIBLE|style,Scale(parent,x),Scale(parent,y),Scale(parent,w),Scale(parent,h),parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);}
 LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
@@ -145,6 +157,8 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
             Child(window,L"BUTTON",L"区分大小写",WS_TABSTOP|BS_AUTOCHECKBOX,111,350,230,120,22);Child(window,L"BUTTON",L"整词",WS_TABSTOP|BS_AUTOCHECKBOX,113,482,230,80,22);
             Child(window,L"BUTTON",L"正则",WS_TABSTOP|BS_AUTOCHECKBOX,114,566,230,70,22);
             state->list=Child(window,WC_LISTVIEWW,L"",WS_TABSTOP|LVS_REPORT|LVS_OWNERDATA|LVS_SINGLESEL|LVS_SHOWSELALWAYS,106,12,268,700,204);
+            Child(window,L"BUTTON",L"错误详情",WS_TABSTOP,120,12,268,100,26);
+            HWND details=Child(window,L"EDIT",L"尚未搜索。",WS_TABSTOP|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|WS_VSCROLL|WS_HSCROLL,121,12,304,700,168);SendMessageW(details,EM_SETLIMITTEXT,32768,0);ShowWindow(details,SW_HIDE);
             ListView_SetExtendedListViewStyle(state->list,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
             const wchar_t* names[]={L"名称",L"完整路径",L"大小（字节）",L"修改时间"};int widths[]={180,370,100,160};
             for(int i=0;i<4;++i){LVCOLUMNW column{};column.mask=LVCF_TEXT|LVCF_WIDTH;column.pszText=const_cast<wchar_t*>(names[i]);column.cx=Scale(window,widths[i]);ListView_InsertColumn(state->list,i,&column);}
@@ -155,6 +169,7 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
         if(message==WM_SIZE){Layout(state);return 0;}
         if(message==WM_TIMER){Drain(state);return 0;}
         if(message==WM_COMMAND){if(LOWORD(wParam)==104)Start(state);else if(LOWORD(wParam)==105 && state->job)state->job->cancel=true;
+            else if(LOWORD(wParam)==120){state->showErrors=!state->showErrors;ShowWindow(state->list,state->showErrors?SW_HIDE:SW_SHOW);ShowWindow(GetDlgItem(window,121),state->showErrors?SW_SHOW:SW_HIDE);SetDlgItemTextW(window,120,state->showErrors?L"返回结果":L"错误详情");}
             else if(LOWORD(wParam)>=116 && LOWORD(wParam)<=119){const wchar_t* values[]={L"*.md;*.markdown",L"*.md;*.markdown;*.txt;*.log",L"*.json;*.ini;*.yaml;*.yml;*.toml",L"*"};SetWindowTextW(state->types,values[LOWORD(wParam)-116]);}
             else if(LOWORD(wParam)==115){HMENU menu=CreatePopupMenu();if(menu){const wchar_t* names[]={L"Markdown",L"文本与日志",L"配置文件",L"所有格式"};for(int i=0;i<4;++i)AppendMenuW(menu,MF_STRING,116+i,names[i]);RECT button{};GetWindowRect(GetDlgItem(window,115),&button);UINT choice=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_NONOTIFY,button.left,button.bottom,0,window,nullptr);DestroyMenu(menu);if(choice>=116 && choice<=119)SendMessageW(window,WM_COMMAND,choice,0);}}
             return 0;}
