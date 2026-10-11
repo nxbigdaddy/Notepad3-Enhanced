@@ -1,12 +1,14 @@
 // UI-thread capture; immutable snapshots are encrypted and persisted off-thread.
 #include <process.h>
 #define WORKSPACE_RECOVERY_TIMER 0x7353
+#include "WorkspaceHistory.inc"
 typedef struct WORKSPACE_RECOVERY_JOB {
     NP3_SESSION session;
     HPATHL path;
     HANDLE thread;
     uint32_t error;
     bool success;
+    unsigned int historyRemoved;
 } WORKSPACE_RECOVERY_JOB;
 typedef struct WORKSPACE_RECOVERY {
     HPATHL directory, file, lockPath, closedPath, normalPath;
@@ -65,6 +67,7 @@ static unsigned __stdcall _WorkspaceRecoveryWorker(void* argument)
 {
     WORKSPACE_RECOVERY_JOB* job = argument;
     job->success = Session_Save(job->session, Path_Get(job->path), &job->error) != 0;
+    if(job->success) job->historyRemoved=_WorkspaceRecoveryPruneHistory(job->path);
     return 0;
 }
 static bool _WorkspaceRecoveryHarvest(WORKSPACE_RECOVERY* recovery, DWORD timeout)

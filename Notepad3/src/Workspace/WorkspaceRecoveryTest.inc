@@ -1,3 +1,20 @@
+static HPATHL _WorkspaceHistoryTestArchive(HPATHL directory,unsigned int index,unsigned int time,NP3_SESSION session)
+{
+    WCHAR leaf[64]; StringCchPrintfW(leaf,COUNTOF(leaf),L"np3-400000-%016llx.np3workspace",(unsigned long long)index);
+    HPATHL path=Path_Copy(directory); if(!path || !Path_Append(path,leaf)) { Path_Release(path); return NULL; }
+    uint32_t error=0; bool saved=false;
+    if(session) saved=Session_Save(session,Path_Get(path),&error)!=0;
+    else { HANDLE file=Path_CreateFile(path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL); DWORD written=0; if(IS_VALID_HANDLE(file)) { saved=WriteFile(file,"corrupt",7,&written,NULL) && written==7; CloseHandle(file); } }
+    HANDLE file=saved?Path_CreateFile(path,FILE_WRITE_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL):INVALID_HANDLE_VALUE;
+    FILETIME stamp={time,0x01d00000}; bool stamped=IS_VALID_HANDLE(file) && SetFileTime(file,NULL,NULL,&stamp);
+    if(IS_VALID_HANDLE(file)) CloseHandle(file);
+    if(!stamped) { Path_Release(path); return NULL; } return path;
+}
+static bool _WorkspaceHistoryTestCopy(HPATHL source,HPATHL directory,LPCWSTR name)
+{
+    HPATHL copy=Path_Copy(directory); bool saved=source && copy && Path_Append(copy,name) && CopyFileW(Path_Get(source),Path_Get(copy),FALSE);
+    Path_Release(copy); return saved;
+}
 // Only entered with an explicit mode and a marker-validated isolated directory.
 static void _WorkspaceRecoveryTest()
 {
@@ -21,6 +38,7 @@ static void _WorkspaceRecoveryTest()
     bool const clean = wcscmp(mode, L"clean") == 0;
     bool const failure = wcscmp(mode, L"failure") == 0;
     bool const initFailure = wcscmp(mode,L"init-failure")==0;
+    bool const history = wcscmp(mode,L"history")==0;
     bool const splitSeed = wcscmp(mode, L"split-seed") == 0;
     bool const splitVerify = wcscmp(mode, L"split-verify") == 0;
     bool const splitImport = wcscmp(mode, L"split-import") == 0;
@@ -29,8 +47,47 @@ static void _WorkspaceRecoveryTest()
     bool const normalExplicit = wcscmp(mode, L"normal-explicit") == 0;
     bool const normalMissing = wcscmp(mode, L"normal-missing") == 0;
     bool const normalDisabled = wcscmp(mode, L"normal-disabled") == 0;
-    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || initFailure || splitSeed || splitVerify || splitImport || normalSeed || normalVerify || normalExplicit || normalMissing || normalDisabled, "recognized recovery test mode");
-    if(initFailure) {
+    _WorkspaceTestCheck(&result, seeded || verified || live || clean || failure || initFailure || history || splitSeed || splitVerify || splitImport || normalSeed || normalVerify || normalExplicit || normalMissing || normalDisabled, "recognized recovery test mode");
+    if(history) {
+        _WorkspaceTestCheck(&result,_WorkspaceHistoryName(L"np3-4294967295-0123456789abcdef.np3workspace") && !_WorkspaceHistoryName(L"np3-4294967296-0123456789abcdef.np3workspace") && !_WorkspaceHistoryName(L"np3-0-0123456789abcdef.np3workspace") && !_WorkspaceHistoryName(L"np3-user-not-generated.np3workspace"),"history ownership requires exact generated filename and a valid nonzero DWORD process ID");
+        HPATHL directory=Path_Copy(recovery->directory); Path_Append(directory,L"history"); Path_CreateDirectoryEx(directory);
+        NP3_SESSION normal=Session_Create(),draft=Session_Create(); NP3_SESSION_DOCUMENT entry={0};
+        entry.encoding=CPI_UTF8; entry.codePage=SC_CP_UTF8; entry.tabWidth=4; entry.indent=4; entry.path=L"";
+        bool seeds=normal && draft && Session_Add(normal,&entry);
+        entry.text="history draft"; entry.textLength=13; entry.flags=NP3_SESSION_MODIFIED; seeds=seeds && Session_Add(draft,&entry);
+        HPATHL archives[16]={0};
+        for(unsigned int i=0;i<16;++i) { archives[i]=_WorkspaceHistoryTestArchive(directory,i+1,i+1,normal); WCHAR copy[64]; StringCchPrintfW(copy,COUNTOF(copy),L"valid-%u-before.np3session",i+1); seeds=archives[i] && _WorkspaceHistoryTestCopy(archives[i],directory,copy) && seeds; }
+        HPATHL active=_WorkspaceHistoryTestArchive(directory,17,0,normal),blocked=_WorkspaceHistoryTestArchive(directory,18,0,normal),corrupt=_WorkspaceHistoryTestArchive(directory,19,1000,NULL),dirty=_WorkspaceHistoryTestArchive(directory,20,1001,draft);
+        HPATHL activeLock=Path_Copy(active); Path_RenameExtension(activeLock,L".lock"); HANDLE held=_WorkspaceHistoryClaim(activeLock);
+        HANDLE blockedFile=blocked?Path_CreateFile(blocked,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL):INVALID_HANDLE_VALUE;
+        HPATHL manual=Path_Copy(directory); Path_Append(manual,L"np3-user-not-generated.np3workspace");
+        HPATHL crash=Path_Copy(directory); Path_Append(crash,L"np3-400000-0000000000000015.np3recovery"); uint32_t error=0;
+        seeds=seeds && active && blocked && corrupt && dirty && IS_VALID_HANDLE(held) && IS_VALID_HANDLE(blockedFile) && Session_Save(normal,Path_Get(manual),&error) && Session_Save(draft,Path_Get(crash),&error);
+        seeds=seeds && _WorkspaceHistoryTestCopy(corrupt,directory,L"corrupt-before.bin") && _WorkspaceHistoryTestCopy(dirty,directory,L"dirty-before.np3session") && _WorkspaceHistoryTestCopy(manual,directory,L"manual-before.np3session") && _WorkspaceHistoryTestCopy(crash,directory,L"crash-before.np3session");
+        _WorkspaceTestCheck(&result,seeds,"history fixtures contain sixteen valid archives and independently copied protected records");
+        HPATHL backup=Path_Copy(directory); Path_Append(backup,L"worker-test.np3recovery");
+        HPATHL guardPath=Path_Copy(directory); Path_Append(guardPath,L"np3-history-cleanup.lock"); HANDLE guard=_WorkspaceHistoryClaim(guardPath);
+        _WorkspaceTestCheck(&result,IS_VALID_HANDLE(guard) && _WorkspaceRecoveryPruneHistory(backup)==0 && Path_IsExistingFile(archives[0]) && Path_IsExistingFile(archives[15]),"history cleanup serialization lock prevents a second concurrent cleanup");
+        if(IS_VALID_HANDLE(guard)) CloseHandle(guard);
+        unsigned int removed=_WorkspaceRecoveryPruneHistory(backup); bool newest=true;
+        for(int i=0;i<16;++i) newest=newest && Path_IsExistingFile(archives[i])==(i>=6);
+        _WorkspaceTestCheck(&result,removed==6 && newest,"history pruning removes six oldest records and keeps newest ten valid archives");
+        _WorkspaceTestCheck(&result,Path_IsExistingFile(active) && Path_IsExistingFile(blocked),"active owner and archive opened without delete sharing remain protected");
+        _WorkspaceTestCheck(&result,Path_IsExistingFile(corrupt) && Path_IsExistingFile(dirty) && Path_IsExistingFile(manual) && Path_IsExistingFile(crash),"corrupt draft unmanaged-name and crash-recovery records survive normal history cleanup");
+        for(unsigned int i=0;i<6;++i) { Path_Release(archives[i]); archives[i]=_WorkspaceHistoryTestArchive(directory,i+1,i+1,normal); }
+        unsigned long long beforeVersion=_WorkspaceVersion(); int beforeUndo=SciCall_GetUndoCurrent(); sptr_t beforeDoc=SciCall_GetDocPointer();
+        WORKSPACE_RECOVERY_JOB job={0}; job.session=_WorkspaceSessionCapture(&error); job.path=Path_Copy(backup); _WorkspaceRecoveryWorker(&job);
+        _WorkspaceTestCheck(&result,job.success && job.historyRemoved==6,"successful actual recovery worker persists backup then prunes older history");
+        NP3_SESSION snapshot=NULL;
+        _WorkspaceTestCheck(&result,Session_Load(Path_Get(backup),&snapshot,&error) && Session_Count(snapshot)==(size_t)workspace->count,"worker history cleanup leaves freshly protected backup readable"); Session_Free(snapshot);
+        _WorkspaceTestCheck(&result,_WorkspaceVersion()==beforeVersion && SciCall_GetUndoCurrent()==beforeUndo && SciCall_GetDocPointer()==beforeDoc,"background history cleanup leaves live editor version undo and document binding unchanged");
+        Session_Free(job.session); Path_Release(job.path);
+        if(IS_VALID_HANDLE(held)) CloseHandle(held); if(IS_VALID_HANDLE(blockedFile)) CloseHandle(blockedFile);
+        _WorkspaceTestCheck(&result,_WorkspaceRecoveryPruneHistory(backup)==2 && !Path_IsExistingFile(active) && !Path_IsExistingFile(blocked),"released owners and file handles permit a later cleanup of obsolete records");
+        _WorkspaceTestCheck(&result,_WorkspaceRecoveryPruneHistory(backup)==0,"repeated history cleanup is idempotent");
+        for(int i=0;i<16;++i) Path_Release(archives[i]);
+        Session_Free(normal); Session_Free(draft); Path_Release(directory); Path_Release(active); Path_Release(activeLock); Path_Release(blocked); Path_Release(corrupt); Path_Release(dirty); Path_Release(manual); Path_Release(crash); Path_Release(backup); Path_Release(guardPath);
+    } else if(initFailure) {
         HPATHL blocked=Path_Copy(recovery->directory); Path_Append(blocked,L"blocked-directory");
         HANDLE blockFile=Path_CreateFile(blocked,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
         DWORD written=0; if(IS_VALID_HANDLE(blockFile)) { WriteFile(blockFile,"directory fixture",17,&written,NULL); CloseHandle(blockFile); }

@@ -1314,6 +1314,7 @@
     <ClInclude Include="Workspace\WorkspaceSession.inc" />
     <ClInclude Include="Workspace\WorkspaceNormalSession.inc" />
     <ClInclude Include="Workspace\WorkspaceRecovery.inc" />
+    <ClInclude Include="Workspace\WorkspaceHistory.inc" />
     <ClInclude Include="Workspace\WorkspaceRecoveryTest.inc" />
     <ClInclude Include="TextTools\JsonFormat.h" />
     <ClInclude Include="TextTools\BatchTransform.h" />

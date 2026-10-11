@@ -105,3 +105,20 @@ Read-RecoveryResult 'init-failure'
 if ([IO.File]::ReadAllText((Join-Path $taskFolder 'blocked-directory')) -ne 'directory fixture') { throw 'Initialization failure changed blocking file bytes' }
 if ([IO.File]::ReadAllText((Join-Path $taskFolder 'split-long.json')) -ne $taskJson) { throw 'Initialization failure test changed original disk bytes' }
 Write-Output "Initialization failure reporting, draft preservation, manual backup and successful retry verified. Evidence: $taskFolder"
+
+$taskHistory = Start-RecoveryTest 'history'
+if (!$taskHistory.WaitForExit(30000)) { throw "History cleanup test still running: PID $($taskHistory.Id)" }
+Read-RecoveryResult 'history'
+$taskHistoryRoot = Join-Path $taskFolder 'history'
+$taskHistoryExpected = @(7..16 + @(19,20) | ForEach-Object { 'np3-400000-{0:x16}.np3workspace' -f $_ } | Sort-Object)
+$taskHistoryActual = @(Get-ChildItem -LiteralPath $taskHistoryRoot -File -Filter 'np3-400000-*.np3workspace' | Select-Object -ExpandProperty Name | Sort-Object)
+if (($taskHistoryActual -join '|') -ne ($taskHistoryExpected -join '|')) { throw 'History surviving file set differs from newest ten plus preserved non-normal records' }
+foreach ($taskIndex in 7..16) {
+    $taskArchive = Join-Path $taskHistoryRoot ('np3-400000-{0:x16}.np3workspace' -f $taskIndex)
+    $taskBefore = Join-Path $taskHistoryRoot ("valid-$taskIndex-before.np3session")
+    if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($taskArchive)) -ne [Convert]::ToBase64String([IO.File]::ReadAllBytes($taskBefore))) { throw "Retained archive bytes changed: $taskIndex" }
+}
+foreach ($taskPair in @(@('np3-400000-0000000000000013.np3workspace','corrupt-before.bin'), @('np3-400000-0000000000000014.np3workspace','dirty-before.np3session'), @('np3-user-not-generated.np3workspace','manual-before.np3session'), @('np3-400000-0000000000000015.np3recovery','crash-before.np3session'))) {
+    if ([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $taskHistoryRoot $taskPair[0]))) -ne [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $taskHistoryRoot $taskPair[1])))) { throw "Protected history file bytes changed: $($taskPair[0])" }
+}
+Write-Output "History surviving names and retained/protected bytes independently verified. Evidence: $taskHistoryRoot"
