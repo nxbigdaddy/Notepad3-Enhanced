@@ -12375,15 +12375,22 @@ void UndoRedoReset()
 //
 //  BeginUndoActionSelection()
 //
+// The wrapper is synchronous on the UI thread; only its outer action owns this context.
+static sptr_t s_quietUndoDocument=0;
+static unsigned long long s_quietUndoVersion=0;
+
 LONG BeginUndoActionSelection()
 {
+    LONG const undoCurrent=(LONG)SciCall_GetUndoCurrent();
     if (SciCall_GetUndoCollection()) {
         SciCall_BeginUndoAction();
         if (SciCall_GetUndoSequence() == 1) {
+            s_quietUndoDocument=SciCall_GetDocPointer();
+            s_quietUndoVersion=_WorkspaceVersion();
             DisableDocChangeNotification();
         }
     }
-    return 0L;
+    return undoCurrent;
 }
 
 
@@ -12393,11 +12400,13 @@ LONG BeginUndoActionSelection()
 //
 void EndUndoActionSelection(const LONG token)
 {
-    UNREFERENCED_PARAMETER(token);
     if (SciCall_GetUndoCollection()) {
         SciCall_EndUndoAction();
         if (SciCall_GetUndoSequence() == 0) {
+            bool const changed=SciCall_GetDocPointer()==s_quietUndoDocument && SciCall_GetUndoCurrent()!=token;
+            if(changed && _WorkspaceVersion()==s_quietUndoVersion) _WorkspaceEdited();
             EnableDocChangeNotification(EVM_Default);
+            if(changed) MarkdownPreview_Changed(Globals.hwndMain);
         }
     }
 }
@@ -12608,6 +12617,7 @@ static bool _AiApply(const AI_PANEL_APPLY* request)
     const char* original = SciCall_GetRangePointer((DocPos)source->start, (DocPos)request->originalLength);
     if (request->originalLength && (!original || !request->original || memcmp(original, request->original, request->originalLength))) return false;
     bool const changed=request->originalLength!=request->resultLength || memcmp(request->original,request->result,request->resultLength)!=0;
+    if(!changed) return true;
     unsigned long long const beforeVersion=doc->version;
     UndoTransActionBegin();
     SciCall_SetTargetRange((DocPos)source->start, (DocPos)source->end);

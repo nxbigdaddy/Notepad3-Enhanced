@@ -101,10 +101,13 @@ static LRESULT _BatchApplyTransaction(const BATCH_APPLY* request, size_t failure
         const BATCH_CHANGE* change = &request->changes[i];
         if (!_WorkspaceSwitch(indices[i]) || SciCall_GetReadOnly() || w->documents[indices[i]].version != change->version || !_BatchTextMatches(Globals.hwndEdit, change->original, change->originalLength)) { success = false; break; }
         SciCall_SetStatus(SC_STATUS_OK);
-        UndoTransActionBegin();
-        SciCall_SetTargetRange(0, SciCall_GetLength());
-        Sci_ReplaceTargetTestChgHist((DocPos)change->resultLength, change->result ? change->result : "");
-        EndUndoTransAction();
+        bool const differs=change->originalLength!=change->resultLength || (change->originalLength && memcmp(change->original,change->result,change->originalLength)!=0);
+        if(differs) {
+            UndoTransActionBegin();
+            SciCall_SetTargetRange(0, SciCall_GetLength());
+            Sci_ReplaceTargetTestChgHist((DocPos)change->resultLength, change->result ? change->result : "");
+            EndUndoTransAction();
+        }
         bool changed = !_BatchTextMatches(Globals.hwndEdit, change->original, change->originalLength);
         if(changed) {
             if(w->documents[indices[i]].version==change->version) _WorkspaceEdited();
