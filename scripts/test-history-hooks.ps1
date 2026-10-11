@@ -9,7 +9,7 @@ $document=Join-Path $fixture '中文.md'
 [IO.File]::WriteAllText($document,'history fixture',[Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $fixture 'other.txt'),'owned history removal fixture',[Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $fixture 'position.md'),"first`r`n`t中文 abc`r`nlast",[Text.UTF8Encoding]::new($false))
-foreach($stage in @('enabled','disabled','recent-off','low','high','clear','position')){
+foreach($stage in @('enabled','disabled','recent-off','low','high','clear','position','relocate')){
     $ini=Join-Path $fixture ($stage+'.ini')
     $enabled=if($stage -eq 'disabled'){'false'}else{'true'}
     $recent=if($stage -eq 'recent-off'){'false'}else{'true'}
@@ -38,6 +38,10 @@ foreach($stage in @('enabled','disabled','recent-off','low','high','clear','posi
         if($stage -eq 'enabled'){
             & (Join-Path $root 'artifacts/history_service_test.exe') --pinned ($ini+'.history') $document 1
             if($LASTEXITCODE){throw 'Independent persisted pin readback failed'}
+        }
+        if($stage -eq 'relocate'){
+            & (Join-Path $root 'artifacts/history_service_test.exe') --pinned ($ini+'.history') (Join-Path $fixture 'other.txt') 1
+            if($LASTEXITCODE){throw 'Independent relocated pin readback failed'}
         }
     }
     if([IO.File]::ReadAllText($document) -ne 'history fixture'){throw 'History changed source document'}

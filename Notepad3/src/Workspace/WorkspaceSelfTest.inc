@@ -113,6 +113,7 @@ static bool _WorkspaceTestHistoryReady(HWND window)
     DWORD start=GetTickCount();WCHAR status[256];
     while(IsWindow(window) && GetTickCount()-start<6000){
         GetDlgItemTextW(window,107,status,COUNTOF(status));if(wcsstr(status,L"条历史记录"))return true;
+        if(wcsstr(status,L"历史读写错误"))return false;
         MsgWaitForMultipleObjectsEx(0,NULL,25,QS_ALLINPUT,MWMO_INPUTAVAILABLE);
         MSG message;while(PeekMessageW(&message,NULL,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}
     }
@@ -274,6 +275,25 @@ static void _WorkspaceSelfTest()
             DestroyWindow(panel);
         }
         Path_Release(source);
+        if(!lstrcmpW(historyStage,L"relocate")){
+            HPATHL missing=Path_Allocate(folder);Path_Append(missing,L"missing-relocate.md");HPATHL destination=Path_Allocate(folder);Path_Append(destination,L"other.txt");HPATHL collision=Path_Allocate(folder);Path_Append(collision,L"中文.md");
+            HistoryService_Record(store,Path_Get(missing),500);HistoryService_Position(store,Path_Get(missing),500,7,9);HistoryService_Flush(5000);
+            HWND panel=(HWND)SendMessageW(Globals.hwndMain,NP3_WM_HISTORY_SHOW,0,0);WCHAR display[32768];
+            _WorkspaceTestCheck(&result,_WorkspaceTestHistoryReady(panel),"relocation panel reads missing source record");SetDlgItemTextW(panel,101,L"missing-relocate.md");HWND list=GetDlgItem(panel,106);ListView_SetItemState(list,0,LVIS_SELECTED,LVIS_SELECTED);SendMessageW(panel,WM_COMMAND,110,0);_WorkspaceTestHistoryReady(panel);ListView_SetItemState(list,0,LVIS_SELECTED,LVIS_SELECTED);
+            SetDlgItemTextW(panel,118,L"relative.txt");SendMessageW(panel,WM_COMMAND,117,0);GetDlgItemTextW(panel,107,display,COUNTOF(display));
+            _WorkspaceTestCheck(&result,wcsstr(display,L"完整路径") && HistoryService_GetEntry(store,Path_Get(missing),&count),"relative relocation input is rejected without mutation");
+            SetDlgItemTextW(panel,118,Path_Get(collision));SendMessageW(panel,WM_COMMAND,117,0);bool collisionRejected=!_WorkspaceTestHistoryReady(panel);GetDlgItemTextW(panel,107,display,COUNTOF(display));
+            _WorkspaceTestCheck(&result,collisionRejected && wcsstr(display,L"183") && HistoryService_GetEntry(store,Path_Get(missing),&count),"existing destination history conflict preserves old record and reports error");
+            SetDlgItemTextW(panel,118,Path_Get(destination));ListView_SetItemState(list,0,LVIS_SELECTED,LVIS_SELECTED);SendMessageW(panel,WM_COMMAND,117,0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestHistoryReady(panel) && !HistoryService_GetEntry(store,Path_Get(missing),&count) && HistoryService_GetEntry(store,Path_Get(destination),&count) && count==1,"relocate button replaces old path on disk without incrementing opens");
+            unsigned long long line=0,column=0;
+            _WorkspaceTestCheck(&result,HistoryService_GetPosition(store,Path_Get(destination),&line,&column) && line==7 && column==9,"relocation preserves reading coordinates");
+            SetDlgItemTextW(panel,101,L"other.txt");ListView_GetItemText(list,0,4,display,COUNTOF(display));
+            _WorkspaceTestCheck(&result,ListView_GetItemCount(list)==1 && !lstrcmpW(display,L"置顶") && Path_IsExistingFile(destination) && !Path_IsExistingFile(missing),"relocated record remains pinned and only metadata changes");
+            ListView_SetItemState(list,0,LVIS_SELECTED,LVIS_SELECTED);NMHDR notice={list,106,NM_RETURN};SendMessageW(panel,WM_NOTIFY,106,(LPARAM)&notice);
+            _WorkspaceTestCheck(&result,_WorkspaceTestText("owned history removal fixture") && !IsSaveNeeded(),"relocated history opens selected existing document");
+            DestroyWindow(panel);Path_Release(missing);Path_Release(destination);Path_Release(collision);
+        }
         if(!lstrcmpW(historyStage,L"position")){
             HPATHL reading=Path_Allocate(folder);Path_Append(reading,L"position.md");
             _WorkspaceTestCheck(&result,FileLoad(reading,FLF_None,0,0),"position fixture opens in independent document");

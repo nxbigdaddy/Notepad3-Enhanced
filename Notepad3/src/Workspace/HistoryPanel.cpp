@@ -28,7 +28,7 @@ struct Panel {
 Panel* State(HWND window){return reinterpret_cast<Panel*>(GetWindowLongPtrW(window,GWLP_USERDATA));}
 int Scale(HWND window,int value){return MulDiv(value,GetDpiForWindow(window),96);}
 HWND Child(HWND window,const wchar_t* cls,const wchar_t* text,DWORD style,int id,int x,int y,int width,int height){return CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|WS_TABSTOP|style,Scale(window,x),Scale(window,y),Scale(window,width),Scale(window,height),window,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);}
-std::wstring Text(HWND window,int id){wchar_t value[4097]{};GetDlgItemTextW(window,id,value,4097);return value;}
+std::wstring Text(HWND window,int id){HWND control=GetDlgItem(window,id);int length=(std::min)(GetWindowTextLengthW(control),32767);std::vector<wchar_t> value(static_cast<size_t>(length)+1);GetWindowTextW(control,value.data(),length+1);return value.data();}
 bool Filter(Panel* s){
     std::vector<std::wstring> extensions;
     if(!np3::ParseSearchExtensions(Text(s->window,102),extensions)){SetDlgItemTextW(s->window,107,L"类型格式无效，请使用 *.md;*.txt 或 *。已有列表保留。");return false;}
@@ -68,12 +68,14 @@ void Refresh(Panel* s,const np3::HistoryChange* change=nullptr){
         }catch(...){job->error=ERROR_NOT_ENOUGH_MEMORY;}
         job->done=true;
     }).detach();s->job=job;
-    for(int id:{104,110,111,112,115})EnableWindow(GetDlgItem(s->window,id),FALSE);
+    for(int id:{104,110,111,112,115,117})EnableWindow(GetDlgItem(s->window,id),FALSE);
 }
 void Layout(Panel* s){RECT r{};GetClientRect(s->window,&r);int m=Scale(s->window,12),width=(std::max)(0,static_cast<int>(r.right)-2*m);
     MoveWindow(GetDlgItem(s->window,102),m,Scale(s->window,38),Scale(s->window,144),Scale(s->window,26),TRUE);
     MoveWindow(GetDlgItem(s->window,101),m+Scale(s->window,156),Scale(s->window,38),(std::max)(0,width-Scale(s->window,156)),Scale(s->window,26),TRUE);
-    MoveWindow(GetDlgItem(s->window,106),m,Scale(s->window,142),width,(std::max)(0,static_cast<int>(r.bottom)-Scale(s->window,178)),TRUE);
+    MoveWindow(GetDlgItem(s->window,118),m,Scale(s->window,142),(std::max)(0,width-Scale(s->window,112)),Scale(s->window,26),TRUE);
+    MoveWindow(GetDlgItem(s->window,117),m+(std::max)(0,width-Scale(s->window,100)),Scale(s->window,142),Scale(s->window,100),Scale(s->window,26),TRUE);
+    MoveWindow(GetDlgItem(s->window,106),m,Scale(s->window,178),width,(std::max)(0,static_cast<int>(r.bottom)-Scale(s->window,214)),TRUE);
     MoveWindow(GetDlgItem(s->window,107),m,r.bottom-Scale(s->window,28),width,Scale(s->window,22),TRUE);
 }
 void CancelClear(Panel* s){s->clearUntil=0;SetDlgItemTextW(s->window,112,L"清空历史");ShowWindow(GetDlgItem(s->window,116),SW_HIDE);}
@@ -100,6 +102,13 @@ void Mutate(Panel* s,np3::HistoryAction action){
     const auto& entry=s->rows[s->visible[selected]].entry;
     np3::HistoryChange change;change.action=action;change.path=entry.path;change.pinned=!entry.pinned;Refresh(s,&change);
 }
+void Relocate(Panel* s){
+    if(s->job)return;
+    int selected=ListView_GetNextItem(GetDlgItem(s->window,106),-1,LVNI_SELECTED);if(selected<0 || static_cast<size_t>(selected)>=s->visible.size()){SetDlgItemTextW(s->window,107,L"请先选择要重新定位的历史记录。");return;}
+    std::wstring destination=Text(s->window,118);
+    if(destination.empty() || PathIsRelativeW(destination.c_str())){SetDlgItemTextW(s->window,107,L"请输入目标文件的完整路径；只修改历史记录，不移动文件。");return;}
+    np3::HistoryChange change;change.action=np3::HistoryAction::Relocate;change.path=s->rows[s->visible[selected]].entry.path;change.destination=destination;Refresh(s,&change);
+}
 void Open(Panel* s){int selected=ListView_GetNextItem(GetDlgItem(s->window,106),-1,LVNI_SELECTED);if(selected<0 || static_cast<size_t>(selected)>=s->visible.size())return;
     Row row=s->rows[s->visible[selected]];
     if(row.missing){SetDlgItemTextW(s->window,107,L"文件不存在或不可访问；记录仍保留。");return;}
@@ -119,6 +128,8 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam){Pane
             Child(window,L"EDIT",L"500",ES_AUTOHSCROLL,114,200,108,76,26);SendDlgItemMessageW(window,114,EM_SETLIMITTEXT,5,0);
             Child(window,L"BUTTON",L"应用上限",0,115,292,108,100,26);
             Child(window,L"BUTTON",L"取消清空",0,116,408,108,100,26);ShowWindow(GetDlgItem(window,116),SW_HIDE);
+            Child(window,L"EDIT",L"",ES_AUTOHSCROLL,118,12,142,600,26);SendDlgItemMessageW(window,118,EM_SETLIMITTEXT,32767,0);SendDlgItemMessageW(window,118,EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"目标文件完整路径（只更新历史，不移动文件）"));
+            Child(window,L"BUTTON",L"重新定位",0,117,624,142,100,26);
             HWND list=Child(window,WC_LISTVIEWW,L"",LVS_REPORT|LVS_OWNERDATA|LVS_SINGLESEL|LVS_SHOWSELALWAYS,106,12,104,700,350);ListView_SetExtendedListViewStyle(list,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
             const wchar_t* titles[]={L"文件",L"路径",L"最近打开",L"次数",L"状态"};const int widths[]={140,320,160,60,120};
             for(int i=0;i<5;++i){LVCOLUMNW c{};c.mask=LVCF_TEXT|LVCF_WIDTH;c.pszText=const_cast<wchar_t*>(titles[i]);c.cx=Scale(window,widths[i]);ListView_InsertColumn(list,i,&c);}
@@ -131,13 +142,13 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam){Pane
         if(message==WM_GETMINMAXINFO){auto info=reinterpret_cast<MINMAXINFO*>(lParam);info->ptMinTrackSize={Scale(window,560),Scale(window,320)};return 0;}
         if(message==WM_TIMER && s && s->clearUntil && GetTickCount64()>s->clearUntil){CancelClear(s);SetDlgItemTextW(window,107,L"清空确认已超时，历史未清除。");}
         if(message==WM_TIMER && s && s->job && s->job->done){auto job=s->job;s->job.reset();
-            for(int id:{104,110,111,112,115})EnableWindow(GetDlgItem(window,id),TRUE);
+            for(int id:{104,110,111,112,115,117})EnableWindow(GetDlgItem(window,id),TRUE);
             if(!job->error){auto previous=std::move(s->rows);s->rows=std::move(job->rows);if(!Filter(s)){s->rows=std::move(previous);return 0;}}
             wchar_t status[200];DWORD error=job->error?job->error:HistoryService_Error();
             if(error)StringCchPrintfW(status,200,L"历史读写错误 %lu；已有记录保留。",error);
             else StringCchPrintfW(status,200,L"%zu 条历史记录。双击或 Enter 打开；失效记录保留。",s->rows.size());SetDlgItemTextW(window,107,status);return 0;
         }
-        if(message==WM_COMMAND && s){int id=LOWORD(wParam);if(id!=112 && id!=116 && HIWORD(wParam)!=EN_CHANGE)CancelClear(s);if(id==112)Clear(s);else if(id==116){CancelClear(s);SetDlgItemTextW(window,107,L"已取消清空，历史未清除。");}else if(id==115)Capacity(s);else if(id==104)Refresh(s);else if(id==110)Mutate(s,np3::HistoryAction::Pin);else if(id==111)Mutate(s,np3::HistoryAction::Remove);else if((id==101 || id==102) && HIWORD(wParam)==EN_CHANGE)Filter(s);else if(id==109){HISTORY_STATE settings{};SendMessageW(s->parent,NP3_WM_HISTORY_STATE,0,reinterpret_cast<LPARAM>(&settings));settings.enabled=SendDlgItemMessageW(window,109,BM_GETCHECK,0,0)==BST_CHECKED;SendMessageW(s->parent,NP3_WM_HISTORY_STATE,1,reinterpret_cast<LPARAM>(&settings));}return 0;}
+        if(message==WM_COMMAND && s){int id=LOWORD(wParam);if(id!=112 && id!=116 && HIWORD(wParam)!=EN_CHANGE)CancelClear(s);if(id==117)Relocate(s);else if(id==112)Clear(s);else if(id==116){CancelClear(s);SetDlgItemTextW(window,107,L"已取消清空，历史未清除。");}else if(id==115)Capacity(s);else if(id==104)Refresh(s);else if(id==110)Mutate(s,np3::HistoryAction::Pin);else if(id==111)Mutate(s,np3::HistoryAction::Remove);else if((id==101 || id==102) && HIWORD(wParam)==EN_CHANGE)Filter(s);else if(id==109){HISTORY_STATE settings{};SendMessageW(s->parent,NP3_WM_HISTORY_STATE,0,reinterpret_cast<LPARAM>(&settings));settings.enabled=SendDlgItemMessageW(window,109,BM_GETCHECK,0,0)==BST_CHECKED;SendMessageW(s->parent,NP3_WM_HISTORY_STATE,1,reinterpret_cast<LPARAM>(&settings));}return 0;}
         if(message==WM_NOTIFY && s){auto hdr=reinterpret_cast<NMHDR*>(lParam);if(hdr->idFrom==106){
             if(hdr->code==LVN_GETDISPINFOW){auto info=reinterpret_cast<NMLVDISPINFOW*>(lParam);if((info->item.mask&LVIF_TEXT) && info->item.iItem>=0 && static_cast<size_t>(info->item.iItem)<s->visible.size()){
                 const Row& row=s->rows[s->visible[info->item.iItem]];s->display=row.entry.path;
