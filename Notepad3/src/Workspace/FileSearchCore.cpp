@@ -3,6 +3,7 @@
 #include <set>
 #include <deque>
 #include <cwctype>
+#include <cstring>
 
 namespace np3 { namespace {
 bool Equal(const std::wstring& a,const std::wstring& b) {return CompareStringOrdinal(a.c_str(),-1,b.c_str(),-1,TRUE)==CSTR_EQUAL;}
@@ -91,5 +92,60 @@ SearchSummary SearchFiles(const SearchOptions& options,const std::atomic_bool& c
     if(cancel.load()){summary.cancelled=true;return summary;}
     if(!batch.empty() && !sink(batch)) summary.cancelled=true;
     return summary;
+}
+namespace {
+struct FileHandle { HANDLE value=INVALID_HANDLE_VALUE; ~FileHandle(){if(value!=INVALID_HANDLE_VALUE)CloseHandle(value);} };
+bool Word(wchar_t character){WORD type=0;return character==L'_' || (GetStringTypeW(CT_CTYPE1,&character,1,&type) && (type&(C1_ALPHA|C1_DIGIT)));}
+bool Decode(const std::vector<unsigned char>& bytes,std::wstring& text) {
+    if(bytes.size()>=2 && ((bytes[0]==0xff && bytes[1]==0xfe)||(bytes[0]==0xfe && bytes[1]==0xff))){
+        if(bytes.size()%2)return false; bool little=bytes[0]==0xff;
+        for(size_t i=2;i<bytes.size();i+=2)text.push_back(static_cast<wchar_t>(little?bytes[i]|(bytes[i+1]<<8):(bytes[i]<<8)|bytes[i+1]));
+        for(size_t i=0;i<text.size();++i){if(text[i]>=0xd800 && text[i]<=0xdbff){if(++i==text.size() || text[i]<0xdc00 || text[i]>0xdfff)return false;}else if(text[i]>=0xdc00 && text[i]<=0xdfff)return false;}
+    }else{
+        size_t start=bytes.size()>=3 && bytes[0]==0xef && bytes[1]==0xbb && bytes[2]==0xbf?3:0;
+        if(bytes.size()>start){int count=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,reinterpret_cast<const char*>(bytes.data()+start),static_cast<int>(bytes.size()-start),nullptr,0);if(!count)return false;
+            text.resize(count);if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,reinterpret_cast<const char*>(bytes.data()+start),static_cast<int>(bytes.size()-start),&text[0],count))return false;}
+    }
+    return text.find(L'\0')==std::wstring::npos;
+}
+}
+ContentSummary SearchContents(const std::vector<SearchFile>& files,const ContentOptions& options,const std::atomic_bool& cancel,const std::function<bool(const ContentMatch&)>& sink) {
+    ContentSummary result;
+    if(options.query.empty() || options.query.size()>4096 || options.query.find(L'\0')!=std::wstring::npos || options.query.find_first_of(L"\r\n")!=std::wstring::npos || !options.maxBytes || options.maxBytes>64*1024*1024 || !options.maxMatches || !sink){result.errors.push_back({L"",ERROR_INVALID_PARAMETER});return result;}
+    for(const auto& file:files){
+        if(cancel.load()){result.cancelled=true;return result;}
+        FileHandle handle;handle.value=CreateFileW(file.path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_SEQUENTIAL_SCAN,nullptr);
+        if(handle.value==INVALID_HANDLE_VALUE){result.errors.push_back({file.path,GetLastError()});continue;}
+        BY_HANDLE_FILE_INFORMATION before{},after{};
+        if(!GetFileInformationByHandle(handle.value,&before)){result.errors.push_back({file.path,GetLastError()});continue;}
+        if(before.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT)){++result.skipped;continue;}
+        unsigned long long size=(static_cast<unsigned long long>(before.nFileSizeHigh)<<32)|before.nFileSizeLow;
+        if(size>options.maxBytes){++result.skipped;continue;}
+        std::vector<unsigned char> bytes(static_cast<size_t>(size));size_t offset=0;bool read=true;
+        while(offset<bytes.size()){
+            if(cancel.load()){result.cancelled=true;return result;}DWORD count=0;
+            if(!ReadFile(handle.value,bytes.data()+offset,static_cast<DWORD>((std::min)(bytes.size()-offset,size_t(65536))),&count,nullptr)){result.errors.push_back({file.path,GetLastError()});read=false;break;}
+            if(!count){result.errors.push_back({file.path,ERROR_HANDLE_EOF});read=false;break;}offset+=count;
+        }
+        if(!read)continue;
+        if(!GetFileInformationByHandle(handle.value,&after)){result.errors.push_back({file.path,GetLastError()});continue;}
+        if(before.nFileSizeHigh!=after.nFileSizeHigh || before.nFileSizeLow!=after.nFileSizeLow || CompareFileTime(&before.ftLastWriteTime,&after.ftLastWriteTime)!=0){result.errors.push_back({file.path,ERROR_RETRY});continue;}
+        std::wstring text;if(!Decode(bytes,text)){++result.skipped;continue;}++result.files;
+        size_t line=1,start=0;
+        for(size_t i=0;i<text.size();++i){
+            if(cancel.load()){result.cancelled=true;return result;}
+            if(text[i]==L'\r' || text[i]==L'\n'){if(text[i]==L'\r' && i+1<text.size() && text[i+1]==L'\n')++i;++line;start=i+1;continue;}
+            if(options.query.size()>text.size()-i)continue;
+            bool matches=CompareStringOrdinal(text.data()+i,static_cast<int>(options.query.size()),options.query.data(),static_cast<int>(options.query.size()),options.caseSensitive?FALSE:TRUE)==CSTR_EQUAL;
+            if(!matches)continue;
+            size_t end=i+options.query.size();if(options.wholeWord && ((i && Word(text[i-1])) || (end<text.size() && Word(text[end]))))continue;
+            if(result.matches==options.maxMatches){result.limited=true;return result;}
+            size_t contextStart=(std::max)(start,i>80?i-80:0),contextEnd=text.find_first_of(L"\r\n",i);if(contextEnd==std::wstring::npos)contextEnd=text.size();contextEnd=(std::min)(contextEnd,end+80);
+            ContentMatch match{file.path,text.substr(contextStart,contextEnd-contextStart),line,i-start+1,options.query.size()};++result.matches;
+            if(!sink(match)){result.cancelled=true;return result;}
+            i=end-1;
+        }
+    }
+    return result;
 }
 }
