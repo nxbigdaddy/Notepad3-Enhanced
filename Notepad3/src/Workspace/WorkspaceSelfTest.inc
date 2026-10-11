@@ -1228,6 +1228,16 @@ static void _WorkspaceSelfTest()
                     SciCall_Undo(); _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"actual AI response replacement undoes in one step");
                 }
             }
+            SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(aiPanel,120),L"");
+            SendDlgItemMessageW(aiPanel,116,CB_SETCURSEL,AI_ASK-AI_SUMMARIZE,0);
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(117,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,!AiPanel_IsBusy(workspace->ai),"current document question requires a nonempty question before requesting");
+            SetWindowTextW(GetDlgItem(aiPanel,120),L"文档有什么内容？");
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(117,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA"),"current document answer arrives without modifying selected or unselected text");
+            _WorkspaceTestCheck(&result,!IsWindowEnabled(GetDlgItem(aiPanel,115)),"current document answer is view only");
+            SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(115,BN_CLICKED),0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestText("alpha\r\nA"),"synthetic apply command cannot apply a question answer");
             UndoTransActionBegin(); SciCall_SetTargetRange(0,SciCall_GetLength()); Sci_ReplaceTargetTestChgHist(17,"old\r\nkeep\r\nsecond"); EndUndoTransAction();
             SciCall_SetSel(0,17); SetWindowTextW(GetDlgItem(aiPanel,120),L"");
             SendMessageW(aiPanel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);

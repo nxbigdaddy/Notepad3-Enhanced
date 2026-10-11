@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-enum AI_ACTION { AI_EXPLAIN, AI_TRANSLATE, AI_REWRITE, AI_GENERATE, AI_SUMMARIZE, AI_POLISH, AI_EXPAND, AI_SHORTEN, AI_CORRECT };
+enum AI_ACTION { AI_EXPLAIN, AI_TRANSLATE, AI_REWRITE, AI_GENERATE, AI_SUMMARIZE, AI_POLISH, AI_EXPAND, AI_SHORTEN, AI_CORRECT, AI_ASK };
 enum AI_STATUS { AI_OK, AI_CONFIG, AI_LIMIT, AI_TEXT, AI_RESPONSE, AI_INCOMPLETE, AI_MEMORY };
 int AiEndpoint_Validate(const wchar_t* endpoint);
 int AiProtocol_Request(const char* model, int action, const char* input, size_t length, const char* instruction, char** output, size_t* outputLength);

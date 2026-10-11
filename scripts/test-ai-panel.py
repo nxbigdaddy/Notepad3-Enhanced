@@ -10,7 +10,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             assert self.headers.get('Authorization') == 'Bearer fake-panel-test-key'
             assert self.headers.get('Cookie') is None
             content = body['messages'][1]['content']
-            assert content in ('alpha', '生成中文', 'old\r\nkeep\r\nsecond', 'old\r\n' * 1200)
+            assert content in ('alpha', '生成中文', 'old\r\nkeep\r\nsecond', 'old\r\n' * 1200, 'Question:\n文档有什么内容？\n\nCurrent document:\nalpha\r\nA')
             with self.server.lock: self.server.requests.append(body)
             if 'delay' in body['messages'][0]['content']: time.sleep(2)
             answer = 'new\r\nkeep\r\nthird' if content == 'old\r\nkeep\r\nsecond' else '模拟结果'
@@ -34,13 +34,15 @@ try:
     (folder/'server-verification.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
     print(process.stdout); print(process.stderr)
     assert process.returncode == 0, 'native panel checks failed'
-    assert not server.errors and len(server.requests) == 12, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
+    assert not server.errors and len(server.requests) == 13, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
     assert server.requests[3]['messages'][1]['content'] == '生成中文'
     for index, prompt in enumerate(('Summarize', 'Polish', 'Expand', 'Shorten', 'Correct'), 4):
         assert prompt in server.requests[index]['messages'][0]['content']
         assert server.requests[index]['messages'][1]['content'] == 'alpha'
-    assert server.requests[9]['messages'][1]['content'] == 'old\r\nkeep\r\nsecond'
-    assert server.requests[10]['messages'][1]['content'] == 'old\r\n' * 1200
+    assert server.requests[9]['messages'][1]['content'] == 'Question:\n文档有什么内容？\n\nCurrent document:\nalpha\r\nA'
+    assert '文档有什么内容？' not in server.requests[9]['messages'][0]['content']
+    assert server.requests[10]['messages'][1]['content'] == 'old\r\nkeep\r\nsecond'
+    assert server.requests[11]['messages'][1]['content'] == 'old\r\n' * 1200
     match = re.search(r'Evidence: (.+workspace-test-[a-f0-9]+)', process.stdout)
     assert match, 'workspace evidence path missing'
     settings = (pathlib.Path(match.group(1).strip()) / 'test.ini').read_text(encoding='utf-8-sig')

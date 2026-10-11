@@ -76,6 +76,15 @@ int main() {
             if(action>=AI_SUMMARIZE)expect(std::string(output,length).find(addedPrompts[action-AI_SUMMARIZE])!=std::string::npos && std::string(output,length).find("Keep headings.")!=std::string::npos,"new action uses distinct instruction and retains custom constraint");
             JsonFormat_Free(compact); AiProtocol_Free(output); output = nullptr;
         }
+        expect(AiProtocol_Request("model", AI_ASK, input.data(), input.size(), "What is supported?", &output, &length) == AI_OK,"document question request succeeds");
+        const std::string questionBody(output,length);
+        expect(questionBody.find("Question:") != std::string::npos && questionBody.find("Current document:") != std::string::npos,"question and full document are labeled");
+        expect(questionBody.find("What is supported?") > questionBody.find("\"role\":\"user\""),"question is user content rather than system instruction");
+        char* questionCompact=nullptr; size_t questionSize=0,questionError=0;
+        expect(JsonFormat(output,length,1,"",&questionCompact,&questionSize,&questionError)==0,"question request validates strict JSON");
+        JsonFormat_Free(questionCompact); AiProtocol_Free(output); output=nullptr;
+        expect(AiProtocol_Request("model",AI_ASK,"x",1,nullptr,&output,&length)==AI_CONFIG,"missing question rejected");
+        expect(AiProtocol_Request("model",AI_ASK,nullptr,0,"question",&output,&length)==AI_CONFIG,"empty document rejected");
         expect(AiProtocol_Request("model", 99, "x", 1, nullptr, &output, &length) == AI_CONFIG, "invalid action");
         expect(AiProtocol_Request("model", AI_EXPLAIN, "\xFF", 1, nullptr, &output, &length) == AI_TEXT, "invalid source UTF8");
         std::string large(256 * 1024 + 1, 'x');

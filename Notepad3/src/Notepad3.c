@@ -12653,7 +12653,7 @@ static bool _AiRun(const AI_PANEL_CAPTURE* request)
     if (!workspace || !request || Sci_IsMultiOrRectangleSelection()) return false;
     DocPos anchor = SciCall_GetAnchor(), caret = SciCall_GetCurrentPos();
     DocPos start = min_p(anchor, caret), end = max_p(anchor, caret);
-    if (request->action != AI_GENERATE && start == end) { start = 0; end = SciCall_GetLength(); }
+    if (request->action == AI_ASK || (request->action != AI_GENERATE && start == end)) { start = 0; end = SciCall_GetLength(); }
     if (end - start > 256 * 1024) return false;
     WORKSPACE_DOCUMENT* doc = &workspace->documents[workspace->active];
     AI_PANEL_SOURCE source = {doc->id, doc->version, start, end, anchor, caret};
