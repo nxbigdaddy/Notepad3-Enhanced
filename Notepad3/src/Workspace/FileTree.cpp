@@ -1,5 +1,6 @@
 #include "FileTree.h"
 #include "FileSearchPanel.h"
+#include "HistoryPanel.h"
 #include "../UI/PanelTheme.h"
 #include <commctrl.h>
 #include <shobjidl.h>
@@ -56,7 +57,7 @@ struct Tree {
     np3::PanelTheme theme;
     std::atomic<HWND> window{nullptr};
     std::atomic<unsigned long long> generation{0};
-    HWND parent = nullptr, tree = nullptr, choose = nullptr, refresh = nullptr, search = nullptr, grip = nullptr;
+    HWND parent = nullptr, tree = nullptr, choose = nullptr, refresh = nullptr, search = nullptr, history = nullptr, grip = nullptr;
     int widthDip = 240, startWidthDip = 240; bool dragging = false; RECT area{};
     HIMAGELIST images = nullptr;
     std::wstring root, loading, limit;
@@ -319,10 +320,10 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         int width = LOWORD(lParam), height = HIWORD(lParam); int top = MulDiv(30, GetDpiForWindow(window), 96);
         int gap=(std::min)(width,MulDiv(6,GetDpiForWindow(window),96));
         MoveWindow(state->grip,width-gap,0,gap,height,TRUE); width-=gap;
-        MoveWindow(state->choose, 0, 0, width / 3, top, TRUE); MoveWindow(state->refresh, width / 3, 0, width / 3, top, TRUE); MoveWindow(state->search, width * 2 / 3, 0, width - width * 2 / 3, top, TRUE);
+        MoveWindow(state->choose, 0, 0, width / 4, top, TRUE); MoveWindow(state->refresh, width / 4, 0, width / 4, top, TRUE); MoveWindow(state->search, width / 2, 0, width / 4, top, TRUE); MoveWindow(state->history,width * 3 / 4,0,width-width * 3 / 4,top,TRUE);
         MoveWindow(state->tree, 0, top, width, (std::max)(0, height - top), TRUE); return 0;
     }
-    if (message == WM_COMMAND && state) { if ((HWND)lParam == state->choose) Choose(state); else if ((HWND)lParam == state->refresh) Root(state, state->root.c_str()); else if ((HWND)lParam == state->search) FileSearch_Show(state->parent,state->root.c_str()); return 0; }
+    if (message == WM_COMMAND && state) { if ((HWND)lParam == state->choose) Choose(state); else if ((HWND)lParam == state->refresh) Root(state, state->root.c_str()); else if ((HWND)lParam == state->search) FileSearch_Show(state->parent,state->root.c_str()); else if((HWND)lParam==state->history)SendMessageW(state->parent,NP3_WM_HISTORY_SHOW,0,0); return 0; }
     if (message == WM_NOTIFY && state) {
         auto* notify = reinterpret_cast<NMHDR*>(lParam);
         if (notify->code == TVN_DELETEITEMW) { delete reinterpret_cast<Node*>(reinterpret_cast<NMTREEVIEWW*>(lParam)->itemOld.lParam); }
@@ -382,8 +383,9 @@ extern "C" void FileTree_Toggle(HWND parent, const wchar_t* directory, const FIL
         state->choose = CreateWindowExW(0, L"BUTTON", labels->choose, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 160, 30, window, nullptr, cls.hInstance, nullptr);
         state->refresh = CreateWindowExW(0, L"BUTTON", labels->refresh, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 160, 0, 80, 30, window, nullptr, cls.hInstance, nullptr);
         state->search = CreateWindowExW(0, L"BUTTON", L"搜索", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 80, 30, window, nullptr, cls.hInstance, nullptr);
+        state->history = CreateWindowExW(0, L"BUTTON", L"历史", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 60, 30, window, nullptr, cls.hInstance, nullptr);
         state->tree = CreateWindowExW(0, WC_TREEVIEWW, L"", WS_CHILD | WS_VISIBLE | TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS, 0, 30, 240, 270, window, nullptr, cls.hInstance, nullptr);
-        for (HWND control : {state->choose, state->refresh, state->search, state->tree}) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+        for (HWND control : {state->choose, state->refresh, state->search, state->history, state->tree}) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
         state->grip=CreateWindowExW(0,L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_NOTIFY,0,0,0,0,window,nullptr,cls.hInstance,nullptr);
         if(!state->grip || !SetWindowSubclass(state->grip,GripProc,0,0)) throw std::bad_alloc();
         Icons(state,window);

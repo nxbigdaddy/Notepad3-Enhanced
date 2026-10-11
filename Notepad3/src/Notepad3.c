@@ -51,6 +51,7 @@
 #include "Workspace/FileTree.h"
 #include "Workspace/FileSearchPanel.h"
 #include "Workspace/HistoryService.h"
+#include "Workspace/HistoryPanel.h"
 #include "TextTools/LogFilterPanel.h"
 #include "TextTools/BatchPanel.h"
 #include "UI/PanelTheme.h"
@@ -432,6 +433,7 @@ static void _PanelColors(PANEL_COLORS* colors)
 static bool _LogFilterRun(void);
 static bool _LogFilterLocate(const LOG_PANEL_LOCATION* location);
 static bool _SearchLocate(const SEARCH_LOCATION* location);
+static bool _WorkspaceHistoryStore(WCHAR* store,size_t capacity);
 static int _ConfigCheck(int kind, bool showMessage);
 static void _MarkdownExportCommand(bool pdf);
 static void _MarkdownPdfSelfTest();
@@ -2668,6 +2670,16 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
     case NP3_WM_LOGFILTER_LOCATE: return _LogFilterLocate((const LOG_PANEL_LOCATION*)lParam);
     case NP3_WM_SEARCH_LOCATE: return _SearchLocate((const SEARCH_LOCATION*)lParam);
+    case NP3_WM_HISTORY_SHOW: {
+        WCHAR store[32768];
+        return _WorkspaceHistoryStore(store,COUNTOF(store))?(LRESULT)HistoryPanel_Show(hwnd,store):0;
+    }
+    case NP3_WM_HISTORY_STATE: {
+        HISTORY_STATE* state=(HISTORY_STATE*)lParam;if(!state)return FALSE;
+        if(!wParam){state->enabled=Settings2.HistoryEnabled;state->recentEnabled=Settings.SaveRecentFiles;state->maximum=Settings2.HistoryMaximum;return TRUE;}
+        if(state->maximum<1 || state->maximum>10000)return FALSE;
+        Settings2.HistoryEnabled=state->enabled!=0;Settings2.HistoryMaximum=state->maximum;return TRUE;
+    }
     case NP3_WM_SEARCH_STATE: {
         SEARCH_STATE* state=(SEARCH_STATE*)lParam;if(!state)return FALSE;
         if(!wParam){StringCchCopyW(state->types,COUNTOF(state->types),Settings2.SearchTypes);StringCchCopyW(state->excluded,COUNTOF(state->excluded),Settings2.SearchExcluded);state->flags=Settings2.SearchFlags;return TRUE;}
@@ -3989,6 +4001,7 @@ LRESULT MsgThemeChanged(HWND hwnd, WPARAM wParam,LPARAM lParam)
 
         PanelTheme_RefreshChildren(hwnd);
         FileSearch_Refresh(hwnd);
+        HistoryPanel_Refresh(hwnd);
         MarkdownPreview_Changed(hwnd);
 
         UpdateUI(hwnd);

@@ -108,6 +108,16 @@ static bool _WorkspaceTestSearchReady(HWND window)
     }
     return false;
 }
+static bool _WorkspaceTestHistoryReady(HWND window)
+{
+    DWORD start=GetTickCount();WCHAR status[256];
+    while(IsWindow(window) && GetTickCount()-start<6000){
+        GetDlgItemTextW(window,107,status,COUNTOF(status));if(wcsstr(status,L"条历史记录"))return true;
+        MsgWaitForMultipleObjectsEx(0,NULL,25,QS_ALLINPUT,MWMO_INPUTAVAILABLE);
+        MSG message;while(PeekMessageW(&message,NULL,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}
+    }
+    return false;
+}
 static bool _WorkspaceTestAiReady(void)
 {
     DWORD start = GetTickCount();
@@ -192,6 +202,26 @@ static void _WorkspaceSelfTest()
         _WorkspaceTestCheck(&result,FileLoad(source,FLF_None,0,0) && _WorkspaceTestText("history fixture"),"successful first open retains original document bytes");
         _WorkspaceTestCheck(&result,FileLoad(source,FLF_None,0,0) && workspace->count==1,"reopening existing file reuses original tab");
         _WorkspaceTestCheck(&result,HistoryService_Flush(5000) && (enabled?(HistoryService_GetEntry(store,Path_Get(source),&count) && count==2):(GetFileAttributesW(store)==INVALID_FILE_ATTRIBUTES)),"enabled opens persist twice while disabled history creates no sidecar");
+        if(!lstrcmpW(historyStage,L"enabled")){
+            HWND panel=(HWND)SendMessageW(Globals.hwndMain,NP3_WM_HISTORY_SHOW,0,0);
+            _WorkspaceTestCheck(&result,panel && _WorkspaceTestHistoryReady(panel) && ListView_GetItemCount(GetDlgItem(panel,106))==1,"history window asynchronously displays persisted metadata");
+            _WorkspaceTestCheck(&result,(HWND)SendMessageW(Globals.hwndMain,NP3_WM_HISTORY_SHOW,0,0)==panel,"history window is reused for its owner");
+            WCHAR display[32768];ListView_GetItemText(GetDlgItem(panel,106),0,1,display,COUNTOF(display));
+            _WorkspaceTestCheck(&result,!lstrcmpW(display,Path_Get(source)),"history virtual row contains exact Unicode document path");
+            SetDlgItemTextW(panel,101,L"no-matching-document");
+            _WorkspaceTestCheck(&result,ListView_GetItemCount(GetDlgItem(panel,106))==0,"history keyword filters metadata without document changes");
+            SetDlgItemTextW(panel,101,L"中文");
+            _WorkspaceTestCheck(&result,ListView_GetItemCount(GetDlgItem(panel,106))==1,"history keyword accepts Chinese path");
+            SendDlgItemMessageW(panel,109,BM_SETCHECK,BST_UNCHECKED,0);SendMessageW(panel,WM_COMMAND,109,0);
+            _WorkspaceTestCheck(&result,!Settings2.HistoryEnabled,"history recording checkbox publishes disabled preference");
+            HWND list=GetDlgItem(panel,106);ListView_SetItemState(list,0,LVIS_SELECTED,LVIS_SELECTED);NMHDR notice={list,106,NM_RETURN};SendMessageW(panel,WM_NOTIFY,106,(LPARAM)&notice);
+            _WorkspaceTestCheck(&result,workspace->count==1 && _WorkspaceTestText("history fixture") && HistoryService_Flush(5000) && HistoryService_GetEntry(store,Path_Get(source),&count) && count==2,"history Enter reuses tab without overwriting or recording while disabled");
+            SendDlgItemMessageW(panel,109,BM_SETCHECK,BST_CHECKED,0);SendMessageW(panel,WM_COMMAND,109,0);
+            _WorkspaceTestCheck(&result,Settings2.HistoryEnabled,"history checkbox re-enables recording");
+            DestroyWindow(panel);panel=(HWND)SendMessageW(Globals.hwndMain,NP3_WM_HISTORY_SHOW,0,0);
+            _WorkspaceTestCheck(&result,_WorkspaceTestHistoryReady(panel) && SendDlgItemMessageW(panel,109,BM_GETCHECK,0,0)==BST_CHECKED && ListView_GetItemCount(GetDlgItem(panel,106))==1,"recreated history window retains metadata and recording preference");
+            DestroyWindow(panel);
+        }
         Settings2.HistoryEnabled=false;
         _WorkspaceTestCheck(&result,FileLoad(source,FLF_None,0,0) && HistoryService_Flush(5000) && (!enabled || (HistoryService_GetEntry(store,Path_Get(source),&count) && count==2)),"recording switch prevents repeated open count changes");
         Settings2.HistoryEnabled=enabled;
