@@ -16,6 +16,7 @@ Copy-Item -LiteralPath "$taskRoot\Notepad3\src\Markdown\vendor\webview2\LICENSE.
 Copy-Item -LiteralPath "$taskRoot\Notepad3\src\Markdown\vendor\webview2\NOTICE.txt" -Destination "$taskPackage\licenses\WebView2-NOTICE.txt"
 Copy-Item -LiteralPath "$taskRoot\docs\迭代进展.md" -Destination "$taskPackage\迭代进展.md"
 Copy-Item -LiteralPath "$taskRoot\docs\批量文本工具.md" -Destination "$taskPackage\批量文本工具.md"
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs') -Destination $taskPackage -Recurse -Force
 Write-Output "Packaged development build: $taskPackage\Notepad3.exe"
 
 Copy-Item -LiteralPath (Join-Path $taskOutput 'render-assets') -Destination $taskPackage -Recurse -Force
