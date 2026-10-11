@@ -12655,7 +12655,12 @@ static void _AiToggle(void)
 static bool _AiRun(const AI_PANEL_CAPTURE* request)
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
-    if (!workspace || !request || Sci_IsMultiOrRectangleSelection()) return false;
+    if (!workspace || !request) return false;
+    if(request->action==AI_CONNECTION_TEST) {
+        AI_PANEL_SETTINGS settings=_AiSettings();AI_PANEL_SOURCE source={0};
+        return AiPanel_Run(workspace->ai,&settings,&source,AI_CONNECTION_TEST,NULL,0,NULL);
+    }
+    if(Sci_IsMultiOrRectangleSelection()) return false;
     DocPos anchor = SciCall_GetAnchor(), caret = SciCall_GetCurrentPos();
     DocPos start = min_p(anchor, caret), end = max_p(anchor, caret);
     if (request->action == AI_ASK || (request->action != AI_GENERATE && start == end)) { start = 0; end = SciCall_GetLength(); }

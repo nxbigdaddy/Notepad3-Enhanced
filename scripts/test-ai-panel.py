@@ -11,7 +11,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             assert authorization in ('Bearer fake-panel-test-key', 'Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b')
             assert self.headers.get('Cookie') is None
             content = body['messages'][1]['content']
-            assert content in ('alpha', '生成中文', 'old\r\nkeep\r\nsecond', 'old\r\n' * 1200, 'Question:\n文档有什么内容？\n\nCurrent document:\nalpha\r\nA')
+            assert content in ('Reply with OK.', 'alpha', '生成中文', 'old\r\nkeep\r\nsecond', 'old\r\n' * 1200, 'Question:\n文档有什么内容？\n\nCurrent document:\nalpha\r\nA')
             with self.server.lock:
                 self.server.requests.append(body)
                 self.server.authorizations.append(authorization)
@@ -43,11 +43,13 @@ try:
     (folder/'server-verification.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
     print(process.stdout); print(process.stderr)
     assert process.returncode == 0, 'native panel checks failed'
-    assert not server.errors and len(server.requests) == 24, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
-    assert server.authorizations[:21] == ['Bearer fake-panel-test-key'] * 21
+    assert not server.errors and len(server.requests) == 25, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
+    assert server.authorizations[:22] == ['Bearer fake-panel-test-key'] * 22
     assert [re.search(r'fixture-http-(\d+)', request['messages'][0]['content']).group(1) for request in server.requests[13:20]] == ['401', '403', '402', '429', '404', '400', '503']
     assert 'fixture-truncated' in server.requests[20]['messages'][0]['content']
-    assert server.authorizations[21:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b', 'Bearer fake-panel-test-key-a']
+    assert server.requests[21]['messages'][1]['content'] == 'Reply with OK.'
+    assert 'connection test' in server.requests[21]['messages'][0]['content']
+    assert server.authorizations[22:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b', 'Bearer fake-panel-test-key-a']
     assert server.requests[3]['messages'][1]['content'] == '生成中文'
     for index, prompt in enumerate(('Summarize', 'Polish', 'Expand', 'Shorten', 'Correct'), 4):
         assert prompt in server.requests[index]['messages'][0]['content']

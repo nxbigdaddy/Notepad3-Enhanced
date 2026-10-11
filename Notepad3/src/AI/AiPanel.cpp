@@ -50,9 +50,9 @@ std::string Utf8(const wchar_t* value) {
 }
 void Status(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel->window, 130), panel->labels[label].c_str()); }
 void Busy(const Owner& panel, bool busy) {
-    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124,125}) EnableWindow(GetDlgItem(panel->window,id), !busy);
+    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124,125,126}) EnableWindow(GetDlgItem(panel->window,id), !busy);
     EnableWindow(GetDlgItem(panel->window,114), busy);
-    EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK);
+    EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK && panel->job->action != AI_CONNECTION_TEST);
 }
 void Profiles(const Owner& panel) {
     HWND combo=GetDlgItem(panel->window,123); SendMessageW(combo,CB_RESETCONTENT,0,0);
@@ -102,6 +102,7 @@ void Publish(const Owner& panel) {
     panel->published = true;
     if (job->status == AI_HTTP_OK) {
         auto output = Wide(job->result.text, job->result.length); SetWindowTextW(GetDlgItem(panel->window,122), output.c_str()); bool precise=Difference(panel,Wide(job->original.data(),job->original.size()),output); Status(panel, precise ? AP_DONE : AP_GROUPED);
+        if(job->action==AI_CONNECTION_TEST) SetWindowTextW(GetDlgItem(panel->window,130),L"连接测试成功：当前模型已返回完整回复；测试可能计费。");
     } else {
         Status(panel, job->status == AI_HTTP_CANCELED ? AP_CANCELED : AP_ERROR);
         if (job->status != AI_HTTP_CANCELED) {
@@ -130,7 +131,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         for (int i=0;i<4;++i) { int x=i*width/4,w=width/4; move(201+i,x,0,w,row); move(101+i,x,row,w-2,row-2); }
         const int buttons[] = {105,106,110,111,112,113,114,115};
         for (int i=0;i<8;++i) move(buttons[i],i*width/8,2*row,width/8-2,row-2);
-        move(205,0,3*row,width/4,row); move(120,width/4,3*row,width-width/4,row-2);
+        move(205,0,3*row,width/4,row); move(120,width/4,3*row,7*width/12-2,row-2);move(126,5*width/6,3*row,width-width*5/6-2,row-2);
         move(116,0,4*row,width/3-2,6*row); move(117,width/3,4*row,width/6-2,row-2);
         move(118,width/2,4*row,width/4,row); move(119,3*width/4,4*row,width/4-2,row-2);
         move(123,0,5*row,width/2-2,6*row);move(124,width/2,5*row,width/6-2,row-2);move(125,2*width/3,5*row,width-width*2/3-2,6*row);
@@ -169,6 +170,11 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             if(removed) {Profiles(panel);SetWindowTextW(GetDlgItem(window,130),L"已移出列表；当前设置和密钥保留，可再次保存恢复。");} else Status(panel,AP_ERROR);
             return 0;
         }
+        if(id==126) {
+            AI_PANEL_CAPTURE request{AI_CONNECTION_TEST,""};
+            if(!SendMessageW(panel->parent,NP3_WM_AI_CAPTURE,0,reinterpret_cast<LPARAM>(&request))) Status(panel,AP_ERROR);
+            return 0;
+        }
         if ((id >= 110 && id <=113) || id ==117) {
             const int selected=static_cast<int>(SendDlgItemMessageW(window,116,CB_GETCURSEL,0,0));
             if(id==117 && (selected<0 || selected>AI_ASK-AI_SUMMARIZE)) { Status(panel,AP_ERROR); return 0; }
@@ -177,7 +183,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             AI_PANEL_CAPTURE request{id==117?AI_SUMMARIZE+selected:id-110,text.c_str()};
             if (!SendMessageW(panel->parent,NP3_WM_AI_CAPTURE,0,reinterpret_cast<LPARAM>(&request))) Status(panel,AP_ERROR);
         } else if (id == 114 && panel->job) panel->job->cancel=true;
-        else if (id == 115 && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK) {
+        else if (id == 115 && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK && panel->job->action != AI_CONNECTION_TEST) {
             auto job=panel->job;
             AI_PANEL_APPLY apply{job->source,job->original.data(),job->original.size(),job->result.text,job->result.length};
             if (SendMessageW(panel->parent,NP3_WM_AI_APPLY,0,reinterpret_cast<LPARAM>(&apply))) { EnableWindow(GetDlgItem(window,115),FALSE); Status(panel,AP_READY); }
@@ -215,7 +221,7 @@ extern "C" int AiPanel_Layout(void* context,int x,int y,int width,int height) {
 extern "C" BOOL AiPanel_Run(void* context,const AI_PANEL_SETTINGS* settings,const AI_PANEL_SOURCE* source,int action,const char* original,size_t length,const char* instruction) {
     auto panel=State(context); if(!panel || !panel->window || AiPanel_IsBusy(context) || !settings || !source || (!original && length) || length>256*1024) return FALSE;
     try {
-        if(action<AI_EXPLAIN || action>AI_ASK || AiEndpoint_Validate(settings->endpoint)!=AI_OK || !settings->model[0] || settings->timeoutMs<100 || settings->timeoutMs>120000) return FALSE;
+        if(action<AI_EXPLAIN || action>AI_CONNECTION_TEST || AiEndpoint_Validate(settings->endpoint)!=AI_OK || !settings->model[0] || settings->timeoutMs<100 || settings->timeoutMs>120000) return FALSE;
         if((action==AI_GENERATE || action==AI_ASK) && (!instruction || !*instruction)) return FALSE;
         auto job=std::make_shared<Job>(); job->source=*source; job->action=action; job->endpoint=settings->endpoint; job->model=Utf8(settings->model); job->timeout=settings->timeoutMs;
         job->original.assign(original?original:"",length); job->instruction=instruction?instruction:"";
@@ -257,6 +263,7 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             SetWindowTextW(GetDlgItem(window,101),settings->endpoint); SetWindowTextW(GetDlgItem(window,102),settings->model); SetDlgItemInt(window,104,settings->timeoutMs,FALSE);
             const int ids[]={105,106,110,111,112,113,114,115}; const int texts[]={AP_SAVE,AP_DELETE,AP_EXPLAIN,AP_TRANSLATE,AP_REWRITE,AP_GENERATE,AP_CANCEL,AP_APPLY};
             for(int i=0;i<8;++i) control(L"BUTTON",labels[texts[i]],BS_PUSHBUTTON|WS_TABSTOP,ids[i]);
+            control(L"BUTTON",L"测试（计费）",BS_PUSHBUTTON|WS_TABSTOP,126);
             control(L"STATIC",labels[AP_INSTRUCTION],0,205); control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,120); SendMessageW(GetDlgItem(window,120),EM_SETLIMITTEXT,4096,0);
             HWND actions=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,116);
             for(const wchar_t* name : {L"摘要",L"润色",L"扩写",L"缩写",L"纠错",L"当前文件问答"}) SendMessageW(actions,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));

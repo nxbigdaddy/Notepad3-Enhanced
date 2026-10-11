@@ -200,6 +200,15 @@ static void _WorkspaceTestAiDiagnostics(HWND panel,WORKSPACE_TEST_RESULT* result
         _WorkspaceTestCheck(result,ready && wcsstr(status,labels[index]),"actual local service failure displays distinct actionable diagnostic");
         _WorkspaceTestCheck(result,!IsWindowEnabled(GetDlgItem(panel,115)) && !GetWindowTextLengthW(GetDlgItem(panel,122)) && _WorkspaceTestText("alpha\r\nA"),"failed or truncated answer cannot preview or overwrite source");
     }
+    SetWindowTextW(GetDlgItem(panel,120),L"private question must not be sent");SciCall_SetSelection(2,1);SciCall_AddSelection(6,5);
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(126,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA"),"connection test reaches saved service without sending or editing document");
+    _WorkspaceTestCheck(result,SciCall_GetSelections()==2,"connection test remains independent of multiple editor selections");
+    SciCall_SetSel(0,5);
+    GetWindowTextW(GetDlgItem(panel,130),status,COUNTOF(status));
+    _WorkspaceTestCheck(result,wcsstr(status,L"连接测试成功") && !IsWindowEnabled(GetDlgItem(panel,115)) && !GetWindowTextLengthW(GetDlgItem(panel,121)),"connection test displays success separately and is view only with empty source");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(115,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,_WorkspaceTestText("alpha\r\nA"),"synthetic apply cannot replace source with connection response");
     SetWindowTextW(GetDlgItem(panel,120),L"");
 }
 static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_TEST_RESULT* result)

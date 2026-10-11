@@ -112,6 +112,9 @@ int main() {
         JsonFormat_Free(questionCompact); AiProtocol_Free(output); output=nullptr;
         expect(AiProtocol_Request("model",AI_ASK,"x",1,nullptr,&output,&length)==AI_CONFIG,"missing question rejected");
         expect(AiProtocol_Request("model",AI_ASK,nullptr,0,"question",&output,&length)==AI_CONFIG,"empty document rejected");
+        expect(AiProtocol_Request("model",AI_CONNECTION_TEST,"private document",16,"private question",&output,&length)==AI_OK,"connection test request succeeds independently of source");
+        expect(std::string(output,length).find("Reply with OK.")!=std::string::npos && std::string(output,length).find("private")==std::string::npos,"connection test sends only fixed message and never supplied document or instruction");
+        AiProtocol_Free(output);output=nullptr;
         expect(AiProtocol_Request("model", 99, "x", 1, nullptr, &output, &length) == AI_CONFIG, "invalid action");
         expect(AiProtocol_Request("model", AI_EXPLAIN, "\xFF", 1, nullptr, &output, &length) == AI_TEXT, "invalid source UTF8");
         std::string large(256 * 1024 + 1, 'x');
