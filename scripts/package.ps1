@@ -11,6 +11,7 @@ if (Test-Path "$taskOutput\lng") {
 }
 Copy-Item -LiteralPath "$taskRoot\Notepad3\Build\Notepad3.ini" -Destination "$taskPackage\Notepad3.ini"
 Copy-Item -LiteralPath "$taskRoot\Notepad3\Build\Docs\License.txt" -Destination "$taskPackage\licenses\Notepad3.txt"
+Copy-Item -LiteralPath "$taskRoot\Notepad3\scintilla\pcre2\LICENCE.md" -Destination "$taskPackage\licenses\PCRE2.md"
 Copy-Item -LiteralPath "$taskRoot\Notepad3\src\Markdown\vendor\md4c\LICENSE.md" -Destination "$taskPackage\licenses\MD4C.md"
 Copy-Item -LiteralPath "$taskRoot\Notepad3\src\Markdown\vendor\webview2\LICENSE.txt" -Destination "$taskPackage\licenses\WebView2.txt"
 Copy-Item -LiteralPath "$taskRoot\Notepad3\src\Markdown\vendor\webview2\NOTICE.txt" -Destination "$taskPackage\licenses\WebView2-NOTICE.txt"

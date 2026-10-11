@@ -21,7 +21,8 @@ struct SearchSummary { size_t files=0; bool cancelled=false, limited=false; std:
 // Returning false from the sink cancels further enumeration.
 SearchSummary SearchFiles(const SearchOptions&,const std::atomic_bool& cancel,const std::function<bool(const std::vector<SearchFile>&)>& sink);
 bool ParseSearchExtensions(const std::wstring& text,std::vector<std::wstring>& extensions);
-struct ContentOptions { std::wstring query; bool caseSensitive=false,wholeWord=false; size_t maxBytes=8*1024*1024,maxMatches=100000; };
+struct ContentOptions { std::wstring query; bool caseSensitive=false,wholeWord=false,regex=false; size_t maxBytes=8*1024*1024,maxMatches=100000; };
+bool ValidateSearchRegex(const std::wstring&,bool caseSensitive);
 struct ContentMatch { std::wstring path,context; size_t line=0,column=0,length=0; }; // One-based UTF-16 coordinates.
 struct ContentSummary { size_t files=0,matches=0,skipped=0; bool cancelled=false,limited=false; std::vector<SearchError> errors; };
 // Reads only the caller-supplied file list. Strict UTF-8 / BOM UTF-16, bounded file sizes.

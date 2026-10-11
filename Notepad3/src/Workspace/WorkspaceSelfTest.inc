@@ -777,6 +777,15 @@ static void _WorkspaceSelfTest()
     ListView_SetItemState(GetDlgItem(search,106),0,LVIS_SELECTED|LVIS_FOCUSED,LVIS_SELECTED|LVIS_FOCUSED);SendMessageW(search,WM_NOTIFY,106,(LPARAM)&searchOpen);
     _WorkspaceTestCheck(&result,workspace->count==searchOriginalCount+1 && SciCall_GetSelectionStart()==15 && SciCall_GetSelectionEnd()==22 && _WorkspaceTestText(unicodeSearchText),"content location converts Chinese UTF16 column into exact UTF8 selection bytes");
     if(workspace->count>searchOriginalCount){SciCall_SetSavePoint();_WorkspaceCloseActive();}
+    SendDlgItemMessageW(search,114,BM_SETCHECK,BST_CHECKED,0);SetDlgItemTextW(search,110,L"fixt(?:ure)");SendMessageW(search,WM_COMMAND,104,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==1,"native regex checkbox invokes PCRE2 grouped expression search");
+    SetDlgItemTextW(search,110,L"(");SendMessageW(search,WM_COMMAND,104,0);GetDlgItemTextW(search,107,searchStatus,COUNTOF(searchStatus));
+    _WorkspaceTestCheck(&result,wcsstr(searchStatus,L"正则表达式无效") && ListView_GetItemCount(GetDlgItem(search,106))==1,"native invalid regex rejects scan and preserves prior results");
+    SetDlgItemTextW(search,110,L"\\p{Han}+");SendMessageW(search,WM_COMMAND,104,0);
+    _WorkspaceTestCheck(&result,_WorkspaceTestSearchReady(search) && ListView_GetItemCount(GetDlgItem(search,106))==1,"native regex supports Unicode property match");
+    ListView_SetItemState(GetDlgItem(search,106),0,LVIS_SELECTED|LVIS_FOCUSED,LVIS_SELECTED|LVIS_FOCUSED);SendMessageW(search,WM_NOTIFY,106,(LPARAM)&searchOpen);
+    _WorkspaceTestCheck(&result,workspace->count==searchOriginalCount+1 && SciCall_GetSelectionStart()==8 && SciCall_GetSelectionEnd()==14 && _WorkspaceTestText(unicodeSearchText),"native regex Unicode match selects actual Chinese UTF8 bytes");
+    if(workspace->count>searchOriginalCount){SciCall_SetSavePoint();_WorkspaceCloseActive();}
     DestroyWindow(search);
     search=FileSearch_Show(Globals.hwndMain,searchRoot);
     _WorkspaceTestCheck(&result,search && ListView_GetItemCount(GetDlgItem(search,106))==0,"file search closes and recreates without stale results");

@@ -68,6 +68,8 @@ void Start(Panel* state) {
     if(options.roots.empty()){SetWindowTextW(state->status,L"请填写搜索目录，每行一个目录。");return;}
     options.query=Text(state->query);
     np3::ContentOptions content;content.query=Text(GetDlgItem(state->window,110));content.caseSensitive=SendDlgItemMessageW(state->window,111,BM_GETCHECK,0,0)==BST_CHECKED;content.wholeWord=SendDlgItemMessageW(state->window,113,BM_GETCHECK,0,0)==BST_CHECKED;
+    content.regex=SendDlgItemMessageW(state->window,114,BM_GETCHECK,0,0)==BST_CHECKED;
+    if(content.regex && !content.query.empty() && !np3::ValidateSearchRegex(content.query,content.caseSensitive)){SetWindowTextW(state->status,L"正则表达式无效，请修正后重新搜索。");return;}
     options.recursive=SendDlgItemMessageW(state->window,109,BM_GETCHECK,0,0)==BST_CHECKED;
     options.excludedDirectories.clear();std::wstring excluded=Text(GetDlgItem(state->window,108)),entry;
     auto accept=[&](){size_t first=entry.find_first_not_of(L" \t"),last=entry.find_last_not_of(L" \t");if(first!=std::wstring::npos){auto name=entry.substr(first,last-first+1);if(name==L"." || name==L".." || name.find_first_of(L"\\/:*?\"<>|")!=std::wstring::npos)return false;options.excludedDirectories.push_back(name);}entry.clear();return true;};
@@ -123,7 +125,7 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
     Panel* state=State(window);
     try {
         if(message==WM_NCCREATE){auto* owner=static_cast<std::unique_ptr<Panel>*>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams);state=owner->release();state->window=window;SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(state));return TRUE;}
-        if(message==WM_GETMINMAXINFO){auto* size=reinterpret_cast<MINMAXINFO*>(lParam);size->ptMinTrackSize={Scale(window,600),Scale(window,440)};return 0;}
+        if(message==WM_GETMINMAXINFO){auto* size=reinterpret_cast<MINMAXINFO*>(lParam);size->ptMinTrackSize={Scale(window,660),Scale(window,440)};return 0;}
         if(!state)return DefWindowProcW(window,message,wParam,lParam);
         if(message==NP3_WM_PANEL_REFRESH){state->theme.Update(window,state->parent);Layout(state);return 0;}
         LRESULT themed=0;if(state->theme.Handle(window,message,wParam,lParam,themed))return themed;
@@ -139,6 +141,7 @@ LRESULT CALLBACK Proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
             Child(window,L"BUTTON",L"搜索",WS_TABSTOP,104,12,226,90,30);Child(window,L"BUTTON",L"停止",WS_TABSTOP,105,114,226,90,30);
             HWND recursive=Child(window,L"BUTTON",L"包含子目录",WS_TABSTOP|BS_AUTOCHECKBOX,109,218,230,120,22);SendMessageW(recursive,BM_SETCHECK,BST_CHECKED,0);
             Child(window,L"BUTTON",L"区分大小写",WS_TABSTOP|BS_AUTOCHECKBOX,111,350,230,120,22);Child(window,L"BUTTON",L"整词",WS_TABSTOP|BS_AUTOCHECKBOX,113,482,230,80,22);
+            Child(window,L"BUTTON",L"正则",WS_TABSTOP|BS_AUTOCHECKBOX,114,566,230,70,22);
             state->list=Child(window,WC_LISTVIEWW,L"",WS_TABSTOP|LVS_REPORT|LVS_OWNERDATA|LVS_SINGLESEL|LVS_SHOWSELALWAYS,106,12,268,700,204);
             ListView_SetExtendedListViewStyle(state->list,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
             const wchar_t* names[]={L"名称",L"完整路径",L"大小（字节）",L"修改时间"};int widths[]={180,370,100,160};

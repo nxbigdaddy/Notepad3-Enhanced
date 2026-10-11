@@ -4,6 +4,9 @@
 #include <deque>
 #include <cwctype>
 #include <cstring>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#define PCRE2_STATIC
+#include "../../scintilla/pcre2/src/pcre2.h"
 
 namespace np3 { namespace {
 bool Equal(const std::wstring& a,const std::wstring& b) {return CompareStringOrdinal(a.c_str(),-1,b.c_str(),-1,TRUE)==CSTR_EQUAL;}
@@ -96,6 +99,42 @@ SearchSummary SearchFiles(const SearchOptions& options,const std::atomic_bool& c
 namespace {
 struct FileHandle { HANDLE value=INVALID_HANDLE_VALUE; ~FileHandle(){if(value!=INVALID_HANDLE_VALUE)CloseHandle(value);} };
 bool Word(wchar_t character){WORD type=0;return character==L'_' || (GetStringTypeW(CT_CTYPE1,&character,1,&type) && (type&(C1_ALPHA|C1_DIGIT)));}
+std::string Utf8(const std::wstring& text){if(text.empty())return {};int count=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,text.data(),static_cast<int>(text.size()),nullptr,0,nullptr,nullptr);if(!count)return {};std::string value(count,'\0');WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,text.data(),static_cast<int>(text.size()),&value[0],count,nullptr,nullptr);return value;}
+struct Regex {
+    pcre2_code* code=nullptr;pcre2_match_data* data=nullptr;pcre2_match_context* context=nullptr;
+    ~Regex(){pcre2_match_context_free(context);pcre2_match_data_free(data);pcre2_code_free(code);}
+    bool Compile(const ContentOptions& options,const std::atomic_bool& cancel){
+        auto pattern=Utf8(options.query);if(pattern.empty())return false;int error=0;PCRE2_SIZE offset=0;
+        code=pcre2_compile(reinterpret_cast<PCRE2_SPTR>(pattern.data()),pattern.size(),PCRE2_UTF|PCRE2_UCP|PCRE2_AUTO_CALLOUT|(options.caseSensitive?0:PCRE2_CASELESS),&error,&offset,nullptr);
+        if(!code)return false;data=pcre2_match_data_create_from_pattern(code,nullptr);context=pcre2_match_context_create(nullptr);if(!data || !context)return false;
+        pcre2_set_match_limit(context,100000);pcre2_set_depth_limit(context,1000);
+        pcre2_set_callout(context,[](pcre2_callout_block*,void* state)->int{return static_cast<const std::atomic_bool*>(state)->load()?PCRE2_ERROR_CALLOUT:0;},const_cast<std::atomic_bool*>(&cancel));return true;
+    }
+};
+struct Span {size_t start,end;};
+bool RegexSpans(Regex& regex,const std::wstring& text,size_t limit,bool wholeWord,const std::atomic_bool& cancel,std::vector<Span>& spans,DWORD& error){
+    size_t lineStart=0;
+    while(lineStart<=text.size()){
+        if(cancel.load())return false;
+        size_t lineEnd=text.find_first_of(L"\r\n",lineStart);if(lineEnd==std::wstring::npos)lineEnd=text.size();
+        std::string bytes=Utf8(text.substr(lineStart,lineEnd-lineStart));size_t offset=0,previous=0,wide=0;
+        while(offset<=bytes.size()){
+            int found=pcre2_match(regex.code,reinterpret_cast<PCRE2_SPTR>(bytes.data()),bytes.size(),offset,0,regex.data,regex.context);
+            if(found==PCRE2_ERROR_NOMATCH)break;
+            if(found<0){error=(found==PCRE2_ERROR_MATCHLIMIT || found==PCRE2_ERROR_DEPTHLIMIT)?ERROR_TIMEOUT:ERROR_BAD_FORMAT;return false;}
+            PCRE2_SIZE* range=pcre2_get_ovector_pointer(regex.data);size_t begin=range[0],end=range[1];
+            if(begin==end){if(end==bytes.size())break;offset=end+1;while(offset<bytes.size() && (static_cast<unsigned char>(bytes[offset])&0xc0)==0x80)++offset;continue;}
+            if(begin>previous)wide+=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,bytes.data()+previous,static_cast<int>(begin-previous),nullptr,0);
+            size_t length=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,bytes.data()+begin,static_cast<int>(end-begin),nullptr,0);
+            if(length>4096){error=ERROR_BUFFER_OVERFLOW;return false;}
+            size_t absolute=lineStart+wide,absoluteEnd=absolute+length;
+            if(!wholeWord || ((!absolute || !Word(text[absolute-1])) && (absoluteEnd==text.size() || !Word(text[absoluteEnd])))){spans.push_back({absolute,absoluteEnd});if(spans.size()>limit)return true;}
+            wide+=length;previous=end;offset=end;if(cancel.load())return false;
+        }
+        if(lineEnd==text.size())break;lineStart=lineEnd+1;if(text[lineEnd]==L'\r' && lineStart<text.size() && text[lineStart]==L'\n')++lineStart;
+    }
+    return true;
+}
 bool Decode(const std::vector<unsigned char>& bytes,std::wstring& text) {
     if(bytes.size()>=2 && ((bytes[0]==0xff && bytes[1]==0xfe)||(bytes[0]==0xfe && bytes[1]==0xff))){
         if(bytes.size()%2)return false; bool little=bytes[0]==0xff;
@@ -109,9 +148,11 @@ bool Decode(const std::vector<unsigned char>& bytes,std::wstring& text) {
     return text.find(L'\0')==std::wstring::npos;
 }
 }
+bool ValidateSearchRegex(const std::wstring& query,bool caseSensitive){if(query.empty() || query.size()>4096 || query.find(L'\0')!=std::wstring::npos)return false;ContentOptions options;options.query=query;options.caseSensitive=caseSensitive;Regex regex;std::atomic_bool cancel(false);return regex.Compile(options,cancel);}
 ContentSummary SearchContents(const std::vector<SearchFile>& files,const ContentOptions& options,const std::atomic_bool& cancel,const std::function<bool(const ContentMatch&)>& sink) {
     ContentSummary result;
     if(options.query.empty() || options.query.size()>4096 || options.query.find(L'\0')!=std::wstring::npos || options.query.find_first_of(L"\r\n")!=std::wstring::npos || !options.maxBytes || options.maxBytes>64*1024*1024 || !options.maxMatches || !sink){result.errors.push_back({L"",ERROR_INVALID_PARAMETER});return result;}
+    Regex regex;if(options.regex && !regex.Compile(options,cancel)){result.errors.push_back({L"",ERROR_BAD_FORMAT});return result;}
     for(const auto& file:files){
         if(cancel.load()){result.cancelled=true;return result;}
         FileHandle handle;handle.value=CreateFileW(file.path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_SEQUENTIAL_SCAN,nullptr);
@@ -131,17 +172,18 @@ ContentSummary SearchContents(const std::vector<SearchFile>& files,const Content
         if(!GetFileInformationByHandle(handle.value,&after)){result.errors.push_back({file.path,GetLastError()});continue;}
         if(before.nFileSizeHigh!=after.nFileSizeHigh || before.nFileSizeLow!=after.nFileSizeLow || CompareFileTime(&before.ftLastWriteTime,&after.ftLastWriteTime)!=0){result.errors.push_back({file.path,ERROR_RETRY});continue;}
         std::wstring text;if(!Decode(bytes,text)){++result.skipped;continue;}++result.files;
+        std::vector<Span> spans;size_t span=0;if(options.regex){DWORD error=0;if(!RegexSpans(regex,text,options.maxMatches-result.matches,options.wholeWord,cancel,spans,error)){if(cancel.load()){result.cancelled=true;return result;}result.errors.push_back({file.path,error});continue;}}
         size_t line=1,start=0;
         for(size_t i=0;i<text.size();++i){
             if(cancel.load()){result.cancelled=true;return result;}
             if(text[i]==L'\r' || text[i]==L'\n'){if(text[i]==L'\r' && i+1<text.size() && text[i+1]==L'\n')++i;++line;start=i+1;continue;}
-            if(options.query.size()>text.size()-i)continue;
-            bool matches=CompareStringOrdinal(text.data()+i,static_cast<int>(options.query.size()),options.query.data(),static_cast<int>(options.query.size()),options.caseSensitive?FALSE:TRUE)==CSTR_EQUAL;
+            if(!options.regex && options.query.size()>text.size()-i)continue;
+            bool matches=options.regex?(span<spans.size() && spans[span].start==i):CompareStringOrdinal(text.data()+i,static_cast<int>(options.query.size()),options.query.data(),static_cast<int>(options.query.size()),options.caseSensitive?FALSE:TRUE)==CSTR_EQUAL;
             if(!matches)continue;
-            size_t end=i+options.query.size();if(options.wholeWord && ((i && Word(text[i-1])) || (end<text.size() && Word(text[end]))))continue;
+            size_t end=options.regex?spans[span++].end:i+options.query.size();if(options.wholeWord && ((i && Word(text[i-1])) || (end<text.size() && Word(text[end]))))continue;
             if(result.matches==options.maxMatches){result.limited=true;return result;}
             size_t contextStart=(std::max)(start,i>80?i-80:0),contextEnd=text.find_first_of(L"\r\n",i);if(contextEnd==std::wstring::npos)contextEnd=text.size();contextEnd=(std::min)(contextEnd,end+80);
-            ContentMatch match{file.path,text.substr(contextStart,contextEnd-contextStart),line,i-start+1,options.query.size()};++result.matches;
+            ContentMatch match{file.path,text.substr(contextStart,contextEnd-contextStart),line,i-start+1,end-i};++result.matches;
             if(!sink(match)){result.cancelled=true;return result;}
             i=end-1;
         }
