@@ -433,6 +433,7 @@ static int _ConfigCheck(int kind, bool showMessage);
 static void _MarkdownExportCommand(bool pdf);
 static void _MarkdownPdfSelfTest();
 static bool _MarkdownPdfSelfTestDone(uint32_t error);
+static void _MarkdownPdfSelfTestPrinting(HWND window);
 static void _WorkspaceRecoveryStart();
 static void _WorkspaceRecoveryClose();
 static void _WorkspaceRecoveryTest();
@@ -2638,6 +2639,9 @@ static void _UpdateMarkdownPreview(HWND hwnd)
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
     switch(umsg) {
+    case NP3_WM_MARKDOWN_PDF_PRINTING:
+        _MarkdownPdfSelfTestPrinting((HWND)wParam);
+        return 0;
     case NP3_WM_MARKDOWN_PDF_SELFTEST:
         _MarkdownPdfSelfTest();
         return 0;

@@ -32,6 +32,28 @@ static void _MarkdownPdfTestFinish(PDF_TEST* test)
     _Workspace()->pdfTest = NULL; FreeMem(test);
     _WorkspaceDispose(); DestroyWindow(Globals.hwndMain);
 }
+static void _MarkdownPdfTestStartLocked(PDF_TEST* test)
+{
+    test->locked = Path_CreateFile(test->target, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    _WorkspaceTestCheck(&test->result, IS_VALID_HANDLE(test->locked), "lock existing PDF against replacement");
+    test->phase = 1;
+    uint32_t startError = 0;
+    bool const started = _MarkdownExportSnapshot(test->target, &startError, true);
+    _WorkspaceTestCheck(&test->result, started, "start PDF replacement failure test");
+    if (!started) _MarkdownPdfTestFinish(test);
+}
+static void _MarkdownPdfSelfTestPrinting(HWND window)
+{
+    DOCUMENT_WORKSPACE* workspace=_Workspace(); PDF_TEST* test=workspace?workspace->pdfTest:NULL;
+    if(test) { char note[100]; DWORD written; StringCchPrintfA(note,COUNTOF(note),"PRINT submission phase=%i window=%p\r\n",test->phase,window); WriteFile(test->result.log,note,(DWORD)strlen(note),&written,NULL); }
+    if(!test || test->phase!=2) return;
+    _WorkspaceTestCheck(&test->result,window && MarkdownPdf_IsBusy(Globals.hwndMain),"printing cancellation observes actual submitted PrintToPdf task");
+    _WorkspaceTestCheck(&test->result,MarkdownPdf_Cancel(Globals.hwndMain),"printing cancellation destroys its active task window");
+    _WorkspaceTestCheck(&test->result,!MarkdownPdf_IsBusy(Globals.hwndMain) && IsSaveNeeded() && SciCall_CanUndo(),"closing submitted print task preserves source undo and releases busy state");
+    SciCall_Undo();
+    _WorkspaceTestCheck(&test->result,!IsSaveNeeded() && SciCall_GetDocPointer()==test->document,"printing cancellation retains original source savepoint and document binding");
+    _MarkdownPdfTestStartLocked(test);
+}
 static bool _MarkdownPdfSelfTestDone(uint32_t error)
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();
@@ -51,17 +73,18 @@ static bool _MarkdownPdfSelfTestDone(uint32_t error)
         bool cancelStarted=_MarkdownExportSnapshot(test->target,&cancelError,true);
         HWND canceledJob=FindWindowExW(Globals.hwndMain,NULL,L"NP3MarkdownPdfJob",NULL);
         _WorkspaceTestCheck(&test->result,cancelStarted && canceledJob && MarkdownPdf_IsBusy(Globals.hwndMain),"cancellation fixture starts actual pending WebView PDF replacement");
-        if(canceledJob) DestroyWindow(canceledJob);
+        _WorkspaceTestCheck(&test->result,MarkdownPdf_Cancel(Globals.hwndMain),"initial cancellation successfully destroys its own active task window");
         _WorkspaceTestCheck(&test->result,!MarkdownPdf_IsBusy(Globals.hwndMain) && SciCall_GetDocPointer()==test->document && IsSaveNeeded() && SciCall_CanUndo(),"destroying export job releases busy state and preserves edited source undo");
         SciCall_Undo();
         _WorkspaceTestCheck(&test->result,!IsSaveNeeded() && Path_IsExistingFile(test->target),"canceled replacement leaves original export and source savepoint available");
-        test->locked = Path_CreateFile(test->target, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        _WorkspaceTestCheck(&test->result, IS_VALID_HANDLE(test->locked), "lock existing PDF against replacement");
-        test->phase = 1;
+        SciCall_AppendText(strlen(canceled),canceled); test->phase=2;
         uint32_t startError = 0;
         bool const started = _MarkdownExportSnapshot(test->target, &startError, true);
-        _WorkspaceTestCheck(&test->result, started, "start PDF replacement failure test");
+        _WorkspaceTestCheck(&test->result, started, "start replacement awaiting actual print submission for cancellation");
         if (!started) _MarkdownPdfTestFinish(test);
+    } else if(test->phase==2) {
+        char failure[120]; StringCchPrintfA(failure,COUNTOF(failure),"printing fixture must reach submission before completion error=%08lx",(unsigned long)error);
+        _WorkspaceTestCheck(&test->result,false,failure); _MarkdownPdfTestFinish(test);
     } else {
         _WorkspaceTestCheck(&test->result, error != 0 && Path_IsExistingFile(test->target), "locked PDF replacement reports failure and retains output");
         _MarkdownPdfTestFinish(test);

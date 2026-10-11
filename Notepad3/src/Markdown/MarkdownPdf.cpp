@@ -13,6 +13,8 @@ using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 namespace {
 constexpr wchar_t ClassName[] = L"NP3MarkdownPdfJob";
+constexpr wchar_t JobProperty[] = L"NP3.MarkdownPdf.Job";
+volatile LONG jobSerial = 0;
 struct Job {
     HWND window = nullptr, parent = nullptr;
     HMODULE loader = nullptr;
@@ -20,6 +22,7 @@ struct Job {
     ComPtr<ICoreWebView2Controller> controller;
     ComPtr<ICoreWebView2> web;
     std::wstring folder, target, temporary, staging, index;
+    const char* stage = "environment";
     bool done = false, printing = false, adopted = false, ownsTemporary = false, ownsStaging = false, advanced = false, polling = false;
     ~Job() {
         if (ownsTemporary) DeleteFileW(temporary.c_str());
@@ -34,8 +37,17 @@ std::wstring Absolute(const wchar_t* path) {
     if (!written || written >= size) throw std::invalid_argument("Invalid path");
     full.resize(written); return full;
 }
+void Diagnostic(const std::shared_ptr<Job>& job,const char* event,uint32_t error) {
+    wchar_t diagnostics[32768]; DWORD count=GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_DIR",diagnostics,32768);
+    if(count && count<32740) {
+        std::wstring path=std::wstring(diagnostics)+L"\\pdf-lifecycle.log";
+        HANDLE file=CreateFileW(path.c_str(),FILE_APPEND_DATA,FILE_SHARE_READ,nullptr,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
+        if(file!=INVALID_HANDLE_VALUE) { char line[200]; DWORD written; sprintf_s(line,"event=%s stage=%s done=%i error=%08lx window=%p thread=%lu\r\n",event,job->stage,job->done,(unsigned long)error,job->window,(unsigned long)GetCurrentThreadId()); WriteFile(file,line,(DWORD)strlen(line),&written,nullptr); CloseHandle(file); }
+    }
+}
 void Finish(const std::shared_ptr<Job>& job, uint32_t error) {
     if (job->done) return;
+    Diagnostic(job,"finish",error);
     job->done = true;
     if (job->controller) job->controller->Close();
     job->web.Reset(); job->controller.Reset();
@@ -46,6 +58,7 @@ void Finish(const std::shared_ptr<Job>& job, uint32_t error) {
 }
 uint32_t Status(HRESULT status) { return FAILED(status) ? static_cast<uint32_t>(status) : ERROR_GEN_FAILURE; }
 void Print(const std::shared_ptr<Job>& job) {
+    job->stage="print";
     if (job->done || job->printing) return;
     job->printing = true;
     ComPtr<ICoreWebView2_7> printable;
@@ -60,21 +73,26 @@ void Print(const std::shared_ptr<Job>& job) {
         FAILED(settings->put_ShouldPrintBackgrounds(TRUE)) || FAILED(settings->put_ShouldPrintHeaderAndFooter(FALSE))) {
         Finish(job, ERROR_NOT_SUPPORTED); return;
     }
-    auto weak = std::weak_ptr<Job>(job);
     status = printable->PrintToPdf(job->temporary.c_str(), settings.Get(), Callback<ICoreWebView2PrintToPdfCompletedHandler>(
-        [weak](HRESULT result, BOOL success) -> HRESULT {
-            auto job = weak.lock(); if (!job || job->done) return S_OK;
+        [job](HRESULT result, BOOL success) -> HRESULT {
+            // Keep output ownership and the loader alive until the asynchronous
+            // writer completes, including when its window has been destroyed.
+            if (job->done) { if(job->ownsTemporary) DeleteFileW(job->temporary.c_str()); return S_OK; }
             uint32_t error = FAILED(result) || !success ? Status(result) : 0;
             if (!error) {
                 HANDLE file = CreateFileW(job->temporary.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
                 char signature[5] = {}; DWORD read = 0;
                 if (file == INVALID_HANDLE_VALUE || !ReadFile(file, signature, sizeof(signature), &read, nullptr) || read != sizeof(signature) || memcmp(signature, "%PDF-", 5)) error = ERROR_INVALID_DATA;
                 if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
-                if (!error && !MoveFileExW(job->temporary.c_str(), job->target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) error = GetLastError();
+                if (!error) {
+                    if (!MoveFileExW(job->temporary.c_str(), job->target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) error = GetLastError();
+                    else job->ownsTemporary = false;
+                }
             }
             Finish(job, error); return S_OK;
         }).Get());
     if (FAILED(status)) Finish(job, Status(status));
+    else if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_DIR",nullptr,0)) SendMessageW(job->parent,NP3_WM_MARKDOWN_PDF_PRINTING,reinterpret_cast<WPARAM>(job->window),0);
 }
 void PollRender(const std::shared_ptr<Job>& job) {
     if(job->done || job->printing || job->polling || !job->web) return;
@@ -100,13 +118,15 @@ void Start(const std::shared_ptr<Job>& job) {
     wchar_t temp[32768]; DWORD count = GetTempPathW(32768, temp);
     if (!count || count >= 32768) { Finish(job, ERROR_PATH_NOT_FOUND); return; }
     std::wstring data = std::wstring(temp) + L"Notepad3-Markdown-PDF-WebView2";
-    HRESULT status = create(nullptr, data.c_str(), nullptr, Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+    HRESULT status = create(nullptr,data.c_str(),nullptr,Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
         [job](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
             if (job->done) return S_OK;
             if (FAILED(result) || !environment) { Finish(job, Status(result)); return S_OK; }
             job->environment = environment;
+            job->stage="controller";
             HRESULT status = environment->CreateCoreWebView2Controller(job->window, Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
                 [job](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
+                    Diagnostic(job,"controller-callback",static_cast<uint32_t>(result));
                     if (job->done) { if (controller) controller->Close(); return S_OK; }
                     if (FAILED(result) || !controller) { Finish(job, Status(result)); return S_OK; }
                     job->controller = controller; controller->get_CoreWebView2(&job->web);
@@ -129,6 +149,7 @@ void Start(const std::shared_ptr<Job>& job) {
                         if (success) { if(job->advanced) { if(!SetTimer(job->window,2,50,nullptr)) Finish(job,ERROR_NOT_ENOUGH_MEMORY); } else Print(job); } else Finish(job, ERROR_INVALID_DATA);
                         return S_OK;
                     }).Get(), &token);
+                    job->stage="navigate";
                     HRESULT status = job->web->Navigate(L"https://np3-export.invalid/index.html");
                     if (FAILED(status)) Finish(job, Status(status));
                     return S_OK;
@@ -138,25 +159,48 @@ void Start(const std::shared_ptr<Job>& job) {
         }).Get());
     if (FAILED(status)) Finish(job, Status(status));
 }
+void ReleaseWindowJob(HWND window,std::shared_ptr<Job>* holder) {
+    auto job=*holder;
+    RemovePropW(window,JobProperty); delete holder;
+    job->window=nullptr; job->done=true;
+    if(job->controller) job->controller->Close();
+    job->web.Reset(); job->controller.Reset();
+    if(job->ownsTemporary) DeleteFileW(job->temporary.c_str());
+    if(job->ownsStaging) { DeleteFileW(job->index.c_str()); RemoveDirectoryW(job->staging.c_str()); }
+}
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
-    auto* holder = reinterpret_cast<std::shared_ptr<Job>*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    auto* holder = reinterpret_cast<std::shared_ptr<Job>*>(GetPropW(window, JobProperty));
     if (message == WM_NCCREATE) {
         auto* create = reinterpret_cast<CREATESTRUCTW*>(lParam);
-        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+        if(!SetPropW(window,JobProperty,create->lpCreateParams)) return FALSE;
         auto* owner = static_cast<std::shared_ptr<Job>*>(create->lpCreateParams); (*owner)->adopted = true;
+        return TRUE;
     } else if (message == WM_TIMER && holder) { if(wParam==2) PollRender(*holder); else Finish(*holder, ERROR_TIMEOUT); }
     else if (message == WM_NCDESTROY && holder) {
-        auto job = *holder; job->window = nullptr; job->done = true;
-        if (job->controller) job->controller->Close();
-        job->web.Reset(); job->controller.Reset();
-        if (job->ownsTemporary) DeleteFileW(job->temporary.c_str());
-        if (job->ownsStaging) { DeleteFileW(job->index.c_str()); RemoveDirectoryW(job->staging.c_str()); }
-        SetWindowLongPtrW(window, GWLP_USERDATA, 0); delete holder;
+        Diagnostic(*holder,"nc-destroy",0);
+        ReleaseWindowJob(window,holder);
     }
     return DefWindowProcW(window, message, wParam, lParam);
 }
 }
-extern "C" BOOL MarkdownPdf_IsBusy(HWND parent) { return FindWindowExW(parent, nullptr, ClassName, nullptr) != nullptr; }
+namespace {
+HWND ActiveJobWindow(HWND parent) {
+    for(HWND window=FindWindowExW(parent,nullptr,ClassName,nullptr);window;window=FindWindowExW(parent,window,ClassName,nullptr)) {
+        auto* holder=reinterpret_cast<std::shared_ptr<Job>*>(GetPropW(window,JobProperty));
+        if(holder && !(*holder)->done) return window;
+    }
+    return nullptr;
+}
+}
+extern "C" BOOL MarkdownPdf_IsBusy(HWND parent) { return ActiveJobWindow(parent)!=nullptr; }
+extern "C" BOOL MarkdownPdf_Cancel(HWND parent) {
+    HWND window=ActiveJobWindow(parent);
+    if(!window || GetWindowThreadProcessId(window,nullptr)!=GetCurrentThreadId()) return FALSE;
+    auto* holder=reinterpret_cast<std::shared_ptr<Job>*>(GetPropW(window,JobProperty));
+    Diagnostic(*holder,"cancel",0);
+    ReleaseWindowJob(window,holder);
+    return DestroyWindow(window);
+}
 extern "C" int MarkdownPdf_Start(HWND parent, const char* text, size_t length, const wchar_t* directory, const wchar_t* destination, uint32_t* error) {
     if (!error) return 0;
     *error = 0;
@@ -172,7 +216,8 @@ extern "C" int MarkdownPdf_Start(HWND parent, const char* text, size_t length, c
         auto uri = html.find("base-uri file:"); html.replace(uri, strlen("base-uri file:"), "base-uri https://np3-preview.invalid");
         wchar_t temp[32768]; DWORD count = GetTempPathW(32768, temp);
         if (!count || count >= 32768) { *error = ERROR_PATH_NOT_FOUND; return 0; }
-        job->staging = std::wstring(temp) + L"np3-pdf-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+        const auto identity=std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64())+L"-"+std::to_wstring(InterlockedIncrement(&jobSerial));
+        job->staging = std::wstring(temp) + L"np3-pdf-" + identity;
         if (!CreateDirectoryW(job->staging.c_str(), nullptr)) { *error = GetLastError(); return 0; }
         job->ownsStaging = true;
         job->index = job->staging + L"\\index.html";
@@ -181,7 +226,7 @@ extern "C" int MarkdownPdf_Start(HWND parent, const char* text, size_t length, c
         bool saved = file != INVALID_HANDLE_VALUE && WriteFile(file, html.data(), static_cast<DWORD>(html.size()), &written, nullptr) && written == html.size() && FlushFileBuffers(file);
         if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
         if (!saved) { *error = ERROR_WRITE_FAULT; DeleteFileW(job->index.c_str()); RemoveDirectoryW(job->staging.c_str()); return 0; }
-        job->temporary = job->target + L".tmp-pdf-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+        job->temporary = job->target + L".tmp-pdf-" + identity;
         HANDLE reserved = CreateFileW(job->temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (reserved == INVALID_HANDLE_VALUE) { *error = GetLastError(); DeleteFileW(job->index.c_str()); RemoveDirectoryW(job->staging.c_str()); return 0; } CloseHandle(reserved);
         job->ownsTemporary = true;

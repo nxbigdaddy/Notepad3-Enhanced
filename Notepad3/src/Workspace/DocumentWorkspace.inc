@@ -534,6 +534,7 @@ static bool _WorkspaceCanClose(FileSaveFlags flags)
 }
 static void _WorkspaceDispose()
 {
+    MarkdownPdf_Cancel(Globals.hwndMain);
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     if (!workspace) return;
     if (workspace->splitView) _SplitToggle();
