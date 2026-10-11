@@ -103,6 +103,16 @@ static void _SplitRestoreView(HWND view, const SPLIT_VIEW_STATE* state, const WO
     Sci_ViewCall(view, SCI_SETFIRSTVISIBLELINE, state->valid ? state->firstLine : doc->firstLine, 0);
     Sci_ViewCall(view, SCI_SETXOFFSET, state->valid ? state->xOffset : doc->xOffset, 0);
 }
+static void _SplitDpiChanged(WPARAM wParam, LPARAM lParam)
+{
+    DOCUMENT_WORKSPACE* workspace = _Workspace();
+    if (workspace && workspace->splitView) {
+        SendMessageW(workspace->primaryView, WM_DPICHANGED, wParam, lParam);
+        SendMessageW(workspace->splitView, WM_DPICHANGED, wParam, lParam);
+    } else {
+        SendMessageW(Globals.hwndEdit, WM_DPICHANGED, wParam, lParam);
+    }
+}
 static void _SplitThemeState(bool capture)
 {
     DOCUMENT_WORKSPACE* workspace = _Workspace();

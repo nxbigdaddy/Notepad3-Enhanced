@@ -2,6 +2,12 @@
 // Development-only opt-in test driven by NP3_WORKSPACE_SELFTEST_DIR. The runner
 // creates an isolated marker and fixtures; this code never picks user documents.
 typedef struct WORKSPACE_TEST_RESULT { HANDLE log; int checks, failures; } WORKSPACE_TEST_RESULT;
+static LRESULT CALLBACK _WorkspaceTestDpiMessage(HWND window,UINT message,WPARAM wParam,LPARAM lParam,UINT_PTR subclass,DWORD_PTR counter)
+{
+    UNREFERENCED_PARAMETER(subclass);
+    if(message==WM_DPICHANGED) ++*(int*)counter;
+    return DefSubclassProc(window,message,wParam,lParam);
+}
 static UINT_PTR workspaceCloseTestTimer;
 static int workspaceCloseTestChoice, workspaceCloseTestClicks;
 static BOOL CALLBACK _WorkspaceTestCloseDialog(HWND dialog, LPARAM unused)
@@ -394,6 +400,14 @@ static void _WorkspaceSelfTest()
     if(SciCall_GetUndoCurrent()!=quietUndo) SciCall_Undo();
     SciCall_SetChangeHistory(oldChangeHistory);
     if(quietPreview) MarkdownPreview_Toggle(Globals.hwndMain);
+    SciCall_SetSel(1,3); SciCall_AddSelection(5,4);
+    unsigned long long singleDpiVersion=_WorkspaceVersion();
+    int singleDpiUndo=SciCall_GetUndoCurrent(); RECT singleDpiRect; GetWindowRect(Globals.hwndMain,&singleDpiRect);
+    UINT singleDpi=GetDpiForWindow(Globals.hwndMain);
+    SendMessageW(Globals.hwndMain,WM_DPICHANGED,MAKEWPARAM(singleDpi,singleDpi),(LPARAM)&singleDpiRect);
+    _WorkspaceTestCheck(&result,SciCall_GetSelections()==2 && SciCall_GetSelectionNStart(0)==1 && SciCall_GetSelectionNEnd(0)==3 && SciCall_GetSelectionNStart(1)==4 && SciCall_GetSelectionNEnd(1)==5,"DPI change handler preserves multiple selections in unsplit editor");
+    _WorkspaceTestCheck(&result,_WorkspaceVersion()==singleDpiVersion && SciCall_GetUndoCurrent()==singleDpiUndo && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"DPI change handler preserves unsplit text version undo and savepoint");
+    SciCall_ClearSelections(); SciCall_SetSel(0,0);
     HPATHL closeFixture=Path_Copy(a); Path_RemoveFileSpec(closeFixture); Path_Append(closeFixture,L"close-flow.txt");
     HANDLE closeFile=Path_CreateFile(closeFixture,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
     DWORD closeWritten=0;
@@ -522,6 +536,17 @@ static void _WorkspaceSelfTest()
     SendMessageW(Globals.hwndMain, WM_THEMECHANGED, 0, 0);
     _WorkspaceTestCheck(&result, Sci_ViewCall(primaryView, SCI_GETFIRSTVISIBLELINE, 0, 0) == 10 && SciCall_GetFirstVisibleLine() == 70 && Sci_ViewCall(primaryView, SCI_GETZOOM, 0, 0) == 1 && SciCall_GetZoom() == 3 && Sci_ViewCall(primaryView, SCI_GETANCHOR, 0, 0) == 1 && Sci_ViewCall(primaryView, SCI_GETCURRENTPOS, 0, 0) == 2 && SciCall_GetAnchor() == 4 && SciCall_GetCurrentPos() == 6, "actual theme message preserves independent split scroll zoom and selections");
     _WorkspaceTestCheck(&result, Sci_ViewCall(primaryView, SCI_MARKERGETFORETRANSLUCENT, MARKER_NP3_BOOKMARK, 0) == SciCall(SCI_MARKERGETFORETRANSLUCENT, MARKER_NP3_BOOKMARK, 0) && Sci_ViewCall(primaryView, SCI_GETFOLDMARGINCOLOUR, 0, 0) == SciCall(SCI_GETFOLDMARGINCOLOUR, 0, 0) && workspace->documents[workspace->active].version == styleVersion && SciCall_CanUndo(), "actual theme message synchronizes bookmark fold palette and preserves document version undo");
+    RECT dpiRect; GetWindowRect(Globals.hwndMain,&dpiRect);
+    UINT testDpi=GetDpiForWindow(Globals.hwndMain);
+    int primaryDpiMessages=0,secondaryDpiMessages=0;
+    bool primaryDpiHook=SetWindowSubclass(primaryView,_WorkspaceTestDpiMessage,1,(DWORD_PTR)&primaryDpiMessages)!=FALSE;
+    bool secondaryDpiHook=SetWindowSubclass(secondView,_WorkspaceTestDpiMessage,1,(DWORD_PTR)&secondaryDpiMessages)!=FALSE;
+    SendMessageW(Globals.hwndMain,WM_DPICHANGED,MAKEWPARAM(testDpi,testDpi),(LPARAM)&dpiRect);
+    if(primaryDpiHook) RemoveWindowSubclass(primaryView,_WorkspaceTestDpiMessage,1);
+    if(secondaryDpiHook) RemoveWindowSubclass(secondView,_WorkspaceTestDpiMessage,1);
+    _WorkspaceTestCheck(&result,primaryDpiHook && secondaryDpiHook && primaryDpiMessages>=1 && secondaryDpiMessages>=1,"DPI notification is delivered to both real Scintilla views independently of focus");
+    _WorkspaceTestCheck(&result,Sci_ViewCall(primaryView,SCI_GETANCHOR,0,0)==1 && Sci_ViewCall(primaryView,SCI_GETCURRENTPOS,0,0)==2 && SciCall_GetAnchor()==4 && SciCall_GetCurrentPos()==6 && Sci_ViewCall(primaryView,SCI_GETZOOM,0,0)==1 && SciCall_GetZoom()==3,"DPI change handler preserves independent split selection and zoom");
+    _WorkspaceTestCheck(&result,workspace->documents[workspace->active].version==styleVersion && SciCall_CanUndo() && Globals.hwndEdit==secondView,"DPI change handler preserves document version undo and focused view");
     RECT gutterRect; GetClientRect(workspace->splitGutter,&gutterRect);
     BITMAPINFO gutterInfo = {0}; gutterInfo.bmiHeader.biSize=sizeof(BITMAPINFOHEADER); gutterInfo.bmiHeader.biWidth=max_i(1,gutterRect.right);
     gutterInfo.bmiHeader.biHeight=-4; gutterInfo.bmiHeader.biPlanes=1; gutterInfo.bmiHeader.biBitCount=32; gutterInfo.bmiHeader.biCompression=BI_RGB;

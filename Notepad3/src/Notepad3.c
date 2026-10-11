@@ -391,6 +391,7 @@ static void _SplitSync(void);
 static void _SplitSyncStyles(void);
 static void _SplitStylesChanged(HWND view);
 static void _SplitThemeState(bool capture);
+static void _SplitDpiChanged(WPARAM wParam, LPARAM lParam);
 static bool _WorkspaceSwitch(int index);
 static bool _WorkspaceCloseActive();
 static bool _WorkspaceCanClose(FileSaveFlags flags);
@@ -3911,15 +3912,14 @@ LRESULT MsgDPIChanged(HWND hwnd, WPARAM wParam, LPARAM lParam)
 
     const RECT* const rc = (RECT*)lParam;
 
-    DocPos const pos = SciCall_GetCurrentPos();
-
     UpdateWindowLayoutForDPI(hwnd, rc, dpi);
 
-    SendMessage(Globals.hwndEdit, WM_DPICHANGED, wParam, lParam);
+    _SplitDpiChanged(wParam, lParam);
 
     MsgThemeChanged(hwnd, wParam, lParam);
 
-    Sci_GotoPosChooseCaret(pos);
+    // A DPI update must not replace selections with a collapsed caret.
+    SciCall_ChooseCaretX();
 
     return TRUE;
 }
