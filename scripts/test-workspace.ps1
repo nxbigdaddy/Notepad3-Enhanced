@@ -57,6 +57,14 @@ foreach ($taskPair in @(@('a.txt', $taskExpectedA), @('b.txt', $taskExpectedB), 
     $taskActual = [IO.File]::ReadAllBytes((Join-Path $taskFolder $taskPair[0]))
     if ([Convert]::ToBase64String($taskActual) -ne [Convert]::ToBase64String($taskPair[1])) { throw "Saved bytes differ for $($taskPair[0]): $taskFolder" }
 }
+foreach ($taskSessionName in @('two-encrypted.np3session', 'mixed-encryption.np3session')) {
+    $taskSessionBytes = [IO.File]::ReadAllBytes((Join-Path $taskFolder $taskSessionName))
+    $taskSessionRaw = [Text.Encoding]::ASCII.GetString($taskSessionBytes)
+    foreach ($taskForbidden in @('np3-fixture-a', 'np3-fixture-b', "alpha`r`nA", "beta`r`nB")) {
+        if ($taskSessionRaw.Contains($taskForbidden)) { throw "Protected session exposed raw key or document bytes: $taskSessionName" }
+    }
+}
+Write-Output 'Two encrypted/mixed disk archives contain no raw fixture keys or source text.'
 $taskCrypt = Join-Path (Split-Path $taskExe -Parent) 'np3encrypt.exe'
 foreach ($taskEncryption in @(@('encrypted-a.bin','np3-fixture-a',"alpha`r`nA"), @('encrypted-b.bin','np3-fixture-b',"beta`r`nB"), @('encrypted-a-again.bin','np3-fixture-a',"alpha`r`nA"), @('encrypted-after-session.bin','np3-fixture-a',"alpha`r`nA"))) {
     $taskEncrypted = Join-Path $taskFolder $taskEncryption[0]

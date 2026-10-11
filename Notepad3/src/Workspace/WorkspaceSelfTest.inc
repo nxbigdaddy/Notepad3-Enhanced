@@ -143,6 +143,16 @@ static HTREEITEM _WorkspaceTestTreeChild(HWND tree, HTREEITEM parent, const WCHA
     }
     return NULL;
 }
+static void _WorkspaceTestEncryptedSession(WORKSPACE_TEST_RESULT* result, NP3_SESSION session, const WCHAR* folder, bool mixed)
+{
+    HPATHL path=Path_Allocate(folder); Path_Append(path,mixed?L"mixed-encryption.np3session":L"two-encrypted.np3session");
+    uint32_t error=0; NP3_SESSION loaded=NULL;
+    bool saved=session && Session_Save(session,Path_Get(path),&error);
+    _WorkspaceTestCheck(result,saved && Session_Load(Path_Get(path),&loaded,&error),"protected encrypted-source session writes and reads actual disk archive");
+    NP3_SESSION_DOCUMENT first={0},second={0};
+    _WorkspaceTestCheck(result,loaded && Session_Count(loaded)==2 && Session_Active(loaded)==0 && Session_Get(loaded,0,&first) && Session_Get(loaded,1,&second) && (first.flags&NP3_SESSION_ENCRYPTED_SOURCE) && !!(second.flags&NP3_SESSION_ENCRYPTED_SOURCE)==!mixed && first.textLength==8 && !memcmp(first.text,"alpha\r\nA",8) && second.textLength==7 && !memcmp(second.text,"beta\r\nB",7),"disk session readback retains encryption flags active tab and exact document bytes");
+    Session_Free(loaded); Path_Release(path);
+}
 static void _WorkspaceSelfTest()
 {
     WCHAR folder[MAX_PATH_EXPLICIT];
@@ -295,10 +305,12 @@ static void _WorkspaceSelfTest()
         uint32_t encryptionError=0; NP3_SESSION encryptionSession=_WorkspaceSessionCapture(&encryptionError);
         NP3_SESSION_DOCUMENT encryptedEntryA={0},encryptedEntryB={0};
         _WorkspaceTestCheck(&result,encryptionSession && Session_Count(encryptionSession)==2 && Session_Active(encryptionSession)==0 && Session_Get(encryptionSession,0,&encryptedEntryA) && Session_Get(encryptionSession,1,&encryptedEntryB) && (encryptedEntryA.flags&NP3_SESSION_ENCRYPTED_SOURCE) && (encryptedEntryB.flags&NP3_SESSION_ENCRYPTED_SOURCE),"session capture marks both distinct encrypted document sources");
+        _WorkspaceTestEncryptedSession(&result,encryptionSession,folder,false);
         Session_Free(encryptionSession);
         workspace->documents[1].encryption=savedEncryptionB;
         encryptionSession=_WorkspaceSessionCapture(&encryptionError);
         _WorkspaceTestCheck(&result,encryptionSession && Session_Get(encryptionSession,0,&encryptedEntryA) && Session_Get(encryptionSession,1,&encryptedEntryB) && (encryptedEntryA.flags&NP3_SESSION_ENCRYPTED_SOURCE) && !(encryptedEntryB.flags&NP3_SESSION_ENCRYPTED_SOURCE),"mixed session capture does not mark plain source encrypted");
+        _WorkspaceTestEncryptedSession(&result,encryptionSession,folder,true);
         Session_Free(encryptionSession);
         _WorkspaceTestCheck(&result,_WorkspaceVersion()==encryptionVersion && SciCall_GetUndoCurrent()==encryptionUndo && SciCall_GetDocPointer()==handleA && !IsSaveNeeded() && _WorkspaceTestText("alpha\r\nA"),"encrypted and mixed snapshots preserve active document version undo and savepoint");
         HPATHL afterSession=Path_Allocate(folder); Path_Append(afterSession,L"encrypted-after-session.bin");
