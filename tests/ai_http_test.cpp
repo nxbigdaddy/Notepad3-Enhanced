@@ -19,6 +19,11 @@ int wmain(int argc, wchar_t** argv) {
     };
     try {
         expect(client && tlsClient, "service client sessions created");
+        endpoint=base+L"/models";config.endpoint=endpoint.c_str();config.model=nullptr;
+        expect(AiHttp_Models(&config,&result)==AI_HTTP_OK && std::string(result.text,result.length)=="one\n中文\n","actual authenticated GET model list decoded without model input");
+        AiHttp_Free(&result);endpoint=base+L"/models-denied";config.endpoint=endpoint.c_str();
+        expect(AiHttp_Models(&config,&result)==AI_HTTP_SERVER && result.httpStatus==401 && !result.text,"model list auth failure publishes no IDs");
+        config.model="test-model";
         expect(run(L"/ok") == AI_HTTP_OK, "local HTTP completion succeeds");
         expect(result.httpStatus == 200 && std::string(result.text, result.length) == "模拟中文\n😀", "actual HTTP body decoded correctly");
         expect(run(L"/denied") == AI_HTTP_SERVER && result.httpStatus == 401 && !result.text, "authorization error retains HTTP code without fake content");

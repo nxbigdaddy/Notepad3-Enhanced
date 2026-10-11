@@ -14,6 +14,7 @@ constexpr wchar_t ClassName[] = L"NP3AiPanel";
 struct Client { void* handle; explicit Client(const wchar_t* endpoint) : handle(AiHttp_ClientCreate(endpoint)) { if (!handle) throw std::runtime_error("client"); } ~Client() { AiHttp_ClientFree(handle); } };
 struct Job {
     AI_PANEL_SOURCE source{};
+    bool models = false;
     int action = AI_EXPLAIN, status = AI_HTTP_CONFIG;
     std::wstring endpoint;
     std::string model, original, instruction;
@@ -48,11 +49,16 @@ std::string Utf8(const wchar_t* value) {
     if (!size) throw std::runtime_error("UTF16");
     std::string result(size, 0); WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value, -1, result.data(), size, nullptr, nullptr); result.pop_back(); return result;
 }
+std::wstring ChatAddress(const wchar_t* value) {
+    std::wstring address=value;while(!address.empty() && address.back()==L'/')address.pop_back();
+    if(address.size()>=3 && address.compare(address.size()-3,3,L"/v1")==0)address+=L"/chat/completions";
+    return address.size()>2048?std::wstring{}:address;
+}
 void Status(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel->window, 130), panel->labels[label].c_str()); }
 void Busy(const Owner& panel, bool busy) {
-    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124,125,126,127,128,129,131}) EnableWindow(GetDlgItem(panel->window,id), !busy);
+    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124,125,126,127,128,129,131,132,133}) EnableWindow(GetDlgItem(panel->window,id), !busy);
     EnableWindow(GetDlgItem(panel->window,114), busy);
-    EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK && panel->job->action != AI_CONNECTION_TEST);
+    EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK && panel->job->action != AI_CONNECTION_TEST && !panel->job->models);
 }
 void Profiles(const Owner& panel) {
     HWND combo=GetDlgItem(panel->window,123); SendMessageW(combo,CB_RESETCONTENT,0,0);
@@ -109,7 +115,11 @@ void Publish(const Owner& panel) {
     auto job = panel->job;
     if (!job || !job->done.load() || panel->published) return;
     panel->published = true;
-    if (job->status == AI_HTTP_OK) {
+    if (job->status == AI_HTTP_OK && job->models) {
+        HWND combo=GetDlgItem(panel->window,102); wchar_t current[257]{};GetWindowTextW(combo,current,257);SendMessageW(combo,CB_RESETCONTENT,0,0);
+        const auto ids=Wide(job->result.text,job->result.length);size_t begin=0;while(begin<ids.size()){auto end=ids.find(L'\n',begin);auto id=ids.substr(begin,end-begin);SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(id.c_str()));begin=end+1;}
+        SetWindowTextW(combo,current);SetWindowTextW(GetDlgItem(panel->window,130),ids.empty()?L"服务返回空模型列表；可手动填写模型。":L"模型列表已获取，请下拉选择模型后保存。列表不保证模型支持文本对话。");
+    } else if (job->status == AI_HTTP_OK) {
         auto output = Wide(job->result.text, job->result.length); SetWindowTextW(GetDlgItem(panel->window,122), output.c_str()); bool precise=Difference(panel,Wide(job->original.data(),job->original.size()),output); Status(panel, precise ? AP_DONE : AP_GROUPED);
         if(job->action==AI_CONNECTION_TEST) SetWindowTextW(GetDlgItem(panel->window,130),L"连接测试成功：当前模型已返回完整回复；测试可能计费。");
     } else {
@@ -128,7 +138,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     try {
     if(message==NP3_WM_PANEL_REFRESH && panel) {
         panel->theme.Update(window,panel->parent);
-        if(panel->job && panel->published && panel->job->status==AI_HTTP_OK) Difference(panel,Wide(panel->job->original.data(),panel->job->original.size()),Wide(panel->job->result.text,panel->job->result.length));
+        if(panel->job && panel->published && panel->job->status==AI_HTTP_OK && !panel->job->models) Difference(panel,Wide(panel->job->original.data(),panel->job->original.size()),Wide(panel->job->result.text,panel->job->result.length));
         return 0;
     }
     LRESULT themed=0;
@@ -138,11 +148,11 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         int width = LOWORD(lParam), height = HIWORD(lParam), row = MulDiv(28, GetDpiForWindow(window), 96);
         auto move = [&](int id, int x, int y, int w, int h) { MoveWindow(GetDlgItem(window,id), x,y,(std::max)(0,w),(std::max)(0,h),TRUE); };
         move(107,0,0,width/6-2,row-2);move(123,width/6,0,2*width/3-2,6*row);move(124,5*width/6,0,width/6-2,row-2);
-        for(int id:{101,102,103,104,105,106,118,119,125,126,201,202,203,204}) ShowWindow(GetDlgItem(window,id),panel->settingsExpanded?SW_SHOW:SW_HIDE);
+        for(int id:{101,102,103,104,105,106,118,119,125,126,132,133,208,201,202,203,204}) ShowWindow(GetDlgItem(window,id),panel->settingsExpanded?SW_SHOW:SW_HIDE);
         int base=1;
         if(panel->settingsExpanded){
-            for(int i=0;i<4;++i){move(201+i,i*width/4,row,width/4,row);move(101+i,i*width/4,2*row,width/4-2,row-2);}
-            move(105,0,3*row,width/8-2,row-2);move(106,width/8,3*row,width/8-2,row-2);move(118,width/4,3*row,width/8,row);move(119,3*width/8,3*row,width/4-2,row-2);move(125,5*width/8,3*row,width/4-2,6*row);move(126,7*width/8,3*row,width/8-2,row-2);base=4;
+            for(int i=0;i<4;++i){move(201+i,i*width/4,row,width/4,row);move(101+i,i*width/4,2*row,width/4-2,i==1?8*row:row-2);}
+            move(105,0,3*row,width/8-2,row-2);move(106,width/8,3*row,width/8-2,row-2);move(118,width/4,3*row,width/8,row);move(119,3*width/8,3*row,width/4-2,row-2);move(125,5*width/8,3*row,width/4-2,6*row);move(126,7*width/8,3*row,width/8-2,row-2);move(208,0,4*row,width/6,row);move(133,width/6,4*row,2*width/3-2,row-2);move(132,5*width/6,4*row,width/6-2,row-2);base=5;
         }
         for(int i=0;i<6;++i)move(110+i,i*width/9,base*row,width/9-2,row-2);
         move(116,2*width/3,base*row,2*width/9-2,6*row);move(117,8*width/9,base*row,width/9-2,row-2);
@@ -168,10 +178,10 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         if(id==125 && HIWORD(wParam)==CBN_SELCHANGE) {
             if(panel->job && (!panel->job->done.load() || !panel->published)) return 0;
             const LRESULT selected=SendDlgItemMessageW(window,125,CB_GETCURSEL,0,0);
-            const wchar_t* endpoints[]={L"",L"https://api.moonshot.cn/v1/chat/completions",L"https://api.deepseek.com/chat/completions",L"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",L""};
-            if(selected<1 || selected>4) return 0;
-            SetWindowTextW(GetDlgItem(window,101),endpoints[selected]);SetWindowTextW(GetDlgItem(window,102),L"");SetWindowTextW(GetDlgItem(window,103),L"");SetWindowTextW(GetDlgItem(window,119),L"");
-            SetWindowTextW(GetDlgItem(window,130),L"仅填入地址；填写平台模型、账号ID及密钥后保存。未发起请求。");return 0;
+            const wchar_t* endpoints[]={L"",L"https://api.moonshot.cn/v1/chat/completions",L"https://api.deepseek.com/chat/completions",L"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",L"",L"https://api.openai.com/v1/chat/completions"};
+            if(selected<1 || selected>5) return 0;
+            SetWindowTextW(GetDlgItem(window,133),L"");SendDlgItemMessageW(window,102,CB_RESETCONTENT,0,0);SetWindowTextW(GetDlgItem(window,101),endpoints[selected]);SetWindowTextW(GetDlgItem(window,102),L"");SetWindowTextW(GetDlgItem(window,103),L"");SetWindowTextW(GetDlgItem(window,119),L"");
+            SetWindowTextW(GetDlgItem(window,130),L"填入 Key，点击获取模型，选择模型后保存；也可手动填写模型。");return 0;
         }
         if(id==123 && HIWORD(wParam)==CBN_SELCHANGE) {
             if(AiPanel_IsBusy(reinterpret_cast<void*>(GetWindowLongPtrW(window,GWLP_USERDATA)))) return 0;
@@ -194,6 +204,25 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             if(removed) {Profiles(panel);SetWindowTextW(GetDlgItem(window,130),L"已移出列表；当前设置和密钥保留，可再次保存恢复。");} else Status(panel,AP_ERROR);
             return 0;
         }
+        if(id==132) {
+            if(panel->job && (!panel->job->done.load() || !panel->published))return 0;
+            wchar_t address[2049]{}, list[2049]{}, key[2049]{}, identity[65]{};
+            GetDlgItemTextW(window,101,address,2049);GetDlgItemTextW(window,133,list,2049);GetDlgItemTextW(window,103,key,2049);GetDlgItemTextW(window,119,identity,65);
+            const auto chat=ChatAddress(address);wcscpy_s(address,chat.c_str());SetDlgItemTextW(window,101,address);
+            auto job=std::make_shared<Job>();job->models=true;job->endpoint=list;
+            if(job->endpoint.empty()){job->endpoint=address;const std::wstring suffix=L"/chat/completions";if(job->endpoint.size()>=suffix.size() && job->endpoint.compare(job->endpoint.size()-suffix.size(),suffix.size(),suffix)==0)job->endpoint.resize(job->endpoint.size()-suffix.size());while(!job->endpoint.empty() && job->endpoint.back()==L'/')job->endpoint.pop_back();job->endpoint+=L"/models";
+
+            }
+            if(AiEndpoint_Validate(address)!=AI_OK || AiEndpoint_Validate(job->endpoint.c_str())!=AI_OK){SecureZeroMemory(key,sizeof(key));Status(panel,AP_ERROR);return 0;}
+            // Reuse an origin-bound client to prevent a custom list URL receiving another host's key.
+            job->client=std::make_shared<Client>(address);BOOL valid=FALSE;job->timeout=GetDlgItemInt(window,104,&valid,FALSE);
+            auto secret=Utf8(key);SecureZeroMemory(key,sizeof(key));
+            if(!secret.empty()){job->secret=static_cast<char*>(malloc(secret.size()+1));if(!job->secret)throw std::bad_alloc();memcpy(job->secret,secret.c_str(),secret.size()+1);SecureZeroMemory(secret.data(),secret.size());}
+            else {wchar_t profile[73]{};if((identity[0]?AiCredential_AccountProfile(address,identity,profile,73):AiCredential_ServiceProfile(address,profile,73))!=ERROR_SUCCESS){Status(panel,AP_ERROR);return 0;}DWORD loaded=AiCredential_Load(profile,&job->secret);if(loaded!=ERROR_SUCCESS && loaded!=ERROR_NOT_FOUND){Status(panel,AP_ERROR);return 0;}}
+            if(!valid || job->timeout<100 || job->timeout>120000){Status(panel,AP_ERROR);return 0;}
+            panel->job=job;panel->published=false;
+            std::thread([job]{AI_HTTP_CONFIG_DATA config{job->endpoint.c_str(),nullptr,job->secret,job->timeout,Canceled,job.get(),job->client->handle};job->status=AiHttp_Models(&config,&job->result);AiCredential_Free(job->secret);job->secret=nullptr;job->done=true;}).detach();Busy(panel,true);SetWindowTextW(GetDlgItem(window,130),L"正在获取模型列表…");return 0;
+        }
         if(id==126) {
             AI_PANEL_CAPTURE request{AI_CONNECTION_TEST,""};
             if(!SendMessageW(panel->parent,NP3_WM_AI_CAPTURE,0,reinterpret_cast<LPARAM>(&request))) Status(panel,AP_ERROR);
@@ -207,7 +236,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             AI_PANEL_CAPTURE request{id==117?AI_SUMMARIZE+selected:id-110,text.c_str()};
             if (!SendMessageW(panel->parent,NP3_WM_AI_CAPTURE,0,reinterpret_cast<LPARAM>(&request))) Status(panel,AP_ERROR);
         } else if (id == 114 && panel->job) panel->job->cancel=true;
-        else if (id == 115 && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK && panel->job->action != AI_CONNECTION_TEST) {
+        else if (id == 115 && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK && panel->job->action != AI_CONNECTION_TEST && !panel->job->models) {
             auto job=panel->job;
             AI_PANEL_APPLY apply{job->source,job->original.data(),job->original.size(),job->result.text,job->result.length};
             if (SendMessageW(panel->parent,NP3_WM_AI_APPLY,0,reinterpret_cast<LPARAM>(&apply))) { EnableWindow(GetDlgItem(window,115),FALSE); Status(panel,AP_READY); }
@@ -215,6 +244,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         } else if (id ==105 || id==106) {
             AI_PANEL_SAVE request{}; wchar_t key[2049]{};
             GetWindowTextW(GetDlgItem(window,101),request.settings.endpoint,2049); GetWindowTextW(GetDlgItem(window,102),request.settings.model,257);
+            const auto chat=ChatAddress(request.settings.endpoint);wcscpy_s(request.settings.endpoint,chat.c_str());SetDlgItemTextW(window,101,request.settings.endpoint);
             BOOL valid=FALSE; request.settings.timeoutMs=GetDlgItemInt(window,104,&valid,FALSE);
             GetWindowTextW(GetDlgItem(window,119),request.settings.configurationId,65);
             if(id==105 && !request.settings.configurationId[0] && GetWindowTextLengthW(GetDlgItem(window,103))>0 && SendDlgItemMessageW(window,125,CB_GETCURSEL,0,0)>0){swprintf_s(request.settings.configurationId,L"account-%lu-%llu",GetCurrentProcessId(),GetTickCount64());SetWindowTextW(GetDlgItem(window,119),request.settings.configurationId);}
@@ -284,12 +314,13 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
                 if(!child) throw std::bad_alloc(); SendMessageW(child,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),FALSE); return child;
             };
             control(L"BUTTON",L"模型设置",BS_PUSHBUTTON|WS_TABSTOP,107);
-            for(int i=0;i<4;++i) { control(L"STATIC",labels[i],0,201+i); control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP|(i==2?ES_PASSWORD:0)|(i==3?ES_NUMBER:0),101+i); }
-            SendMessageW(GetDlgItem(window,101),EM_SETLIMITTEXT,2048,0); SendMessageW(GetDlgItem(window,102),EM_SETLIMITTEXT,256,0); SendMessageW(GetDlgItem(window,103),EM_SETLIMITTEXT,2048,0);
+            for(int i=0;i<4;++i) { control(L"STATIC",labels[i],0,201+i); control(i==1?L"COMBOBOX":L"EDIT",L"",i==1?CBS_DROPDOWN|WS_VSCROLL|WS_TABSTOP:WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP|(i==2?ES_PASSWORD:0)|(i==3?ES_NUMBER:0),101+i); }
+            SendMessageW(GetDlgItem(window,101),EM_SETLIMITTEXT,2048,0); SendMessageW(GetDlgItem(window,102),CB_LIMITTEXT,256,0); SendMessageW(GetDlgItem(window,103),EM_SETLIMITTEXT,2048,0);
             SetWindowTextW(GetDlgItem(window,101),settings->endpoint); SetWindowTextW(GetDlgItem(window,102),settings->model); SetDlgItemInt(window,104,settings->timeoutMs,FALSE);
             const int ids[]={105,106,110,111,112,113,114,115}; const int texts[]={AP_SAVE,AP_DELETE,AP_EXPLAIN,AP_TRANSLATE,AP_REWRITE,AP_GENERATE,AP_CANCEL,AP_APPLY};
             for(int i=0;i<8;++i) control(L"BUTTON",labels[texts[i]],BS_PUSHBUTTON|WS_TABSTOP,ids[i]);
             control(L"BUTTON",L"测试（计费）",BS_PUSHBUTTON|WS_TABSTOP,126);
+            control(L"BUTTON",L"获取模型",BS_PUSHBUTTON|WS_TABSTOP,132);control(L"STATIC",L"模型列表地址",0,208);control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,133);SendDlgItemMessageW(window,133,EM_SETLIMITTEXT,2048,0);SendDlgItemMessageW(window,133,EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"留空自动推导；特殊接口可填写同源完整地址"));
             control(L"STATIC",labels[AP_INSTRUCTION],0,205); control(L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_TABSTOP,120); SendMessageW(GetDlgItem(window,120),EM_SETLIMITTEXT,4096,0);
             HWND actions=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,116);
             for(const wchar_t* name : {L"摘要",L"润色",L"扩写",L"缩写",L"纠错",L"当前文件问答"}) SendMessageW(actions,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
@@ -298,7 +329,7 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             control(L"EDIT",settings->configurationId,WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,119); SendMessageW(GetDlgItem(window,119),EM_SETLIMITTEXT,64,0);
             control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,123); control(L"BUTTON",L"移出列表",BS_PUSHBUTTON|WS_TABSTOP,124);
             HWND providers=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,125);
-            for(const wchar_t* name:{L"服务地址预设",L"Kimi（中国大陆）",L"DeepSeek",L"Qwen / 百炼（北京）",L"第三方兼容接口"}) SendMessageW(providers,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
+            for(const wchar_t* name:{L"服务地址预设",L"Kimi（中国大陆）",L"DeepSeek",L"Qwen / 百炼（北京）",L"第三方兼容接口",L"OpenAI"}) SendMessageW(providers,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
             SendMessageW(providers,CB_SETCURSEL,0,0);SendMessageW(GetDlgItem(window,102),EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"填写平台可用模型ID")); Profiles(panel);
             control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,127);control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,128);SendDlgItemMessageW(window,128,EM_SETLIMITTEXT,64,0);SendDlgItemMessageW(window,128,EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"提示词名称"));control(L"BUTTON",L"保存提示词",BS_PUSHBUTTON|WS_TABSTOP,129);control(L"BUTTON",L"删除提示词",BS_PUSHBUTTON|WS_TABSTOP,131);Prompts(panel);
             control(L"STATIC",labels[AP_ORIGINAL],0,206); control(L"STATIC",labels[AP_RESULT],0,207);

@@ -25,3 +25,13 @@
 先保存服务地址、模型、超时、配置 ID 和密钥，再点击“测试（计费）”。该按钮仅发送固定短消息 Reply with OK.，不会发送正文、选区或指令栏问题，也不会修改正文。它使用已保存配置，不使用尚未保存的输入。成功表示当前服务/账号/模型完成这一次生成；失败显示认证、权限、网络、限流或响应错误提示。
 
 测试是生成请求，平台可能收取费用，实际输出长度与费用由平台决定；不是仅检查网络是否连通。回复只读，不能应用到正文。本地模拟测试已通过，真实供应商测试尚未进行。
+
+## 获取模型列表（v119）
+
+模型设置内置 Kimi 中国大陆、DeepSeek、Qwen/百炼北京、OpenAI，以及第三方兼容接口。选择平台、填入 Key、点击“获取模型”，在模型下拉中选择，再保存。无需预先知道模型名，也无需先保存密钥。Key 留空时读取当前地址与配置 ID 对应的已存密钥，不跨账号查找。获取本身不保存配置，不发送文档或提示词。
+
+第三方输入完整 Chat Completions 地址或以 /v1 结尾的兼容 Base URL；后者在获取/保存时补全 /chat/completions。默认把末尾 /chat/completions 换成 /models；例如 https://example.com/v1 → https://example.com/v1/models。特殊路径可填写“模型列表地址”，须与对话地址同源（协议、域名、端口一致），以免密钥发送至其他服务。该覆盖地址当前只用于此次面板，关闭后需重填；列表也不持久化。
+
+列表要求 OpenAI 兼容 data 数组及字符串 id；最多 512 项，2 MiB，保留模型手动输入。列表仅表明接口返回这些 ID，不代表每个模型均支持文本对话或账号有生成权限。返回不同协议、分页或原生百炼 output.models 结构的接口尚不支持，失败会保留手动填写方式。百炼预设尝试兼容 /models，未以真实 Key 验证该接口可用性。
+
+参考：[OpenAI API](https://developers.openai.com/api/reference/overview)、[DeepSeek 模型列表](https://api-docs.deepseek.com/api/list-models/)、[Kimi 模型排查](https://www.kimi.com/help/kimi-api/api-troubleshooting)、[百炼原生模型列表与分页结构](https://help.aliyun.com/zh/model-studio/list-models)。供应商账户实测仍待提供相应凭据；本轮验收使用隔离本地服务。

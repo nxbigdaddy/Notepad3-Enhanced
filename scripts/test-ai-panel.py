@@ -3,6 +3,16 @@ class Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *_): pass
+    def do_GET(self):
+        try:
+            assert self.path == '/panel/models', self.path
+            assert self.headers.get('Authorization') == 'Bearer fake-model-list-key'
+            assert not int(self.headers.get('Content-Length', 0))
+            self.server.model_gets += 1
+            data = json.dumps({'data': [{'id': 'fixture-model-one'}, {'id': 'fixture-model-two'}]}).encode()
+            self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
+        except Exception as exc:
+            self.server.errors.append(str(exc)); self.send_response(500); self.end_headers()
     def do_POST(self):
         try:
             body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
@@ -34,7 +44,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 parser=argparse.ArgumentParser(); parser.add_argument("--preview",action="store_true"); options=parser.parse_args()
 root = pathlib.Path(__file__).resolve().parents[1]
 folder = root / 'artifacts' / ('ai-panel-test-' + str(time.time_ns())); folder.mkdir()
-server = Server(('127.0.0.1', 0), Handler); server.lock = threading.Lock(); server.requests = []; server.errors = []; server.authorizations = []
+server = Server(('127.0.0.1', 0), Handler); server.lock = threading.Lock(); server.model_gets = 0; server.requests = []; server.errors = []; server.authorizations = []
 thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
 try:
     process = subprocess.run(['pwsh','-NoProfile','-File',str(root/'scripts/test-workspace.ps1'),'-Executable','Notepad3/Bin/Release_x64_v143/Notepad3.exe','-AiEndpoint',f'http://127.0.0.1:{server.server_port}/panel'] + (['-Preview'] if options.preview else []), cwd=root, capture_output=True, encoding='utf-8', errors='replace', timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -43,6 +53,7 @@ try:
     (folder/'server-verification.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
     print(process.stdout); print(process.stderr)
     assert process.returncode == 0, 'native panel checks failed'
+    assert server.model_gets == 1
     assert not server.errors and len(server.requests) == 26, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
     assert server.authorizations[:23] == ['Bearer fake-panel-test-key'] * 23
     assert [re.search(r'fixture-http-(\d+)', request['messages'][0]['content']).group(1) for request in server.requests[14:21]] == ['401', '403', '402', '429', '404', '400', '503']

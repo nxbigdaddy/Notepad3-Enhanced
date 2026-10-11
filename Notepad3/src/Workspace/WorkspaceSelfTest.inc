@@ -178,9 +178,9 @@ static void _WorkspaceTestAiCapacity(WORKSPACE_TEST_RESULT* result)
 static void _WorkspaceTestAiPresets(HWND panel,WORKSPACE_TEST_RESULT* result)
 {
     AI_PANEL_SETTINGS saved=_AiSettings();WCHAR endpoint[2049];
-    const WCHAR* expected[]={L"https://api.moonshot.cn/v1/chat/completions",L"https://api.deepseek.com/chat/completions",L"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",L""};
-    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,125,CB_GETCOUNT,0,0)==5,"provider address selector exposes three regional presets and custom endpoint");
-    for(int index=1;index<=4;++index) {
+    const WCHAR* expected[]={L"https://api.moonshot.cn/v1/chat/completions",L"https://api.deepseek.com/chat/completions",L"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",L"",L"https://api.openai.com/v1/chat/completions"};
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,125,CB_GETCOUNT,0,0)==6,"provider address selector exposes three regional presets and custom endpoint");
+    for(int index=1;index<=5;++index) {
         SetWindowTextW(GetDlgItem(panel,102),L"previous-model");SetWindowTextW(GetDlgItem(panel,103),L"owned-draft-key");SetWindowTextW(GetDlgItem(panel,119),L"previous-account");
         SendDlgItemMessageW(panel,125,CB_SETCURSEL,index,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(125,CBN_SELCHANGE),0);
         GetWindowTextW(GetDlgItem(panel,101),endpoint,COUNTOF(endpoint));
@@ -189,6 +189,15 @@ static void _WorkspaceTestAiPresets(HWND panel,WORKSPACE_TEST_RESULT* result)
         _WorkspaceTestCheck(result,!wcscmp(Settings2.AIEndpoint,saved.endpoint) && !wcscmp(Settings2.AIModel,saved.model) && !AiPanel_IsBusy(_WorkspaceAi()) && _WorkspaceTestText("alpha\r\nA"),"address preset does not activate persist send or edit document");
     }
     SetWindowTextW(GetDlgItem(panel,101),saved.endpoint);SetWindowTextW(GetDlgItem(panel,102),saved.model);SetWindowTextW(GetDlgItem(panel,119),saved.configurationId);SetDlgItemInt(panel,104,saved.timeoutMs,FALSE);SendDlgItemMessageW(panel,125,CB_SETCURSEL,0,0);
+    SetWindowTextW(GetDlgItem(panel,102),L"");SetWindowTextW(GetDlgItem(panel,103),L"fake-model-list-key");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(132,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,AiPanel_IsBusy(_WorkspaceAi()) && !IsWindowEnabled(GetDlgItem(panel,132)),"model discovery uses draft key without requiring model or save");
+    _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && SendDlgItemMessageW(panel,102,CB_GETCOUNT,0,0)==2,"actual GET populates editable model combo");
+    SendDlgItemMessageW(panel,102,CB_SETCURSEL,1,0);WCHAR picked[257];GetDlgItemTextW(panel,102,picked,COUNTOF(picked));
+    _WorkspaceTestCheck(result,!wcscmp(picked,L"fixture-model-two") && !IsWindowEnabled(GetDlgItem(panel,115)) && _WorkspaceTestText("alpha\r\nA"),"discovered model can be selected without applying or editing document");
+    _WorkspaceTestCheck(result,!wcscmp(Settings2.AIEndpoint,saved.endpoint) && !wcscmp(Settings2.AIModel,saved.model),"model discovery does not persist draft settings");
+    SetWindowTextW(GetDlgItem(panel,102),saved.model);SetWindowTextW(GetDlgItem(panel,103),L"");
+
 }
 static void _WorkspaceTestAiDiagnostics(HWND panel,WORKSPACE_TEST_RESULT* result)
 {

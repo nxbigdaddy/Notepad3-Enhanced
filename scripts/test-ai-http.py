@@ -7,6 +7,18 @@ class Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *_): pass
+    def do_GET(self):
+        try:
+            assert self.headers.get('Authorization') == 'Bearer fake-local-test-key'
+            assert not int(self.headers.get('Content-Length', 0))
+            with self.server.task_lock: self.server.task_requests.append('GET ' + self.path)
+            if self.path == '/models-denied': self.send_response(401); self.end_headers(); return
+            assert self.path == '/models'
+            data=json.dumps({'data':[{'id':'one'},{'id':'中文'}]}).encode()
+            self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+        except Exception as exc:
+            with self.server.task_lock: self.server.task_errors.append(str(exc))
+            self.send_response(500);self.end_headers()
     def do_POST(self):
         try:
             body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))

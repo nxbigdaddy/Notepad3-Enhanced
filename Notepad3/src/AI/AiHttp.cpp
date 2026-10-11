@@ -68,7 +68,7 @@ extern "C" void* AiHttp_ClientCreate(const wchar_t* endpoint) {
 }
 extern "C" void AiHttp_ClientFree(void* client) { delete static_cast<Client*>(client); }
 extern "C" void AiHttp_Free(AI_HTTP_RESULT* result) { if (result) { AiProtocol_Free(result->text); *result = {}; } }
-extern "C" int AiHttp_Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, AI_HTTP_RESULT* result) {
+static int Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, AI_HTTP_RESULT* result, bool models) {
     if (!result) return AI_HTTP_CONFIG; *result = {};
     if (!config || !config->client || AiEndpoint_Validate(config->endpoint) != AI_OK || config->timeoutMs < 100 || config->timeoutMs > 120000) return AI_HTTP_CONFIG;
     if (config->cancel && config->cancel(config->context)) return AI_HTTP_CANCELED;
@@ -78,10 +78,10 @@ extern "C" int AiHttp_Run(const AI_HTTP_CONFIG_DATA* config, int action, const c
         if (!operation.owns_lock()) return AI_HTTP_BUSY;
         auto state = std::make_shared<State>(); if (!state->event) return AI_HTTP_MEMORY;
         char* body = nullptr; size_t bodyLength = 0;
-        int protocol = AiProtocol_Request(config->model, action, input, length, instruction, &body, &bodyLength);
+        int protocol = models ? AI_OK : AiProtocol_Request(config->model, action, input, length, instruction, &body, &bodyLength);
         std::unique_ptr<char, decltype(&AiProtocol_Free)> bodyOwner(body, AiProtocol_Free);
         if (protocol != AI_OK) { result->protocolStatus = protocol; return protocol == AI_MEMORY ? AI_HTTP_MEMORY : protocol == AI_LIMIT ? AI_HTTP_LIMIT : AI_HTTP_CONFIG; }
-        state->body.assign(body, bodyLength);
+        if (bodyLength) state->body.assign(body, bodyLength);
         state->headers = L"Content-Type: application/json; charset=utf-8\r\nAccept: application/json\r\n";
         if (config->secret && *config->secret) {
             size_t secretLength = strlen(config->secret); if (secretLength > 2048) return AI_HTTP_CONFIG;
@@ -96,7 +96,7 @@ extern "C" int AiHttp_Run(const AI_HTTP_CONFIG_DATA* config, int action, const c
         if (_wcsicmp(host.c_str(), client->host.c_str()) || url.nPort != client->port || url.nScheme != client->scheme) return AI_HTTP_CONFIG;
         if (!WinHttpSetTimeouts(client->session, config->timeoutMs, config->timeoutMs, config->timeoutMs, config->timeoutMs)) return Failed(result);
         Handle connection{WinHttpConnect(client->session, host.c_str(), url.nPort, 0)}; if (!connection.value) return Failed(result);
-        Handle request{WinHttpOpenRequest(connection.value, L"POST", path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, url.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0)};
+        Handle request{WinHttpOpenRequest(connection.value, models ? L"GET" : L"POST", path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, url.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0)};
         if (!request.value) return Failed(result);
         DWORD redirect = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
         DWORD disable = WINHTTP_DISABLE_COOKIES | WINHTTP_DISABLE_AUTHENTICATION;
@@ -107,7 +107,7 @@ extern "C" int AiHttp_Run(const AI_HTTP_CONFIG_DATA* config, int action, const c
         // The final HANDLE_CLOSING callback owns this reference, including buffers used by pending operations.
         holder.release();
         ULONGLONG started = GetTickCount64();
-        if (!WinHttpSendRequest(request.value, state->headers.c_str(), static_cast<DWORD>(state->headers.size()), &state->body[0], static_cast<DWORD>(state->body.size()), static_cast<DWORD>(state->body.size()), context)) return Failed(result);
+        if (!WinHttpSendRequest(request.value, state->headers.c_str(), static_cast<DWORD>(state->headers.size()), state->body.empty() ? WINHTTP_NO_REQUEST_DATA : &state->body[0], static_cast<DWORD>(state->body.size()), static_cast<DWORD>(state->body.size()), context)) return Failed(result);
         int status = Wait(state, WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE, *config, started, result); if (status) return status;
         if (!WinHttpReceiveResponse(request.value, nullptr)) return Failed(result);
         status = Wait(state, WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE, *config, started, result); if (status) return status;
@@ -124,7 +124,7 @@ extern "C" int AiHttp_Run(const AI_HTTP_CONFIG_DATA* config, int action, const c
             response.append(state->buffer.data(), read);
         }
         if (config->cancel && config->cancel(config->context)) return AI_HTTP_CANCELED;
-        result->protocolStatus = AiProtocol_Response(response.data(), response.size(), &result->text, &result->length);
+        result->protocolStatus = models ? AiProtocol_Models(response.data(), response.size(), &result->text, &result->length) : AiProtocol_Response(response.data(), response.size(), &result->text, &result->length);
         bool canceled = config->cancel && config->cancel(config->context);
         if (canceled || GetTickCount64() - started >= config->timeoutMs) {
             AiProtocol_Free(result->text); result->text = nullptr; result->length = 0;
@@ -161,3 +161,6 @@ extern "C" int AiHttp_Diagnostic(int status,const AI_HTTP_RESULT* result) {
     default:return AI_DIAG_OTHER;
     }
 }
+
+extern "C" int AiHttp_Models(const AI_HTTP_CONFIG_DATA* config, AI_HTTP_RESULT* result) { return Run(config, 0, nullptr, 0, nullptr, result, true); }
+extern "C" int AiHttp_Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, AI_HTTP_RESULT* result) { return Run(config, action, input, length, instruction, result, false); }
