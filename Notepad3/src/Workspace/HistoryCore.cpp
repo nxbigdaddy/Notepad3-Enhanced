@@ -63,6 +63,13 @@ bool HistoryUpdate(const std::wstring& store,const HistoryChange& change,size_t 
     else if(change.action==HistoryAction::Remove)latest.erase(found);
     else if(change.action==HistoryAction::Pin)found->pinned=change.pinned;
     else if(change.action==HistoryAction::Position){found->line=change.line;found->column=change.column;}
+    else if(change.action==HistoryAction::Relocate){
+        std::wstring destination;if(!FullPath(change.destination,destination)){error=ERROR_INVALID_NAME;return false;}
+        DWORD attributes=GetFileAttributesW(destination.c_str());if(attributes==INVALID_FILE_ATTRIBUTES){error=GetLastError();return false;}
+        if(attributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT)){error=ERROR_NOT_SUPPORTED;return false;}
+        for(auto entry=latest.begin();entry!=latest.end();++entry)if(entry!=found && Equal(entry->path,destination)){error=ERROR_ALREADY_EXISTS;return false;}
+        found->path=std::move(destination);
+    }
     else{error=ERROR_INVALID_PARAMETER;return false;}
     std::stable_sort(latest.begin(),latest.end(),[](const HistoryEntry& a,const HistoryEntry& b){if(a.pinned!=b.pinned)return a.pinned;return CompareFileTime(&a.opened,&b.opened)>0;});
     size_t pinned=static_cast<size_t>(std::count_if(latest.begin(),latest.end(),[](const HistoryEntry& entry){return entry.pinned;}));size_t limit=(std::max)(maximum,pinned);if(latest.size()>limit)latest.resize(limit);

@@ -38,5 +38,20 @@ int wmain(int argc,wchar_t** argv){try{
     Check(!np3::HistoryUpdate(store,change,500,entries,error) && error==ERROR_NOT_FOUND && Bytes(store)==stable,"position for unknown record does not create or mutate history");
     change.action=np3::HistoryAction::Open;change.path=root+L"\\same-clock.txt";change.time=entries[0].opened;
     Check(np3::HistoryUpdate(store,change,500,entries,error) && entries[0].path==change.path,"most recent open takes precedence when clock timestamps tie");
+    std::wstring relocated=root+L"\\重新定位.md";Write(relocated,"unchanged",9);
+    change.action=np3::HistoryAction::Pin;change.pinned=true;Check(np3::HistoryUpdate(store,change,500,entries,error),"pin relocation fixture");
+    auto metadata=entries[0];change.action=np3::HistoryAction::Relocate;change.destination=relocated;
+    Check(np3::HistoryUpdate(store,change,500,entries,error) && entries[0].path==relocated && entries[0].count==metadata.count && CompareFileTime(&entries[0].opened,&metadata.opened)==0 && entries[0].line==metadata.line && entries[0].column==metadata.column && entries[0].pinned && Bytes(relocated)==std::vector<char>({'u','n','c','h','a','n','g','e','d'}),"relocate metadata atomically preserves reading position count time pin and destination contents");
+    stable=Bytes(store);change.path=relocated;change.destination=root;
+    Check(!np3::HistoryUpdate(store,change,500,entries,error) && error==ERROR_NOT_SUPPORTED && Bytes(store)==stable,"relocation to directory rejected without mutation");
+    change.destination=root+L"\\missing-destination.md";
+    Check(!np3::HistoryUpdate(store,change,500,entries,error) && error==ERROR_FILE_NOT_FOUND && Bytes(store)==stable,"missing relocation destination preserves original record");
+    change.destination=L"";
+    Check(!np3::HistoryUpdate(store,change,500,entries,error) && error==ERROR_INVALID_NAME && Bytes(store)==stable,"invalid relocation destination preserves original snapshot");
+    change.action=np3::HistoryAction::Open;change.path=a;Check(np3::HistoryUpdate(store,change,500,entries,error),"create independent relocation collision fixture");
+    stable=Bytes(store);change.action=np3::HistoryAction::Relocate;change.path=relocated;change.destination=a;
+    Check(!np3::HistoryUpdate(store,change,500,entries,error) && error==ERROR_ALREADY_EXISTS && Bytes(store)==stable,"existing destination history is not overwritten or silently merged");
+    change.path=root+L"\\unrecorded-source.md";change.destination=relocated;
+    Check(!np3::HistoryUpdate(store,change,500,entries,error) && error==ERROR_NOT_FOUND && Bytes(store)==stable,"unrecorded relocation source cannot create a new record");
     printf("RESULT checks=%d failures=0\n",checks);return 0;
 }catch(const std::exception& error){printf("ERROR %s\n",error.what());return 1;}}
