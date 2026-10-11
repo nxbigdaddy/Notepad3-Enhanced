@@ -58,7 +58,7 @@ bool HistoryUpdate(const std::wstring& store,const HistoryChange& change,size_t 
     std::vector<HistoryEntry> latest;if(!Load(path,latest,error))return false;
     auto found=std::find_if(latest.begin(),latest.end(),[&](const HistoryEntry& entry){return Equal(entry.path,target);});
     if(change.action==HistoryAction::Clear)latest.clear();
-    else if(change.action==HistoryAction::Open){if(found==latest.end()){latest.insert(latest.begin(),HistoryEntry{target,change.time,1,change.line,change.column,false});}else{if(found->count<(std::numeric_limits<unsigned long long>::max)())++found->count;found->path=target;found->opened=change.time;found->line=change.line;found->column=change.column;std::rotate(latest.begin(),found,found+1);}}
+    else if(change.action==HistoryAction::Open){if(found==latest.end()){latest.insert(latest.begin(),HistoryEntry{target,change.time,1,change.line,change.column,false});}else{if(found->count<(std::numeric_limits<unsigned long long>::max)())++found->count;found->path=target;found->opened=change.time;if(change.line){found->line=change.line;found->column=change.column;}std::rotate(latest.begin(),found,found+1);}}
     else if(found==latest.end()){error=ERROR_NOT_FOUND;return false;}
     else if(change.action==HistoryAction::Remove)latest.erase(found);
     else if(change.action==HistoryAction::Pin)found->pinned=change.pinned;

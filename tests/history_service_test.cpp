@@ -27,6 +27,10 @@ int wmain(int argc,wchar_t** argv) {
     DWORD error=0; std::vector<np3::HistoryEntry> entries;
     if (!check(np3::HistoryRead(store,entries,error) && entries.size()==1 && entries[0].count==100 && entries[0].path==root+L"\\中文.md","worker owns metadata and persists all events")) return 1;
     if (!check(HistoryService_Error()==ERROR_SUCCESS,"successful writes have no error")) return 1;
+    unsigned long long line=999,column=999;FILETIME opened=entries[0].opened;
+    if(!check(!HistoryService_GetPosition(store.c_str(),entries[0].path.c_str(),&line,&column) && line==999 && column==999,"unset position preserves caller output"))return 1;
+    if(!check(!HistoryService_Position(store.c_str(),entries[0].path.c_str(),500,0,3),"zero reading coordinate is rejected"))return 1;
+    if(!check(HistoryService_Position(store.c_str(),entries[0].path.c_str(),500,77,13) && HistoryService_Flush(3000) && np3::HistoryRead(store,entries,error) && entries[0].count==100 && CompareFileTime(&entries[0].opened,&opened)==0 && HistoryService_GetPosition(store.c_str(),entries[0].path.c_str(),&line,&column) && line==77 && column==13,"asynchronous position persists without changing count or open time"))return 1;
     HANDLE held=CreateFileW((store+L".lock").c_str(),GENERIC_READ,0,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
     if (held==INVALID_HANDLE_VALUE) return 1;
     if (!HistoryService_Record(store.c_str(),entries[0].path.c_str(),500)) return 1;
@@ -36,6 +40,10 @@ int wmain(int argc,wchar_t** argv) {
     if (!check(np3::HistoryRead(store,entries,error) && entries[0].count==100,"failed worker write preserves previous snapshot")) return 1;
     if (!HistoryService_Record(store.c_str(),entries[0].path.c_str(),500)) return 1;
     if (!check(HistoryService_Flush(3000) && np3::HistoryRead(store,entries,error) && entries[0].count==101,"worker restarts after idle and failure")) return 1;
+    if(!check(HistoryService_GetPosition(store.c_str(),entries[0].path.c_str(),&line,&column) && line==77 && column==13,"reopen event preserves previously saved reading position"))return 1;
+    std::wstring removed=entries[0].path;np3::HistoryChange clear;clear.action=np3::HistoryAction::Clear;
+    if(!np3::HistoryUpdate(store,clear,500,entries,error))return 1;
+    if(!check(HistoryService_Position(store.c_str(),removed.c_str(),500,1,1) && HistoryService_Flush(3000) && np3::HistoryRead(store,entries,error) && entries.empty(),"late position event does not recreate cleared history"))return 1;
     DeleteFileW(store.c_str()); DeleteFileW((store+L".lock").c_str()); RemoveDirectoryW(root.c_str());
     printf("%d checks passed\n",checks); return 0;
 }

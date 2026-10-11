@@ -5,6 +5,8 @@ extern "C" {
 #endif
 // Copies metadata into a bounded queue; no document contents or UI handles retained.
 BOOL HistoryService_Record(const wchar_t* store, const wchar_t* path, size_t maximum);
+BOOL HistoryService_Position(const wchar_t* store,const wchar_t* path,size_t maximum,unsigned long long line,unsigned long long column);
+BOOL HistoryService_GetPosition(const wchar_t* store,const wchar_t* path,unsigned long long* line,unsigned long long* column);
 BOOL HistoryService_Flush(DWORD timeout);
 DWORD HistoryService_Error(void);
 // Disk read; callers using this from a panel must run it off the UI thread.
