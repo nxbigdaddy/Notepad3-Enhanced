@@ -29,8 +29,9 @@ static void _MarkdownPdfTestFinish(PDF_TEST* test)
     CloseHandle(test->result.log);
     if (IS_VALID_HANDLE(test->locked)) CloseHandle(test->locked);
     Path_Release(test->directory); Path_Release(test->target);
-    _Workspace()->pdfTest = NULL; FreeMem(test);
-    _WorkspaceDispose(); DestroyWindow(Globals.hwndMain);
+    if (_Workspace()) _Workspace()->pdfTest = NULL;
+    FreeMem(test);
+    if (IsWindow(Globals.hwndMain)) { _WorkspaceDispose(); DestroyWindow(Globals.hwndMain); }
 }
 static void _MarkdownPdfTestStartLocked(PDF_TEST* test)
 {
@@ -46,6 +47,15 @@ static void _MarkdownPdfSelfTestPrinting(HWND window)
 {
     DOCUMENT_WORKSPACE* workspace=_Workspace(); PDF_TEST* test=workspace?workspace->pdfTest:NULL;
     if(test) { char note[100]; DWORD written; StringCchPrintfA(note,COUNTOF(note),"PRINT submission phase=%i window=%p\r\n",test->phase,window); WriteFile(test->result.log,note,(DWORD)strlen(note),&written,NULL); }
+    if(test && test->phase==3) {
+        _WorkspaceTestCheck(&test->result,window && MarkdownPdf_IsBusy(Globals.hwndMain),"main close observes actual submitted PDF print");
+        SciCall_Undo();
+        _WorkspaceTestCheck(&test->result,!IsSaveNeeded(),"main close fixture restores source savepoint before normal close");
+        HWND parent=Globals.hwndMain;
+        SendMessageW(parent,WM_CLOSE,0,0);
+        _WorkspaceTestCheck(&test->result,!IsWindow(parent) && !_Workspace(),"normal main WM_CLOSE destroys window and disposes workspace during submitted print");
+        _MarkdownPdfTestFinish(test); return;
+    }
     if(!test || test->phase!=2) return;
     _WorkspaceTestCheck(&test->result,window && MarkdownPdf_IsBusy(Globals.hwndMain),"printing cancellation observes actual submitted PrintToPdf task");
     _WorkspaceTestCheck(&test->result,MarkdownPdf_Cancel(Globals.hwndMain),"printing cancellation destroys its active task window");
@@ -82,12 +92,21 @@ static bool _MarkdownPdfSelfTestDone(uint32_t error)
         bool const started = _MarkdownExportSnapshot(test->target, &startError, true);
         _WorkspaceTestCheck(&test->result, started, "start replacement awaiting actual print submission for cancellation");
         if (!started) _MarkdownPdfTestFinish(test);
-    } else if(test->phase==2) {
+    } else if(test->phase==2 || test->phase==3) {
         char failure[120]; StringCchPrintfA(failure,COUNTOF(failure),"printing fixture must reach submission before completion error=%08lx",(unsigned long)error);
         _WorkspaceTestCheck(&test->result,false,failure); _MarkdownPdfTestFinish(test);
     } else {
         _WorkspaceTestCheck(&test->result, error != 0 && Path_IsExistingFile(test->target), "locked PDF replacement reports failure and retains output");
-        _MarkdownPdfTestFinish(test);
+        WCHAR closeMode[8];
+        if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_CLOSE",closeMode,COUNTOF(closeMode))) {
+            if(IS_VALID_HANDLE(test->locked)) { CloseHandle(test->locked); test->locked=NULL; }
+            const char* canceled="\r\nCANCELLED OUTPUT MUST NOT APPEAR";
+            SciCall_AppendText(strlen(canceled),canceled); test->phase=3;
+            uint32_t startError=0;
+            bool started=_MarkdownExportSnapshot(test->target,&startError,true);
+            _WorkspaceTestCheck(&test->result,started,"start replacement for main-window close during print");
+            if(!started) _MarkdownPdfTestFinish(test);
+        } else _MarkdownPdfTestFinish(test);
     }
     return true;
 }

@@ -1,4 +1,4 @@
-param([string]$Executable = 'Notepad3/Bin/Release_x64_v143/Notepad3.exe', [switch]$Advanced, [switch]$Long, [switch]$Tall)
+param([string]$Executable = 'Notepad3/Bin/Release_x64_v143/Notepad3.exe', [switch]$Advanced, [switch]$Long, [switch]$Tall, [switch]$CloseMain)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskExe = [IO.Path]::GetFullPath((Join-Path $taskRoot $Executable))
@@ -42,15 +42,19 @@ if ($Long) {
 }
 # A known PNG fixture is kept next to the Markdown source.
 [IO.File]::WriteAllBytes((Join-Path $taskFolder 'sample.png'), [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAABU0lEQVR4nO2bwU3DQBBFnSjNDC3QEucUwZmWaCFTBUfOIOUItr+IPX8W+b1j7Gg1b/9mV/bk9PH5NcEy55VrgCANCRIgSIAgAYIECBJcli48X2/TkXh/fZr9nAQJECRAkABBAgQ9uos5ybf5HSRebocWlAteft/QaOoypprZ+1s0nce3s/2L/yZBublCf5R8Ccr95t8ZJZOg3LskmyPOQQMIyprZ9oSoXFBWlmFwxBJrFZT1M1w9BAkSIKhPULqOKqUDkSABggQIEiBIgCABggQI6hMUrud+pQORIAGCWgVF/SqrHoIEdQuKyhk2JNSRoKgpw7NLssTGEBR7z7btkOVLUOxXkvPVs/XdfNwL2/IA0N/g0fAbFI8W2dL+0tMfFH+M0uEaqH6UTQueYIRexCU4BwkQJECQAEECBAlO/G9+HRIkQJAAQQIECRAkQJAAQdM631MXUr7ET6ogAAAAAElFTkSuQmCC'))
+$taskPreviousClose = $env:NP3_PDF_SELFTEST_CLOSE
 $taskPrevious = $env:NP3_PDF_SELFTEST_DIR
 $taskStartedUtc = [DateTime]::UtcNow
 try {
+    if ($CloseMain) { $env:NP3_PDF_SELFTEST_CLOSE = "1" } else { Remove-Item Env:NP3_PDF_SELFTEST_CLOSE -ErrorAction SilentlyContinue }
     $env:NP3_PDF_SELFTEST_DIR = $taskFolder
     $taskProcess = Start-Process -FilePath $taskExe -ArgumentList @('/n', '/f0') -WindowStyle Hidden -PassThru
 } finally {
+    if ($null -eq $taskPreviousClose) { Remove-Item Env:NP3_PDF_SELFTEST_CLOSE -ErrorAction SilentlyContinue } else { $env:NP3_PDF_SELFTEST_CLOSE = $taskPreviousClose }
     if ($null -eq $taskPrevious) { Remove-Item Env:NP3_PDF_SELFTEST_DIR -ErrorAction SilentlyContinue } else { $env:NP3_PDF_SELFTEST_DIR = $taskPrevious }
 }
 if (!$taskProcess.WaitForExit(90000)) { throw "PDF test still running: PID $($taskProcess.Id), evidence $taskFolder" }
+if ($taskProcess.ExitCode -ne 0) { throw "PDF test process exited with code $($taskProcess.ExitCode): $taskFolder" }
 $taskLog = Join-Path $taskFolder 'pdf-test.log'
 if (!(Test-Path -LiteralPath $taskLog)) { throw "Missing native PDF test log: $taskFolder" }
 $taskResult = [IO.File]::ReadAllText($taskLog)
