@@ -291,6 +291,21 @@ static void _WorkspaceSelfTest()
             _WorkspaceTestCheck(&result,!IsSaveNeeded() && _WorkspaceTestText(documentIndex?"beta\r\nB":"alpha\r\nA"),"encrypted snapshot writing preserves saved source text and savepoint");
             Path_Release(encryptedOutput);
         }
+        unsigned long long encryptionVersion=_WorkspaceVersion(); int encryptionUndo=SciCall_GetUndoCurrent();
+        uint32_t encryptionError=0; NP3_SESSION encryptionSession=_WorkspaceSessionCapture(&encryptionError);
+        NP3_SESSION_DOCUMENT encryptedEntryA={0},encryptedEntryB={0};
+        _WorkspaceTestCheck(&result,encryptionSession && Session_Count(encryptionSession)==2 && Session_Active(encryptionSession)==0 && Session_Get(encryptionSession,0,&encryptedEntryA) && Session_Get(encryptionSession,1,&encryptedEntryB) && (encryptedEntryA.flags&NP3_SESSION_ENCRYPTED_SOURCE) && (encryptedEntryB.flags&NP3_SESSION_ENCRYPTED_SOURCE),"session capture marks both distinct encrypted document sources");
+        Session_Free(encryptionSession);
+        workspace->documents[1].encryption=savedEncryptionB;
+        encryptionSession=_WorkspaceSessionCapture(&encryptionError);
+        _WorkspaceTestCheck(&result,encryptionSession && Session_Get(encryptionSession,0,&encryptedEntryA) && Session_Get(encryptionSession,1,&encryptedEntryB) && (encryptedEntryA.flags&NP3_SESSION_ENCRYPTED_SOURCE) && !(encryptedEntryB.flags&NP3_SESSION_ENCRYPTED_SOURCE),"mixed session capture does not mark plain source encrypted");
+        Session_Free(encryptionSession);
+        _WorkspaceTestCheck(&result,_WorkspaceVersion()==encryptionVersion && SciCall_GetUndoCurrent()==encryptionUndo && SciCall_GetDocPointer()==handleA && !IsSaveNeeded() && _WorkspaceTestText("alpha\r\nA"),"encrypted and mixed snapshots preserve active document version undo and savepoint");
+        HPATHL afterSession=Path_Allocate(folder); Path_Append(afterSession,L"encrypted-after-session.bin");
+        HANDLE afterFile=Path_CreateFile(afterSession,GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,NULL);
+        size_t afterWritten=0; DocPos afterLength=SciCall_GetLength();
+        _WorkspaceTestCheck(&result,IS_VALID_HANDLE(afterFile) && IsEncryptionRequired() && EncryptAndWriteFile(Globals.hwndEdit,afterFile,(BYTE*)SciCall_GetRangePointer(0,afterLength),(size_t)afterLength,&afterWritten),"session snapshot restores active encryption context before actual writer");
+        if(IS_VALID_HANDLE(afterFile)) CloseHandle(afterFile); Path_Release(afterSession);
         workspace->documents[0].encryption=savedEncryptionA; workspace->documents[1].encryption=savedEncryptionB;
         Encryption_RestoreContext(workspace->documents[workspace->active].encryption);
         _WorkspaceTestCheck(&result,!IsEncryptionRequired(),"restoring plain contexts leaves no fixture key active");
