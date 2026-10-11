@@ -67,11 +67,13 @@ int main() {
         expect(AiCredential_ServiceProfile(L"https://example.test/v1", serviceB, 72) == ERROR_INVALID_PARAMETER, "short profile buffer rejected");
         expect(AiCredential_ServiceProfile(L"http://remote.test/v1", serviceB, 73) == ERROR_INVALID_PARAMETER, "unsafe service has no credential profile");
         const std::string input = "中文\n\"quote\"\\path";
-        for (int action = AI_EXPLAIN; action <= AI_GENERATE; ++action) {
-            expect(AiProtocol_Request("custom-model", action, input.data(), input.size(), "Keep headings.", &output, &length) == AI_OK, "four actions generate valid request");
+        const char* addedPrompts[]={"Summarize","Polish","Expand","Shorten","Correct"};
+        for (int action = AI_EXPLAIN; action <= AI_CORRECT; ++action) {
+            expect(AiProtocol_Request("custom-model", action, input.data(), input.size(), "Keep headings.", &output, &length) == AI_OK, "text actions generate valid request");
             char* compact = nullptr; size_t compactLength = 0, error = 0;
             expect(JsonFormat(output, length, 1, "", &compact, &compactLength, &error) == 0, "request strict JSON validates");
             expect(std::string(output, length).find("\\u000a") != std::string::npos && std::string(output, length).find("\\\"quote\\\"") != std::string::npos, "request escapes original source");
+            if(action>=AI_SUMMARIZE)expect(std::string(output,length).find(addedPrompts[action-AI_SUMMARIZE])!=std::string::npos && std::string(output,length).find("Keep headings.")!=std::string::npos,"new action uses distinct instruction and retains custom constraint");
             JsonFormat_Free(compact); AiProtocol_Free(output); output = nullptr;
         }
         expect(AiProtocol_Request("model", 99, "x", 1, nullptr, &output, &length) == AI_CONFIG, "invalid action");

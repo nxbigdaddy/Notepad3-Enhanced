@@ -126,12 +126,17 @@ extern "C" int AiEndpoint_Validate(const wchar_t* endpoint) {
 extern "C" void AiProtocol_Free(char* text) { std::free(text); }
 extern "C" int AiProtocol_Request(const char* model, int action, const char* input, size_t length, const char* instruction, char** output, size_t* outputLength) {
     if (!output || !outputLength) return AI_CONFIG; *output = nullptr; *outputLength = 0;
-    if (!model || !*model || action < AI_EXPLAIN || action > AI_GENERATE || (!input && length)) return AI_CONFIG;
+    if (!model || !*model || action < AI_EXPLAIN || action > AI_CORRECT || (!input && length)) return AI_CONFIG;
     size_t modelLength = strlen(model), instructionLength = instruction ? strlen(instruction) : 0;
     if (length > 256 * 1024 || modelLength > 256 || instructionLength > 4096) return AI_LIMIT;
     if (!Utf8({model, modelLength}) || !Utf8({input ? input : "", length}) || !Utf8({instruction ? instruction : "", instructionLength})) return AI_TEXT;
     try {
-        const char* prompts[] = {"Explain the provided text or code in Chinese.", "Translate the provided text into Chinese. Preserve formatting and return only the translation.", "Improve the provided text or code while preserving its meaning and language. Return only the revised content.", "Fulfill the user's instruction. Return only the generated text or code."};
+        const char* prompts[] = {"Explain the provided text or code in Chinese.", "Translate the provided text into Chinese. Preserve formatting and return only the translation.", "Improve the provided text or code while preserving its meaning and language. Return only the revised content.", "Fulfill the user's instruction. Return only the generated text or code.",
+            "Summarize the provided text in its original language. Preserve key facts, qualifications and uncertainty; do not invent facts. Return only the summary.",
+            "Polish the provided text in its original language while preserving meaning, facts and Markdown structure. Return only the polished text.",
+            "Expand the provided text in its original language with clearer explanations. Do not invent facts, citations or commitments. Preserve Markdown structure. Return only the expanded text.",
+            "Shorten the provided text in its original language while preserving essential facts, qualifications and Markdown structure. Return only the shortened text.",
+            "Correct spelling, grammar and punctuation in the provided text. Preserve its language, factual meaning and Markdown structure. Do not rewrite code blocks unless explicitly instructed. Return only the corrected text."};
         std::string prompt = prompts[action]; if (instructionLength) { prompt += "\n"; prompt += instruction; }
         std::string body = "{\"model\":" + Quote(model) + ",\"stream\":false,\"messages\":[{\"role\":\"system\",\"content\":" + Quote(prompt) + "},{\"role\":\"user\",\"content\":" + Quote({input ? input : "", length}) + "}]}";
         return Copy(body, output, outputLength);
