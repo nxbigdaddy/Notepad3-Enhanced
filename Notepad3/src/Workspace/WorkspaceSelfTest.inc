@@ -190,8 +190,21 @@ static void _WorkspaceTestAiPresets(HWND panel,WORKSPACE_TEST_RESULT* result)
     }
     SetWindowTextW(GetDlgItem(panel,101),saved.endpoint);SetWindowTextW(GetDlgItem(panel,102),saved.model);SetWindowTextW(GetDlgItem(panel,119),saved.configurationId);SetDlgItemInt(panel,104,saved.timeoutMs,FALSE);SendDlgItemMessageW(panel,125,CB_SETCURSEL,0,0);
 }
+static void _WorkspaceTestAiDiagnostics(HWND panel,WORKSPACE_TEST_RESULT* result)
+{
+    const WCHAR* instructions[]={L"fixture-http-401",L"fixture-http-403",L"fixture-http-402",L"fixture-http-429",L"fixture-http-404",L"fixture-http-400",L"fixture-http-503",L"fixture-truncated"};
+    const WCHAR* labels[]={L"认证失败",L"权限不足",L"付款或额度",L"限流或配额",L"地址或模型",L"请求参数",L"服务端错误",L"截断或未完成"};WCHAR status[512];
+    for(int index=0;index<8;++index) {
+        SciCall_SetSel(0,5);SetWindowTextW(GetDlgItem(panel,120),instructions[index]);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(112,BN_CLICKED),0);
+        bool ready=_WorkspaceTestAiReady();GetWindowTextW(GetDlgItem(panel,130),status,COUNTOF(status));
+        _WorkspaceTestCheck(result,ready && wcsstr(status,labels[index]),"actual local service failure displays distinct actionable diagnostic");
+        _WorkspaceTestCheck(result,!IsWindowEnabled(GetDlgItem(panel,115)) && !GetWindowTextLengthW(GetDlgItem(panel,122)) && _WorkspaceTestText("alpha\r\nA"),"failed or truncated answer cannot preview or overwrite source");
+    }
+    SetWindowTextW(GetDlgItem(panel,120),L"");
+}
 static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_TEST_RESULT* result)
 {
+    _WorkspaceTestAiDiagnostics(panel,result);
     _WorkspaceTestAiPresets(panel,result);
     WCHAR idA[65],idB[65],profileA[73],profileB[73],saved[65]; char* key=NULL;
     StringCchPrintfW(idA,COUNTOF(idA),L"fixture-%lu-%llu-a",GetCurrentProcessId(),GetTickCount64());

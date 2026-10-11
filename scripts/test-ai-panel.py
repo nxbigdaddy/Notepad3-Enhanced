@@ -15,6 +15,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with self.server.lock:
                 self.server.requests.append(body)
                 self.server.authorizations.append(authorization)
+            error = re.search(r'fixture-http-(401|403|402|429|404|400|503)', body['messages'][0]['content'])
+            if error:
+                self.send_response(int(error.group(1))); self.end_headers(); return
+            if 'fixture-truncated' in body['messages'][0]['content']:
+                data = json.dumps({'choices': [{'message': {'content': 'secret-looking-unfinished-result'}, 'finish_reason': 'length'}]}).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data); return
             if 'delay' in body['messages'][0]['content']: time.sleep(2)
             answer = 'new\r\nkeep\r\nthird' if content == 'old\r\nkeep\r\nsecond' else '模拟结果'
             if content == 'old\r\n' * 1200: answer = 'new\r\n' * 120000
@@ -37,9 +43,11 @@ try:
     (folder/'server-verification.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
     print(process.stdout); print(process.stderr)
     assert process.returncode == 0, 'native panel checks failed'
-    assert not server.errors and len(server.requests) == 16, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
-    assert server.authorizations[:13] == ['Bearer fake-panel-test-key'] * 13
-    assert server.authorizations[13:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b', 'Bearer fake-panel-test-key-a']
+    assert not server.errors and len(server.requests) == 24, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
+    assert server.authorizations[:21] == ['Bearer fake-panel-test-key'] * 21
+    assert [re.search(r'fixture-http-(\d+)', request['messages'][0]['content']).group(1) for request in server.requests[13:20]] == ['401', '403', '402', '429', '404', '400', '503']
+    assert 'fixture-truncated' in server.requests[20]['messages'][0]['content']
+    assert server.authorizations[21:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b', 'Bearer fake-panel-test-key-a']
     assert server.requests[3]['messages'][1]['content'] == '生成中文'
     for index, prompt in enumerate(('Summarize', 'Polish', 'Expand', 'Shorten', 'Correct'), 4):
         assert prompt in server.requests[index]['messages'][0]['content']

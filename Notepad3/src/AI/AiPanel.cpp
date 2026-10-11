@@ -105,7 +105,9 @@ void Publish(const Owner& panel) {
     } else {
         Status(panel, job->status == AI_HTTP_CANCELED ? AP_CANCELED : AP_ERROR);
         if (job->status != AI_HTTP_CANCELED) {
-            auto message = panel->labels[AP_ERROR] + L" (" + std::to_wstring(job->status) + L", HTTP " + std::to_wstring(job->result.httpStatus) + L", Windows " + std::to_wstring(job->result.winError) + L")";
+            const wchar_t* reasons[]={L"成功",L"认证失败：检查密钥和地域",L"权限不足：检查账号与模型权限",L"付款或额度限制",L"限流或配额限制：稍后重试并检查额度",L"地址或模型不存在：检查完整接口地址和模型ID",L"请求参数不被服务接受",L"服务端错误：稍后重试",L"服务重定向已阻止：检查接口地址",L"请求超时",L"TLS 安全连接失败",L"网络连接失败",L"结果截断或未完成，不能应用",L"响应格式不兼容或内容无效",L"请求或响应超过大小限制",L"配置或输入无效",L"已取消",L"内存不足",L"服务忙",L"请求失败"};
+            const int diagnostic=AiHttp_Diagnostic(job->status,&job->result);
+            auto message = std::wstring(reasons[diagnostic]) + L" (" + std::to_wstring(job->status) + L", HTTP " + std::to_wstring(job->result.httpStatus) + L", Windows " + std::to_wstring(job->result.winError) + L")";
             SetWindowTextW(GetDlgItem(panel->window,130), message.c_str());
         }
     }

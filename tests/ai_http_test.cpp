@@ -22,12 +22,17 @@ int wmain(int argc, wchar_t** argv) {
         expect(run(L"/ok") == AI_HTTP_OK, "local HTTP completion succeeds");
         expect(result.httpStatus == 200 && std::string(result.text, result.length) == "模拟中文\n😀", "actual HTTP body decoded correctly");
         expect(run(L"/denied") == AI_HTTP_SERVER && result.httpStatus == 401 && !result.text, "authorization error retains HTTP code without fake content");
+        expect(AiHttp_Diagnostic(AI_HTTP_SERVER,&result)==AI_DIAG_AUTH,"actual HTTP authentication result is classified");
         expect(run(L"/redirect") == AI_HTTP_SERVER && result.httpStatus == 302 && !result.text, "redirect is not followed");
+        expect(AiHttp_Diagnostic(AI_HTTP_SERVER,&result)==AI_DIAG_REDIRECT,"actual redirect remains an address diagnostic");
         expect(run(L"/broken") == AI_HTTP_RESPONSE && !result.text, "malformed HTTP response JSON rejected");
         expect(run(L"/incomplete") == AI_HTTP_RESPONSE && result.protocolStatus == AI_INCOMPLETE && !result.text, "truncated model response not successful output");
+        expect(AiHttp_Diagnostic(AI_HTTP_RESPONSE,&result)==AI_DIAG_INCOMPLETE,"actual truncated result differs from malformed response");
         expect(run(L"/oversize") == AI_HTTP_LIMIT && !result.text, "actual download byte limit");
+        expect(AiHttp_Diagnostic(AI_HTTP_LIMIT,&result)==AI_DIAG_LIMIT,"actual response limit is classified");
         config.timeoutMs = 250; ULONGLONG start = GetTickCount64();
         expect(run(L"/slow") == AI_HTTP_TIMEOUT && GetTickCount64() - start < 2000, "overall deadline interrupts pending response");
+        expect(AiHttp_Diagnostic(AI_HTTP_TIMEOUT,&result)==AI_DIAG_TIMEOUT,"actual deadline failure is classified");
         config.timeoutMs = 5000; Cancellation token{GetTickCount64(), 150}; config.cancel = cancel; config.context = &token;
         start = GetTickCount64();
         expect(run(L"/slow") == AI_HTTP_CANCELED && GetTickCount64() - start < 1500 && !result.text, "cancel while waiting for server without waiting for timeout");

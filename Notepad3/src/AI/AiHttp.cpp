@@ -133,3 +133,31 @@ extern "C" int AiHttp_Run(const AI_HTTP_CONFIG_DATA* config, int action, const c
         return result->protocolStatus == AI_OK ? AI_HTTP_OK : result->protocolStatus == AI_MEMORY ? AI_HTTP_MEMORY : result->protocolStatus == AI_LIMIT ? AI_HTTP_LIMIT : AI_HTTP_RESPONSE;
     } catch (...) { return AI_HTTP_MEMORY; }
 }
+
+extern "C" int AiHttp_Diagnostic(int status,const AI_HTTP_RESULT* result) {
+    switch(status) {
+    case AI_HTTP_OK:return AI_DIAG_OK;
+    case AI_HTTP_CONFIG:return AI_DIAG_CONFIG;
+    case AI_HTTP_CANCELED:return AI_DIAG_CANCELED;
+    case AI_HTTP_TIMEOUT:return AI_DIAG_TIMEOUT;
+    case AI_HTTP_NETWORK:return result && result->winError==ERROR_WINHTTP_SECURE_FAILURE?AI_DIAG_TLS:AI_DIAG_NETWORK;
+    case AI_HTTP_LIMIT:return AI_DIAG_LIMIT;
+    case AI_HTTP_MEMORY:return AI_DIAG_MEMORY;
+    case AI_HTTP_BUSY:return AI_DIAG_BUSY;
+    case AI_HTTP_RESPONSE:return result && result->protocolStatus==AI_INCOMPLETE?AI_DIAG_INCOMPLETE:AI_DIAG_RESPONSE;
+    case AI_HTTP_SERVER:
+        if(!result) return AI_DIAG_OTHER;
+        switch(result->httpStatus) {
+        case 401:return AI_DIAG_AUTH;
+        case 403:return AI_DIAG_PERMISSION;
+        case 402:return AI_DIAG_PAYMENT;
+        case 429:return AI_DIAG_RATE;
+        case 404:return AI_DIAG_ADDRESS_MODEL;
+        case 400:case 422:return AI_DIAG_REQUEST;
+        default:if(result->httpStatus>=500 && result->httpStatus<=599)return AI_DIAG_SERVER;
+            if(result->httpStatus>=300 && result->httpStatus<=399)return AI_DIAG_REDIRECT;
+            return AI_DIAG_OTHER;
+        }
+    default:return AI_DIAG_OTHER;
+    }
+}
