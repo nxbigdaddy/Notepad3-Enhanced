@@ -53,11 +53,11 @@ Write-Output $taskResult
 if ($taskResult -notmatch 'RESULT checks=\d+ failures=0') { throw "Native workspace checks failed: $taskLog" }
 $taskExpectedA = [byte[]](0xEF, 0xBB, 0xBF) + [Text.Encoding]::UTF8.GetBytes("alpha`r`nA")
 $taskExpectedB = [byte[]](0xFF, 0xFE) + [Text.Encoding]::Unicode.GetBytes("beta`r`nB")
-foreach ($taskPair in @(@('a.txt', $taskExpectedA), @('b.txt', $taskExpectedB))) {
+foreach ($taskPair in @(@('a.txt', $taskExpectedA), @('b.txt', $taskExpectedB), @('close-flow.txt', [Text.Encoding]::UTF8.GetBytes("close fixture`r`nsaved")))) {
     $taskActual = [IO.File]::ReadAllBytes((Join-Path $taskFolder $taskPair[0]))
     if ([Convert]::ToBase64String($taskActual) -ne [Convert]::ToBase64String($taskPair[1])) { throw "Saved bytes differ for $($taskPair[0]): $taskFolder" }
 }
-Write-Output "Saved UTF-8 BOM / UTF-16 LE bytes independently verified. Evidence: $taskFolder"
+Write-Output "Saved UTF-8 BOM / UTF-16 LE and close-dialog UTF-8 bytes independently verified. Evidence: $taskFolder"
 $taskExportedHtml = [IO.File]::ReadAllText((Join-Path $taskFolder 'buffer-export.html'), [Text.Encoding]::UTF8)
 if (!$taskExportedHtml.Contains('<h1>导出验证</h1>') -or $taskExportedHtml.Contains('np3-preview.invalid')) { throw 'Exported unsaved buffer HTML content incorrect' }
 Write-Output 'Unsaved buffer Markdown HTML independently verified.'

@@ -2,6 +2,41 @@
 // Development-only opt-in test driven by NP3_WORKSPACE_SELFTEST_DIR. The runner
 // creates an isolated marker and fixtures; this code never picks user documents.
 typedef struct WORKSPACE_TEST_RESULT { HANDLE log; int checks, failures; } WORKSPACE_TEST_RESULT;
+static UINT_PTR workspaceCloseTestTimer;
+static int workspaceCloseTestChoice, workspaceCloseTestClicks;
+static BOOL CALLBACK _WorkspaceTestCloseDialog(HWND dialog, LPARAM unused)
+{
+    UNREFERENCED_PARAMETER(unused);
+    WCHAR className[32], message[2048];
+    GetClassNameW(dialog,className,COUNTOF(className));
+    if(wcscmp(className,L"#32770") || GetAncestor(GetWindow(dialog,GW_OWNER),GA_ROOT)!=Globals.hwndMain) return TRUE;
+    GetDlgItemTextW(dialog,IDC_INFOBOXTEXT,message,COUNTOF(message));
+    // The upstream Yes/No/Cancel resource uses IDOK for its affirmative button.
+    int affirmative=GetDlgItem(dialog,IDYES)?IDYES:IDOK;
+    if(!wcsstr(message,L"close-flow.txt") || !GetDlgItem(dialog,affirmative) || !GetDlgItem(dialog,IDNO) || !GetDlgItem(dialog,IDCANCEL)) return TRUE;
+    HWND button=GetDlgItem(dialog,workspaceCloseTestChoice==IDYES?affirmative:workspaceCloseTestChoice);
+    if(!IsWindowEnabled(button) || !IsWindowVisible(dialog)) return TRUE;
+    KillTimer(NULL,workspaceCloseTestTimer); workspaceCloseTestTimer=0;
+    ++workspaceCloseTestClicks;
+    SetActiveWindow(dialog);
+    SendMessageW(button,BM_CLICK,0,0);
+    return FALSE;
+}
+static void CALLBACK _WorkspaceTestCloseTimer(HWND window,UINT message,UINT_PTR timer,DWORD time)
+{
+    UNREFERENCED_PARAMETER(window); UNREFERENCED_PARAMETER(message); UNREFERENCED_PARAMETER(timer); UNREFERENCED_PARAMETER(time);
+    EnumThreadWindows(GetCurrentThreadId(),_WorkspaceTestCloseDialog,0);
+}
+static bool _WorkspaceTestCloseChoice(int choice)
+{
+    workspaceCloseTestChoice=choice; workspaceCloseTestClicks=0;
+    workspaceCloseTestTimer=SetTimer(NULL,0,25,_WorkspaceTestCloseTimer);
+    if(!workspaceCloseTestTimer) return false;
+    SendWMCommand(Globals.hwndMain,IDM_FILE_CLOSE_TAB);
+    if(workspaceCloseTestTimer) KillTimer(NULL,workspaceCloseTestTimer);
+    workspaceCloseTestTimer=0;
+    return workspaceCloseTestClicks==1;
+}
 static void _WorkspaceTestCheck(WORKSPACE_TEST_RESULT* result, bool condition, const char* label)
 {
     ++result->checks;
@@ -338,6 +373,40 @@ static void _WorkspaceSelfTest()
     if(SciCall_GetUndoCurrent()!=quietUndo) SciCall_Undo();
     SciCall_SetChangeHistory(oldChangeHistory);
     if(quietPreview) MarkdownPreview_Toggle(Globals.hwndMain);
+    HPATHL closeFixture=Path_Copy(a); Path_RemoveFileSpec(closeFixture); Path_Append(closeFixture,L"close-flow.txt");
+    HANDLE closeFile=Path_CreateFile(closeFixture,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
+    DWORD closeWritten=0;
+    bool closeCreated=IS_VALID_HANDLE(closeFile) && WriteFile(closeFile,"close fixture\r\n",15,&closeWritten,NULL) && closeWritten==15;
+    if(IS_VALID_HANDLE(closeFile)) CloseHandle(closeFile);
+    bool closeLoaded=closeCreated && FileLoad(closeFixture,FLF_None,0,0);
+    _WorkspaceTestCheck(&result,closeLoaded && workspace->count==2 && _WorkspaceTestText("close fixture\r\n"),"close dialog fixture opens in independent saved tab");
+    if(closeLoaded) {
+        Encoding_Current(CPI_UTF8); SciCall_AppendText(5,"draft"); SciCall_SetSel(3,8); SciCall_SetZoom(3);
+        unsigned long long closeId=workspace->documents[workspace->active].id, closeVersion=_WorkspaceVersion();
+        sptr_t closeHandle=SciCall_GetDocPointer(); int closeUndo=SciCall_GetUndoCurrent();
+        bool closeAnswered=_WorkspaceTestCloseChoice(IDCANCEL);
+        _WorkspaceTestCheck(&result,closeAnswered && workspace->count==2 && workspace->documents[workspace->active].id==closeId && SciCall_GetDocPointer()==closeHandle && _WorkspaceVersion()==closeVersion && SciCall_GetUndoCurrent()==closeUndo && _WorkspaceTestText("close fixture\r\ndraft") && IsSaveNeeded() && SciCall_GetSelectionStart()==3 && SciCall_GetSelectionEnd()==8 && SciCall_GetZoom()==3,"actual Cancel button preserves dirty tab identity text selection zoom version and undo");
+        closeAnswered=_WorkspaceTestCloseChoice(IDNO);
+        _WorkspaceTestCheck(&result,closeAnswered && workspace->count==1 && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"actual Discard button closes only dirty fixture tab");
+        char closeDisk[32]={0}; DWORD closeRead=0;
+        closeFile=Path_CreateFile(closeFixture,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+        bool closeUnchanged=IS_VALID_HANDLE(closeFile) && ReadFile(closeFile,closeDisk,sizeof(closeDisk),&closeRead,NULL) && closeRead==15 && !memcmp(closeDisk,"close fixture\r\n",15);
+        if(IS_VALID_HANDLE(closeFile)) CloseHandle(closeFile);
+        _WorkspaceTestCheck(&result,closeUnchanged,"discard leaves original file bytes unchanged on disk");
+        if(workspace->count==2) { SciCall_SetSavePoint(); _WorkspaceCloseActive(); }
+        closeLoaded=FileLoad(closeFixture,FLF_None,0,0);
+        _WorkspaceTestCheck(&result,closeLoaded && workspace->count==2 && workspace->documents[workspace->active].id!=closeId && _WorkspaceTestText("close fixture\r\n"),"discarded fixture reopens original bytes with fresh document identity");
+        if(closeLoaded) {
+            Encoding_Current(CPI_UTF8); SciCall_AppendText(5,"saved");
+            closeAnswered=_WorkspaceTestCloseChoice(IDYES);
+            _WorkspaceTestCheck(&result,closeAnswered && workspace->count==1 && _WorkspaceTestText("alpha\r\nA") && !IsSaveNeeded(),"actual Save button writes and closes fixture while preserving original tab");
+            if(workspace->count==2) { SciCall_SetSavePoint(); _WorkspaceCloseActive(); }
+            closeLoaded=FileLoad(closeFixture,FLF_None,0,0);
+            _WorkspaceTestCheck(&result,closeLoaded && _WorkspaceTestText("close fixture\r\nsaved") && !IsSaveNeeded(),"saved close fixture reopens complete committed content");
+            if(closeLoaded) _WorkspaceCloseActive();
+        }
+    }
+    Path_Release(closeFixture);
     _WorkspaceTestCheck(&result, _WorkspaceCanClose(FSF_Ask), "all saved tabs can close");
     _SplitToggle();
     HWND primaryView = workspace->primaryView, secondView = workspace->splitView;
