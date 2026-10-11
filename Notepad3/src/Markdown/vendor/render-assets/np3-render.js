@@ -34,7 +34,9 @@
         } catch (_) { node.textContent = source; failure(node, 'Formula could not be rendered; the source is retained.'); }
       }
       const diagrams = [...document.querySelectorAll('pre > code.language-mermaid')];
-      if (window.mermaid) window.mermaid.initialize({startOnLoad: false, securityLevel: 'strict', htmlLabels: false, flowchart: {htmlLabels: false}, suppressErrorRendering: true, maxTextSize: 65536, maxEdges: 1024, secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'maxEdges', 'suppressErrorRendering', 'htmlLabels', 'flowchart', 'themeCSS']});
+      const scheme = getComputedStyle(document.documentElement).colorScheme;
+      const dark = scheme === 'dark' || (scheme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      if (window.mermaid) window.mermaid.initialize({theme: dark ? 'dark' : 'default', startOnLoad: false, securityLevel: 'strict', htmlLabels: false, flowchart: {htmlLabels: false}, suppressErrorRendering: true, maxTextSize: 65536, maxEdges: 1024, secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'maxEdges', 'suppressErrorRendering', 'htmlLabels', 'flowchart', 'themeCSS']});
       for (let i = 0; i < diagrams.length; i++) {
         const node = diagrams[i], source = node.textContent;
         if (i >= 64 || source.length > 65536 || !window.mermaid) { failure(node.parentElement, 'Diagram exceeds rendering limits or renderer is unavailable.'); continue; }

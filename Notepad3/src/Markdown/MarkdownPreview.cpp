@@ -2,6 +2,7 @@
 #include "MarkdownRender.h"
 #include "NavigationPolicy.h"
 #include "PreviewLayout.h"
+#include "../UI/PanelTheme.h"
 #include <windowsx.h>
 #include <cmath>
 #include <cwchar>
@@ -47,10 +48,23 @@ struct Preview {
     bool loaded = false, advanced = false, renderAdvanced = false, polling = false, rendered = false, captureDone = false, tracedPending = false;
     ULONGLONG renderDeadline = 0;
     HRESULT captureResult = E_PENDING;
+    PANEL_COLORS colors{};
+    bool themeVerified=false;
     std::wstring documentKey;
     std::wstring message = L"Starting Markdown preview...";
     ~Preview() { if (loader) FreeLibrary(loader); }
 };
+void VerifyTheme(const std::shared_ptr<Preview>& state) {
+    wchar_t script[512]; auto colors=state->colors;
+    swprintf_s(script,L"getComputedStyle(document.body).backgroundColor==='rgb(%u, %u, %u)' && getComputedStyle(document.body).color==='rgb(%u, %u, %u)' && getComputedStyle(document.documentElement).colorScheme==='%s'",GetRValue(colors.field),GetGValue(colors.field),GetBValue(colors.field),GetRValue(colors.text),GetGValue(colors.text),GetBValue(colors.text),colors.dark?L"dark":L"light");
+    const auto version=state->renderVersion; const std::weak_ptr<Preview> weak=state;
+    state->web->ExecuteScript(script,Callback<ICoreWebView2ExecuteScriptCompletedHandler>([weak,version](HRESULT status,LPCWSTR json)->HRESULT {
+        auto live=weak.lock(); if(live && live->window && live->renderVersion==version) {
+            live->themeVerified=SUCCEEDED(status) && json && wcscmp(json,L"true")==0;
+            Trace(live->themeVerified?"preview-theme-verified":"preview-theme-mismatch",status);
+        } return S_OK;
+    }).Get());
+}
 
 void RestoreScroll(const std::shared_ptr<Preview>& state) {
     wchar_t script[160]; swprintf_s(script, L"window.scrollTo(0,%.0f)", state->scrollToRestore);
@@ -183,6 +197,7 @@ void Start(const std::shared_ptr<Preview>& state)
                                     if (live && live->window && live->web && id == live->navigationId && live->navigationVersion == live->renderVersion) {
                                         live->loaded = success != FALSE;
                                         if (success) {
+                                            VerifyTheme(live);
                                             if(live->renderAdvanced) { live->renderDeadline=GetTickCount64()+15000; live->polling=false; SetTimer(live->window,RenderTimer,50,nullptr); }
                                             else { live->rendered=true; RestoreScroll(live); }
                                         }
@@ -338,6 +353,10 @@ extern "C" int MarkdownPreview_Layout(HWND parent, int x, int y, int width, int 
     return reserved;
 }
 extern "C" BOOL MarkdownPreview_IsRendered(HWND parent) { auto state=State(Find(parent)); return state && state->rendered; }
+extern "C" BOOL MarkdownPreview_IsThemeApplied(HWND parent) {
+    auto state=State(Find(parent)); PANEL_COLORS current{};
+    return state && state->themeVerified && SendMessageW(parent,NP3_WM_PANEL_COLORS,0,reinterpret_cast<LPARAM>(&current)) && current.dark==state->colors.dark && current.field==state->colors.field && current.text==state->colors.text;
+}
 extern "C" BOOL MarkdownPreview_IsCaptureDone(HWND parent) { auto state=State(Find(parent)); return state && state->captureDone; }
 extern "C" BOOL MarkdownPreview_IsCaptureSuccessful(HWND parent) { auto state=State(Find(parent)); return state && state->captureDone && SUCCEEDED(state->captureResult); }
 extern "C" BOOL MarkdownPreview_Capture(HWND parent,const WCHAR* destination) {
@@ -375,6 +394,10 @@ extern "C" void MarkdownPreview_Update(HWND parent, const char* text, size_t len
             : np3::RenderMarkdown("# Preview paused\n\nThis document exceeds the 2 MiB live preview limit.");
         if(!state->advanced) html.insert(html.find("<body>")+6,"<p>Diagram and formula rendering assets are unavailable; source text is shown.</p>");
         if(html.size()>1024*1024) { html=np3::RenderMarkdown("# Preview paused\n\nRendered HTML exceeds the safe live preview size."); state->renderAdvanced=false; }
+        PANEL_COLORS colors{};
+        if(!SendMessageW(parent,NP3_WM_PANEL_COLORS,0,reinterpret_cast<LPARAM>(&colors))) { colors.field=GetSysColor(COLOR_WINDOW); colors.text=GetSysColor(COLOR_WINDOWTEXT); }
+        char style[384]; sprintf_s(style,"<style>html{color-scheme:%s;background:#%02x%02x%02x;color:#%02x%02x%02x}body{background:#%02x%02x%02x;color:#%02x%02x%02x}blockquote{color:inherit}</style>",colors.dark?"dark":"light",GetRValue(colors.field),GetGValue(colors.field),GetBValue(colors.field),GetRValue(colors.text),GetGValue(colors.text),GetBValue(colors.text),GetRValue(colors.field),GetGValue(colors.field),GetBValue(colors.field),GetRValue(colors.text),GetGValue(colors.text),GetBValue(colors.text));
+        html.insert(html.find("</head>"),style); state->colors=colors; state->themeVerified=false;
         const std::wstring wide = Wide(html);
         if (wide.empty()) { Failed(state, L"Cannot render Markdown preview."); return; }
         const std::wstring folder = directory ? directory : L"";

@@ -3966,6 +3966,7 @@ LRESULT MsgThemeChanged(HWND hwnd, WPARAM wParam,LPARAM lParam)
         EditUpdateVisibleIndicators();
 
         PanelTheme_RefreshChildren(hwnd);
+        MarkdownPreview_Changed(hwnd);
 
         UpdateUI(hwnd);
         _SplitSyncStyles();
