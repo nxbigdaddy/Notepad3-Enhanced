@@ -69,6 +69,24 @@ static bool _MarkdownPdfSelfTestDone(uint32_t error)
     DOCUMENT_WORKSPACE* workspace = _Workspace();
     PDF_TEST* test = workspace ? workspace->pdfTest : NULL;
     if (!test) return false;
+    if(test->phase<0) {
+        char note[96]; DWORD written;
+        StringCchPrintfA(note,COUNTOF(note),"EXPECTED FAILURE error=%08lx\r\n",(unsigned long)error);
+        WriteFile(test->result.log,note,(DWORD)strlen(note),&written,NULL);
+        WCHAR expectedText[32];
+        GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_FAILURE",expectedText,COUNTOF(expectedText));
+        uint32_t expected=(uint32_t)wcstoul(expectedText,NULL,16);
+        _WorkspaceTestCheck(&test->result,error==expected && error!=0,"missing runtime or loader reports expected real failure code");
+        _WorkspaceTestCheck(&test->result,!MarkdownPdf_IsBusy(Globals.hwndMain) && Path_IsExistingFile(test->target),"failed initialization releases busy state and retains prior output");
+        _WorkspaceTestCheck(&test->result,SciCall_GetDocPointer()==test->document && workspace->documents[workspace->active].version==test->version && !IsSaveNeeded(),"initialization failure preserves source document version and savepoint");
+        if(test->phase==-1) {
+            test->phase=-2; uint32_t startError=0;
+            bool started=_MarkdownExportSnapshot(test->target,&startError,true);
+            _WorkspaceTestCheck(&test->result,started,"initialization failure permits independent retry");
+            if(!started) _MarkdownPdfTestFinish(test);
+        } else _MarkdownPdfTestFinish(test);
+        return true;
+    }
     if (test->phase == 0) {
         _WorkspaceTestCheck(&test->result, !error && Path_IsExistingFile(test->target), "actual WebView2 PDF export completed");
         _WorkspaceTestCheck(&test->result, SciCall_GetDocPointer() == test->document && workspace->documents[workspace->active].version > test->version && IsSaveNeeded() && SciCall_CanUndo(), "asynchronous PDF export leaves later editing intact");
@@ -132,6 +150,13 @@ static void _MarkdownPdfSelfTest()
     _WorkspaceTestCheck(&test->result, !_MarkdownExportSnapshot(source, &error, true) && error == ERROR_SHARING_VIOLATION, "PDF export cannot overwrite source document");
     Path_Release(source);
     test->document = SciCall_GetDocPointer(); test->version = _Workspace()->documents[_Workspace()->active].version;
+    if(GetEnvironmentVariableW(L"NP3_PDF_SELFTEST_FAILURE",NULL,0)) {
+        test->phase=-1;
+        bool started=_MarkdownExportSnapshot(test->target,&error,true);
+        _WorkspaceTestCheck(&test->result,started,"start actual export with isolated missing runtime or loader");
+        if(!started) _MarkdownPdfTestFinish(test);
+        return;
+    }
     bool const started = _MarkdownExportSnapshot(test->target, &error, true);
     _WorkspaceTestCheck(&test->result, started && MarkdownPdf_IsBusy(Globals.hwndMain), "start independent PDF snapshot job");
     if (!started) { _MarkdownPdfTestFinish(test); return; }
