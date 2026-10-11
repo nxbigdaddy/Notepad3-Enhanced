@@ -426,7 +426,31 @@ static void _WorkspaceSelfTest()
     const char* jsonCommandPretty="prefix {\r\n  \"x\": 1,\r\n  \"s\": \"中文\"\r\n} suffix";
     SciCall_SelectAll(); SciCall_ReplaceSel(jsonCommandInput); SciCall_SetSel(7,(DocPos)strlen(jsonCommandInput)-7);
     bool jsonPreview=GetEnvironmentVariableW(L"NP3_MARKDOWN_CHECK_PREVIEW",NULL,0)!=0;
-    if(jsonPreview) { MarkdownPreview_Toggle(Globals.hwndMain); _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false),"JSON command fixture starts actual preview"); }
+    if(jsonPreview) {
+        MarkdownPreview_Toggle(Globals.hwndMain);
+        _WorkspaceTestCheck(&result,_WorkspaceTestPreviewReady(false),"JSON command fixture starts actual preview");
+        HWND previewGrip=FindWindowExW(Globals.hwndMain,NULL,L"NP3MarkdownPreview",NULL);
+        RECT previewBefore={0},previewAfter={0}; GetWindowRect(previewGrip,&previewBefore);
+        unsigned long long previewDragVersion=_WorkspaceVersion(); int previewDragUndo=SciCall_GetUndoCurrent(); bool previewDragDirty=IsSaveNeeded();
+        SendMessageW(previewGrip,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(2,2));
+        SendMessageW(previewGrip,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(-100,2)); GetWindowRect(previewGrip,&previewAfter);
+        _WorkspaceTestCheck(&result,previewGrip && GetCapture()==previewGrip && previewAfter.right-previewAfter.left>previewBefore.right-previewBefore.left,"Markdown grip message coordinates widen actual preview without moving global cursor");
+        SendMessageW(previewGrip,WM_CANCELMODE,0,0); GetWindowRect(previewGrip,&previewAfter);
+        _WorkspaceTestCheck(&result,GetCapture()!=previewGrip && EqualRect(&previewBefore,&previewAfter),"canceling Markdown drag restores initial bounds and releases capture");
+        SendMessageW(previewGrip,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(2,2));
+        SendMessageW(previewGrip,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(-100,2)); ReleaseCapture(); GetWindowRect(previewGrip,&previewAfter);
+        _WorkspaceTestCheck(&result,EqualRect(&previewBefore,&previewAfter),"losing Markdown drag capture restores initial bounds");
+        SendMessageW(previewGrip,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(2,2));
+        SendMessageW(previewGrip,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(-100,2));
+        SendMessageW(previewGrip,WM_LBUTTONUP,0,0); GetWindowRect(previewGrip,&previewAfter);
+        _WorkspaceTestCheck(&result,GetCapture()!=previewGrip && previewAfter.right-previewAfter.left>previewBefore.right-previewBefore.left,"releasing Markdown drag commits new width");
+        SendMessageW(previewGrip,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(2,2));
+        SendMessageW(previewGrip,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(-30000,2)); GetWindowRect(previewGrip,&previewAfter);
+        RECT previewMain={0}; GetClientRect(Globals.hwndMain,&previewMain);
+        _WorkspaceTestCheck(&result,previewAfter.right-previewAfter.left>=160 && previewAfter.right-previewAfter.left<=previewMain.right-160,"extreme Markdown drag retains minimum preview and editor widths");
+        SendMessageW(previewGrip,WM_CANCELMODE,0,0);
+        _WorkspaceTestCheck(&result,_WorkspaceVersion()==previewDragVersion && SciCall_GetUndoCurrent()==previewDragUndo && _WorkspaceTestText(jsonCommandInput) && IsSaveNeeded()==previewDragDirty,"Markdown drag cancel capture loss and commit preserve source version undo and savepoint");
+    }
     unsigned long long jsonVersion=workspace->documents[workspace->active].version;
     SendMessageW(Globals.hwndMain,WM_COMMAND,IDM_EDIT_JSON_FORMAT,0);
     _WorkspaceTestCheck(&result,_WorkspaceTestText(jsonCommandPretty) && SciCall_GetSelectionStart()==7 && SciCall_GetSelectionEnd()==(DocPos)strlen(jsonCommandPretty)-7 && workspace->documents[workspace->active].version==jsonVersion+1,"JSON format command changes only selected Unicode JSON and advances version once");

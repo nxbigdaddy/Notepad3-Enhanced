@@ -42,6 +42,7 @@ struct Preview {
     ComPtr<ICoreWebView2> web;
     unsigned pendingRenderNavigations = 0;
     int widthRatio = 5000;
+    int dragInitialRatio = 5000;
     int layoutX = 0, layoutWidth = 0;
     bool dragging = false;
     unsigned long long renderVersion = 0, navigationVersion = 0, navigationId = 0;
@@ -293,12 +294,14 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     }
     case WM_LBUTTONDOWN:
         if (GET_X_LPARAM(lParam) < MulDiv(6, GetDpiForWindow(window), 96)) {
+            if (!state->dragging) state->dragInitialRatio = state->widthRatio;
             state->dragging = true; SetCapture(window); return 0;
         }
         break;
     case WM_MOUSEMOVE:
         if (state->dragging && state->layoutWidth > 0) {
-            POINT point; GetCursorPos(&point); ScreenToClient(state->parent, &point);
+            POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+            MapWindowPoints(window, state->parent, &point, 1);
             state->widthRatio = np3::PreviewRatio(state->layoutWidth, state->layoutX + state->layoutWidth - point.x);
             RECT bounds; GetClientRect(state->parent, &bounds);
             SendMessageW(state->parent, WM_SIZE, SIZE_RESTORED, MAKELPARAM(bounds.right, bounds.bottom));
@@ -309,9 +312,16 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         if (state->dragging) { state->dragging = false; ReleaseCapture(); return 0; }
         break;
     case WM_CANCELMODE:
-        if (GetCapture() == window) ReleaseCapture();
         [[fallthrough]];
-    case WM_CAPTURECHANGED: state->dragging = false; break;
+    case WM_CAPTURECHANGED:
+        if (state->dragging) {
+            state->dragging = false;
+            state->widthRatio = state->dragInitialRatio;
+            if (GetCapture() == window) ReleaseCapture();
+            RECT bounds; GetClientRect(state->parent, &bounds);
+            SendMessageW(state->parent, WM_SIZE, SIZE_RESTORED, MAKELPARAM(bounds.right, bounds.bottom));
+        }
+        break;
     case WM_TIMER:
         if (wParam == RenderTimer) { PollRender(state); return 0; }
         if (wParam == RefreshTimer) {
