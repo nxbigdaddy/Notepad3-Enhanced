@@ -29,10 +29,10 @@ struct Panel {
     HMODULE richEdit = nullptr;
     ~Panel() { if (richEdit) FreeLibrary(richEdit); }
     HWND window = nullptr, parent = nullptr;
-    std::wstring labels[AP_COUNT], endpoint;
+    std::wstring labels[AP_COUNT], endpoint, activeId, activeModel;
     std::shared_ptr<Client> client;
     std::shared_ptr<Job> job;
-    bool published = false;
+    bool published = false, settingsExpanded = false;
 };
 using Owner = std::shared_ptr<Panel>;
 Owner State(void* context) { return context ? *static_cast<Owner*>(context) : nullptr; }
@@ -50,21 +50,30 @@ std::string Utf8(const wchar_t* value) {
 }
 void Status(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel->window, 130), panel->labels[label].c_str()); }
 void Busy(const Owner& panel, bool busy) {
-    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124,125,126}) EnableWindow(GetDlgItem(panel->window,id), !busy);
+    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124,125,126,127,128,129,131}) EnableWindow(GetDlgItem(panel->window,id), !busy);
     EnableWindow(GetDlgItem(panel->window,114), busy);
     EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK && panel->job->action != AI_CONNECTION_TEST);
 }
 void Profiles(const Owner& panel) {
     HWND combo=GetDlgItem(panel->window,123); SendMessageW(combo,CB_RESETCONTENT,0,0);
-    SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"切换已保存账号")); SendMessageW(combo,CB_SETITEMDATA,0,static_cast<LPARAM>(-1));
+    const std::wstring current=panel->activeModel.empty()?L"选择已保存模型":L"当前模型："+panel->activeModel;
+    SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(current.c_str())); SendMessageW(combo,CB_SETITEMDATA,0,static_cast<LPARAM>(-1));
+    LRESULT selected=0;
     for(int index=0;index<AI_PROFILE_MAXIMUM;++index) {
         AI_PANEL_SETTINGS settings{};
         if(SendMessageW(panel->parent,NP3_WM_AI_PROFILE,index,reinterpret_cast<LPARAM>(&settings))) {
-            std::wstring label=std::wstring(settings.configurationId)+L" — "+settings.model;
+            std::wstring account=settings.configurationId;
+            if(account.rfind(L"account-",0)==0){const std::wstring address=settings.endpoint;account=address.find(L"moonshot")!=std::wstring::npos?L"Kimi":address.find(L"deepseek")!=std::wstring::npos?L"DeepSeek":address.find(L"aliyuncs")!=std::wstring::npos?L"百炼":L"自定义服务";account+=L"（账号"+std::to_wstring(index+1)+L"）";}
+            std::wstring label=account+L" — "+settings.model;
             const LRESULT item=SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label.c_str()));
-            if(item>=0) SendMessageW(combo,CB_SETITEMDATA,static_cast<WPARAM>(item),index);
+            if(item>=0){SendMessageW(combo,CB_SETITEMDATA,static_cast<WPARAM>(item),index);if(panel->activeId==settings.configurationId)selected=item;}
         }
     }
+    SendMessageW(combo,CB_SETCURSEL,static_cast<WPARAM>(selected),0);
+}
+void Prompts(const Owner& panel) {
+    HWND combo=GetDlgItem(panel->window,127);SendMessageW(combo,CB_RESETCONTENT,0,0);SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"选择已保存提示词"));SendMessageW(combo,CB_SETITEMDATA,0,-1);
+    for(int index=0;index<32;++index){AI_PROMPT prompt{};prompt.index=index;if(SendMessageW(panel->parent,NP3_WM_AI_PROMPT,0,reinterpret_cast<LPARAM>(&prompt))){LRESULT item=SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(prompt.name));if(item>=0)SendMessageW(combo,CB_SETITEMDATA,static_cast<WPARAM>(item),index);}}
     SendMessageW(combo,CB_SETCURSEL,0,0);
 }
 int Canceled(void* context) { return static_cast<Job*>(context)->cancel.load() ? 1 : 0; }
@@ -128,20 +137,34 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     if (message == WM_SIZE && panel) {
         int width = LOWORD(lParam), height = HIWORD(lParam), row = MulDiv(28, GetDpiForWindow(window), 96);
         auto move = [&](int id, int x, int y, int w, int h) { MoveWindow(GetDlgItem(window,id), x,y,(std::max)(0,w),(std::max)(0,h),TRUE); };
-        for (int i=0;i<4;++i) { int x=i*width/4,w=width/4; move(201+i,x,0,w,row); move(101+i,x,row,w-2,row-2); }
-        const int buttons[] = {105,106,110,111,112,113,114,115};
-        for (int i=0;i<8;++i) move(buttons[i],i*width/8,2*row,width/8-2,row-2);
-        move(205,0,3*row,width/4,row); move(120,width/4,3*row,7*width/12-2,row-2);move(126,5*width/6,3*row,width-width*5/6-2,row-2);
-        move(116,0,4*row,width/3-2,6*row); move(117,width/3,4*row,width/6-2,row-2);
-        move(118,width/2,4*row,width/4,row); move(119,3*width/4,4*row,width/4-2,row-2);
-        move(123,0,5*row,width/2-2,6*row);move(124,width/2,5*row,width/6-2,row-2);move(125,2*width/3,5*row,width-width*2/3-2,6*row);
-        move(206,0,6*row,width/2,row); move(207,width/2,6*row,width-width/2,row);
-        int panes = height-8*row;
-        move(121,0,7*row,width/2-2,panes); move(122,width/2,7*row,width-width/2,panes);
-        move(130,0,(std::max)(7*row,height-row),width,row); return 0;
+        move(107,0,0,width/6-2,row-2);move(123,width/6,0,2*width/3-2,6*row);move(124,5*width/6,0,width/6-2,row-2);
+        for(int id:{101,102,103,104,105,106,118,119,125,126,201,202,203,204}) ShowWindow(GetDlgItem(window,id),panel->settingsExpanded?SW_SHOW:SW_HIDE);
+        int base=1;
+        if(panel->settingsExpanded){
+            for(int i=0;i<4;++i){move(201+i,i*width/4,row,width/4,row);move(101+i,i*width/4,2*row,width/4-2,row-2);}
+            move(105,0,3*row,width/8-2,row-2);move(106,width/8,3*row,width/8-2,row-2);move(118,width/4,3*row,width/8,row);move(119,3*width/8,3*row,width/4-2,row-2);move(125,5*width/8,3*row,width/4-2,6*row);move(126,7*width/8,3*row,width/8-2,row-2);base=4;
+        }
+        for(int i=0;i<6;++i)move(110+i,i*width/9,base*row,width/9-2,row-2);
+        move(116,2*width/3,base*row,2*width/9-2,6*row);move(117,8*width/9,base*row,width/9-2,row-2);
+        ShowWindow(GetDlgItem(window,205),SW_HIDE);
+        move(127,0,(base+1)*row,width/3-2,6*row);move(128,width/3,(base+1)*row,width/3-2,row-2);move(129,2*width/3,(base+1)*row,width/6-2,row-2);move(131,5*width/6,(base+1)*row,width/6-2,row-2);
+        move(120,0,(base+2)*row,width,2*row-2);
+        move(206,0,(base+4)*row,width/2,row);move(207,width/2,(base+4)*row,width/2,row);
+        int top=(base+5)*row;int panes=(std::max)(0,height-row-top);
+        move(121,0,top,width/2-2,panes);move(122,width/2,top,width/2,panes);move(130,0,(std::max)(top,height-row),width,row);return 0;
     }
     if (message == WM_COMMAND && panel) {
         int id = LOWORD(wParam);
+        if(id==107 && HIWORD(wParam)==BN_CLICKED){panel->settingsExpanded=!panel->settingsExpanded;SetWindowTextW(GetDlgItem(window,107),panel->settingsExpanded?L"收起模型设置":L"模型设置");RECT rect{};GetClientRect(panel->parent,&rect);SendMessageW(panel->parent,WM_SIZE,0,MAKELPARAM(rect.right,rect.bottom));return 0;}
+        if(id==127 && HIWORD(wParam)==CBN_SELCHANGE){
+            if(panel->job && (!panel->job->done.load() || !panel->published))return 0;
+            AI_PROMPT prompt{};LRESULT item=SendDlgItemMessageW(window,127,CB_GETCURSEL,0,0);prompt.index=static_cast<int>(SendDlgItemMessageW(window,127,CB_GETITEMDATA,static_cast<WPARAM>(item),0));
+            if(SendMessageW(panel->parent,NP3_WM_AI_PROMPT,0,reinterpret_cast<LPARAM>(&prompt))){SetWindowTextW(GetDlgItem(window,128),prompt.name);SetWindowTextW(GetDlgItem(window,120),prompt.text);SetWindowTextW(GetDlgItem(window,130),L"提示词已载入，可编辑后保存，或选择操作执行。");}return 0;
+        }
+        if((id==129 || id==131) && HIWORD(wParam)==BN_CLICKED){
+            AI_PROMPT prompt{};GetWindowTextW(GetDlgItem(window,128),prompt.name,65);GetWindowTextW(GetDlgItem(window,120),prompt.text,4097);
+            if(SendMessageW(panel->parent,id==129?NP3_WM_AI_PROMPT_SAVE:NP3_WM_AI_PROMPT_DELETE,0,reinterpret_cast<LPARAM>(&prompt))){Prompts(panel);SetWindowTextW(GetDlgItem(window,130),id==129?L"提示词已保存，同名内容已更新。":L"提示词已删除；输入框中的草稿保留。");}else SetWindowTextW(GetDlgItem(window,130),L"提示词操作失败：填写名称和内容；删除前载入原内容；最多32项、4096 UTF-8字节。");return 0;
+        }
         if(id==125 && HIWORD(wParam)==CBN_SELCHANGE) {
             if(panel->job && (!panel->job->done.load() || !panel->published)) return 0;
             const LRESULT selected=SendDlgItemMessageW(window,125,CB_GETCURSEL,0,0);
@@ -157,6 +180,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             AI_PANEL_SAVE request{};request.secret="";
             if(index<0) return 0;
             if(!SendMessageW(panel->parent,NP3_WM_AI_PROFILE,index,reinterpret_cast<LPARAM>(&request.settings)) || !SendMessageW(panel->parent,NP3_WM_AI_SAVE,0,reinterpret_cast<LPARAM>(&request))) {Status(panel,AP_ERROR);return 0;}
+            panel->activeId=request.settings.configurationId;panel->activeModel=request.settings.model;
             SetWindowTextW(GetDlgItem(window,101),request.settings.endpoint);SetWindowTextW(GetDlgItem(window,102),request.settings.model);
             SetDlgItemInt(window,104,request.settings.timeoutMs,FALSE);SetWindowTextW(GetDlgItem(window,119),request.settings.configurationId);SetWindowTextW(GetDlgItem(window,103),L"");Status(panel,AP_SAVED);return 0;
         }
@@ -193,10 +217,11 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             GetWindowTextW(GetDlgItem(window,101),request.settings.endpoint,2049); GetWindowTextW(GetDlgItem(window,102),request.settings.model,257);
             BOOL valid=FALSE; request.settings.timeoutMs=GetDlgItemInt(window,104,&valid,FALSE);
             GetWindowTextW(GetDlgItem(window,119),request.settings.configurationId,65);
+            if(id==105 && !request.settings.configurationId[0] && GetWindowTextLengthW(GetDlgItem(window,103))>0 && SendDlgItemMessageW(window,125,CB_GETCURSEL,0,0)>0){swprintf_s(request.settings.configurationId,L"account-%lu-%llu",GetCurrentProcessId(),GetTickCount64());SetWindowTextW(GetDlgItem(window,119),request.settings.configurationId);}
             GetWindowTextW(GetDlgItem(window,103),key,2049); auto secret=Utf8(key); SecureZeroMemory(key,sizeof(key)); request.secret=secret.c_str();
             bool saved=valid && SendMessageW(panel->parent,NP3_WM_AI_SAVE,id==106,reinterpret_cast<LPARAM>(&request));
             SecureZeroMemory(secret.data(),secret.size());
-            if (saved) { SetWindowTextW(GetDlgItem(window,103),L""); Profiles(panel); } Status(panel,saved?AP_SAVED:AP_ERROR);
+            if (saved) { if(id==105){panel->activeId=request.settings.configurationId;panel->activeModel=request.settings.model;} SetWindowTextW(GetDlgItem(window,103),L""); Profiles(panel); } Status(panel,saved?AP_SAVED:AP_ERROR);
         }
         return 0;
     }
@@ -215,7 +240,7 @@ extern "C" BOOL AiPanel_IsOpen(void* context) { auto panel=State(context); retur
 extern "C" BOOL AiPanel_IsBusy(void* context) { auto panel=State(context); return panel && panel->job && (!panel->job->done.load() || !panel->published); }
 extern "C" int AiPanel_Layout(void* context,int x,int y,int width,int height) {
     auto panel=State(context); if(!panel || !panel->window) return 0;
-    int reserve=(std::min)((std::max)(0,height*2/3),MulDiv(360,GetDpiForWindow(panel->parent),96));
+    int reserve=(std::min)((std::max)(0,height*2/3),MulDiv(panel->settingsExpanded?480:360,GetDpiForWindow(panel->parent),96));
     MoveWindow(panel->window,x,y+height-reserve,width,reserve,TRUE); return reserve;
 }
 extern "C" BOOL AiPanel_Run(void* context,const AI_PANEL_SETTINGS* settings,const AI_PANEL_SOURCE* source,int action,const char* original,size_t length,const char* instruction) {
@@ -249,7 +274,7 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
         if(panel->window) DestroyWindow(panel->window);
         else {
             if(!panel->richEdit) panel->richEdit=LoadLibraryExW(L"Msftedit.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32); if(!panel->richEdit) throw std::runtime_error("RichEdit");
-            panel->parent=parent; for(int i=0;i<AP_COUNT;++i) panel->labels[i]=labels[i];
+            panel->settingsExpanded=false;panel->activeId=settings->configurationId;panel->activeModel=settings->model;panel->parent=parent; for(int i=0;i<AP_COUNT;++i) panel->labels[i]=labels[i];
             WNDCLASSW type{}; type.lpfnWndProc=Proc; type.hInstance=GetModuleHandleW(nullptr); type.lpszClassName=ClassName; type.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_BTNFACE+1); RegisterClassW(&type);
             auto holder=std::make_unique<Owner>(panel);
             HWND window=CreateWindowExW(WS_EX_CLIENTEDGE,ClassName,nullptr,WS_CHILD|WS_VISIBLE,0,0,0,0,parent,nullptr,type.hInstance,nullptr); if(!window) return;
@@ -258,13 +283,14 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
                 HWND child=CreateWindowExW(0,name,text,WS_CHILD|WS_VISIBLE|style,0,0,0,0,window,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),type.hInstance,nullptr);
                 if(!child) throw std::bad_alloc(); SendMessageW(child,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),FALSE); return child;
             };
+            control(L"BUTTON",L"模型设置",BS_PUSHBUTTON|WS_TABSTOP,107);
             for(int i=0;i<4;++i) { control(L"STATIC",labels[i],0,201+i); control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP|(i==2?ES_PASSWORD:0)|(i==3?ES_NUMBER:0),101+i); }
             SendMessageW(GetDlgItem(window,101),EM_SETLIMITTEXT,2048,0); SendMessageW(GetDlgItem(window,102),EM_SETLIMITTEXT,256,0); SendMessageW(GetDlgItem(window,103),EM_SETLIMITTEXT,2048,0);
             SetWindowTextW(GetDlgItem(window,101),settings->endpoint); SetWindowTextW(GetDlgItem(window,102),settings->model); SetDlgItemInt(window,104,settings->timeoutMs,FALSE);
             const int ids[]={105,106,110,111,112,113,114,115}; const int texts[]={AP_SAVE,AP_DELETE,AP_EXPLAIN,AP_TRANSLATE,AP_REWRITE,AP_GENERATE,AP_CANCEL,AP_APPLY};
             for(int i=0;i<8;++i) control(L"BUTTON",labels[texts[i]],BS_PUSHBUTTON|WS_TABSTOP,ids[i]);
             control(L"BUTTON",L"测试（计费）",BS_PUSHBUTTON|WS_TABSTOP,126);
-            control(L"STATIC",labels[AP_INSTRUCTION],0,205); control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,120); SendMessageW(GetDlgItem(window,120),EM_SETLIMITTEXT,4096,0);
+            control(L"STATIC",labels[AP_INSTRUCTION],0,205); control(L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_TABSTOP,120); SendMessageW(GetDlgItem(window,120),EM_SETLIMITTEXT,4096,0);
             HWND actions=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,116);
             for(const wchar_t* name : {L"摘要",L"润色",L"扩写",L"缩写",L"纠错",L"当前文件问答"}) SendMessageW(actions,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
             SendMessageW(actions,CB_SETCURSEL,0,0); control(L"BUTTON",L"执行",BS_PUSHBUTTON|WS_TABSTOP,117);
@@ -274,6 +300,7 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             HWND providers=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,125);
             for(const wchar_t* name:{L"服务地址预设",L"Kimi（中国大陆）",L"DeepSeek",L"Qwen / 百炼（北京）",L"第三方兼容接口"}) SendMessageW(providers,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
             SendMessageW(providers,CB_SETCURSEL,0,0);SendMessageW(GetDlgItem(window,102),EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"填写平台可用模型ID")); Profiles(panel);
+            control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,127);control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,128);SendDlgItemMessageW(window,128,EM_SETLIMITTEXT,64,0);SendDlgItemMessageW(window,128,EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"提示词名称"));control(L"BUTTON",L"保存提示词",BS_PUSHBUTTON|WS_TABSTOP,129);control(L"BUTTON",L"删除提示词",BS_PUSHBUTTON|WS_TABSTOP,131);Prompts(panel);
             control(L"STATIC",labels[AP_ORIGINAL],0,206); control(L"STATIC",labels[AP_RESULT],0,207);
             for(int id:{121,122}) { HWND edit=control(L"RICHEDIT50W",L"",WS_BORDER|WS_VSCROLL|WS_HSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|ES_AUTOHSCROLL|WS_TABSTOP,id); SendMessageW(edit,EM_EXLIMITTEXT,0,2*1024*1024); }
             control(L"STATIC",labels[AP_READY],0,130); Busy(panel,false); if(!SetTimer(window,1,50,nullptr)) throw std::bad_alloc();

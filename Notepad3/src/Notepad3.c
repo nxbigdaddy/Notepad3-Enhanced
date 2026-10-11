@@ -406,6 +406,7 @@ static bool _AiRun(const AI_PANEL_CAPTURE* request);
 static bool _AiApply(const AI_PANEL_APPLY* request);
 static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey);
 static bool _AiReadProfile(int index, AI_PANEL_SETTINGS* settings);
+static bool _AiPrompt(int operation, AI_PROMPT* prompt);
 static bool _AiRemoveProfile(int index, const AI_PANEL_SETTINGS* expected);
 static int _AiLayout(int x, int y, int width, int height);
 static void* _WorkspaceAi(void);
@@ -2671,6 +2672,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
         _PanelColors((PANEL_COLORS*)lParam); return TRUE;
     case NP3_WM_AI_APPLY: return _AiApply((const AI_PANEL_APPLY*)lParam);
     case NP3_WM_AI_SAVE: return _AiSave((const AI_PANEL_SAVE*)lParam, wParam != 0);
+    case NP3_WM_AI_PROMPT: return _AiPrompt(0,(AI_PROMPT*)lParam);
+    case NP3_WM_AI_PROMPT_SAVE: return _AiPrompt(1,(AI_PROMPT*)lParam);
+    case NP3_WM_AI_PROMPT_DELETE: return _AiPrompt(2,(AI_PROMPT*)lParam);
     case NP3_WM_AI_PROFILE: return _AiReadProfile((int)wParam,(AI_PANEL_SETTINGS*)lParam);
     case NP3_WM_AI_REMOVE_PROFILE: return _AiRemoveProfile((int)wParam,(const AI_PANEL_SETTINGS*)lParam);
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
@@ -12696,6 +12700,34 @@ static bool _AiApply(const AI_PANEL_APPLY* request)
         MarkdownPreview_Changed(Globals.hwndMain);
     }
     return true;
+}
+static bool _AiPrompt(int operation, AI_PROMPT* prompt)
+{
+    if(!prompt || Path_IsEmpty(Paths.IniFile) || operation<0 || operation>2) return false;
+    WCHAR section[32],encoded[8193],name[65];char bytes[4097];
+    if(operation==0) {
+        if(prompt->index<0 || prompt->index>=32) return false;
+        StringCchPrintfW(section,COUNTOF(section),L"AIPrompt%02d",prompt->index);
+        IniFileGetString(Paths.IniFile,section,L"Name",L"",name,COUNTOF(name));
+        IniFileGetString(Paths.IniFile,section,L"TextHex",L"",encoded,COUNTOF(encoded));
+        size_t length=wcslen(encoded);if(!name[0] || !length || length%2 || length>8192) return false;
+        for(size_t i=0;i<length;++i){WCHAR c=encoded[i];int value=c>=L'0' && c<=L'9'?c-L'0':c>=L'a' && c<=L'f'?c-L'a'+10:-1;if(value<0)return false;if(!(i%2))bytes[i/2]=(char)(value<<4);else bytes[i/2]=(char)((unsigned char)bytes[i/2]|value);}
+        if(memchr(bytes,0,length/2))return false;
+        if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,bytes,(int)(length/2),prompt->text,4096))return false;
+        int count=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,bytes,(int)(length/2),NULL,0);prompt->text[count]=0;StringCchCopyW(prompt->name,COUNTOF(prompt->name),name);return true;
+    }
+    if(AiPanel_IsBusy(_WorkspaceAi()) || !prompt->name[0] || wcschr(prompt->name,L'\r') || wcschr(prompt->name,L'\n') || !prompt->text[0]) return false;
+    int count=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,prompt->text,-1,bytes,sizeof(bytes),NULL,NULL);if(count<2 || count>4097)return false;
+    const WCHAR* hex=L"0123456789abcdef";for(int i=0;i<count-1;++i){encoded[2*i]=hex[(unsigned char)bytes[i]>>4];encoded[2*i+1]=hex[(unsigned char)bytes[i]&15];}encoded[2*(count-1)]=0;
+    if(!OpenSettingsFile(__FUNCTION__))return false;
+    int chosen=-1,available=-1;
+    for(int i=0;i<32;++i){StringCchPrintfW(section,COUNTOF(section),L"AIPrompt%02d",i);IniSectionGetString(section,L"Name",L"",name,COUNTOF(name));if(!name[0] && available<0)available=i;if(!wcscmp(name,prompt->name)){chosen=i;break;}}
+    bool updated=false;
+    if(operation==1 && chosen<0)chosen=available;
+    if(chosen>=0 && Globals.bCanSaveIniFile){StringCchPrintfW(section,COUNTOF(section),L"AIPrompt%02d",chosen);
+        if(operation==1)updated=IniSectionSetString(section,L"Name",prompt->name) && IniSectionSetString(section,L"TextHex",encoded);
+        else {WCHAR stored[8193];IniSectionGetString(section,L"TextHex",L"",stored,COUNTOF(stored));updated=!wcscmp(stored,encoded) && IniSectionDelete(section,NULL,true);}}
+    bool saved=CloseSettingsFile(__FUNCTION__,updated) && updated;if(saved)prompt->index=chosen;return saved;
 }
 static bool _AiReadProfile(int index, AI_PANEL_SETTINGS* settings)
 {

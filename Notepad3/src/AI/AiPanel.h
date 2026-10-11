@@ -6,6 +6,10 @@
 #define NP3_WM_AI_PROFILE (WM_APP + 0x36a)
 #define AI_PROFILE_MAXIMUM 32
 #define NP3_WM_AI_REMOVE_PROFILE (WM_APP + 0x36b)
+#define NP3_WM_AI_PROMPT (WM_APP + 0x36c)
+#define NP3_WM_AI_PROMPT_SAVE (WM_APP + 0x36d)
+#define NP3_WM_AI_PROMPT_DELETE (WM_APP + 0x36e)
+typedef struct AI_PROMPT { int index; wchar_t name[65], text[4097]; } AI_PROMPT;
 typedef struct AI_PANEL_SETTINGS { wchar_t endpoint[2049], model[257]; DWORD timeoutMs; wchar_t configurationId[65]; } AI_PANEL_SETTINGS;
 typedef struct AI_PANEL_SAVE { AI_PANEL_SETTINGS settings; const char* secret; } AI_PANEL_SAVE;
 typedef struct AI_PANEL_CAPTURE { int action; const char* instruction; } AI_PANEL_CAPTURE;

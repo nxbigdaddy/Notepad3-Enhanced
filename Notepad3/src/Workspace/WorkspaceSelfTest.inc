@@ -211,8 +211,53 @@ static void _WorkspaceTestAiDiagnostics(HWND panel,WORKSPACE_TEST_RESULT* result
     _WorkspaceTestCheck(result,_WorkspaceTestText("alpha\r\nA"),"synthetic apply cannot replace source with connection response");
     SetWindowTextW(GetDlgItem(panel,120),L"");
 }
+static void _WorkspaceTestAiPrompts(HWND panel,WORKSPACE_TEST_RESULT* result)
+{
+    _WorkspaceTestCheck(result,!IsWindowVisible(GetDlgItem(panel,101)) && IsWindowVisible(GetDlgItem(panel,107)),"AI daily layout hides model configuration behind settings button");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(107,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,IsWindowVisible(GetDlgItem(panel,101)) && IsWindowVisible(GetDlgItem(panel,125)),"model settings button reveals endpoint and provider choices");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(107,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,!IsWindowVisible(GetDlgItem(panel,101)) && IsWindowVisible(GetDlgItem(panel,120)),"model settings collapse preserves visible prompt editing");
+    SetWindowTextW(GetDlgItem(panel,128),L"中文提示词测试");SetWindowTextW(GetDlgItem(panel,120),L"第一行\r\n保留 \"引号\" 与 \\ 路径 😀");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(129,BN_CLICKED),0);
+    AI_PROMPT prompt={0};prompt.index=0;
+    _WorkspaceTestCheck(result,_AiPrompt(0,&prompt) && !wcscmp(prompt.name,L"中文提示词测试") && !wcscmp(prompt.text,L"第一行\r\n保留 \"引号\" 与 \\ 路径 😀"),"saved prompt independently roundtrips Unicode multiline quotes and backslashes");
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,127,CB_GETCOUNT,0,0)==2,"saved prompt appears in native selector");
+    SetWindowTextW(GetDlgItem(panel,120),L"fixture-prompt-used");SendMessageW(panel,WM_COMMAND,MAKEWPARAM(129,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,_AiPrompt(0,&prompt) && !wcscmp(prompt.text,L"fixture-prompt-used") && SendDlgItemMessageW(panel,127,CB_GETCOUNT,0,0)==2,"saving same prompt name updates instead of duplicating it");
+    SetWindowTextW(GetDlgItem(panel,120),L"unsaved different text");SendMessageW(panel,WM_COMMAND,MAKEWPARAM(131,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,_AiPrompt(0,&prompt),"deleting a modified draft cannot remove stored prompt without original snapshot");
+    SendDlgItemMessageW(panel,127,CB_SETCURSEL,1,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(127,CBN_SELCHANGE),0);
+    WCHAR loaded[128];GetWindowTextW(GetDlgItem(panel,120),loaded,COUNTOF(loaded));
+    _WorkspaceTestCheck(result,!wcscmp(loaded,L"fixture-prompt-used"),"prompt selector loads saved content for editing and execution");
+    SciCall_SetSel(0,5);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA"),"saved prompt is used in actual local request without editing source");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(131,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,!_AiPrompt(0,&prompt) && SendDlgItemMessageW(panel,127,CB_GETCOUNT,0,0)==1,"deleting saved prompt removes persisted record and selector entry");
+    SetWindowTextW(GetDlgItem(panel,128),L"");SetWindowTextW(GetDlgItem(panel,120),L"must not save unnamed");SendMessageW(panel,WM_COMMAND,MAKEWPARAM(129,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,127,CB_GETCOUNT,0,0)==1,"unnamed prompt cannot be saved");
+    SetWindowTextW(GetDlgItem(panel,120),L"");
+}
+static void _WorkspaceTestAiAutomaticAccount(HWND panel,WORKSPACE_TEST_RESULT* result)
+{
+    AI_PANEL_SAVE restore={0};restore.settings=_AiSettings();restore.secret="";
+    SendDlgItemMessageW(panel,125,CB_SETCURSEL,4,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(125,CBN_SELCHANGE),0);
+    SetWindowTextW(GetDlgItem(panel,101),restore.settings.endpoint);SetWindowTextW(GetDlgItem(panel,102),restore.settings.model);SetWindowTextW(GetDlgItem(panel,103),L"owned-automatic-account-key");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
+    AI_PANEL_SETTINGS saved=_AiSettings();WCHAR profile[73];char* key=NULL;
+    bool generated=saved.configurationId[0] && wcsstr(saved.configurationId,L"account-")==saved.configurationId;
+    _WorkspaceTestCheck(result,generated,"new provider account save generates internal ID without manual entry");
+    bool identity=generated && AiCredential_AccountProfile(saved.endpoint,saved.configurationId,profile,COUNTOF(profile))==ERROR_SUCCESS;
+    bool loaded=identity && AiCredential_Load(profile,&key)==ERROR_SUCCESS && !strcmp(key,"owned-automatic-account-key");AiCredential_Free(key);
+    _WorkspaceTestCheck(result,loaded,"automatic account retains independent credential identity");
+    bool removed=false;AI_PANEL_SETTINGS candidate={0};
+    if(identity){for(int slot=0;slot<AI_PROFILE_MAXIMUM;++slot){if(_AiReadProfile(slot,&candidate) && !wcscmp(candidate.configurationId,saved.configurationId)){removed=_AiRemoveProfile(slot,&candidate);break;}}AiCredential_Delete(profile);}
+    _WorkspaceTestCheck(result,removed && _AiSave(&restore,false),"automatic account fixture cleans only generated profile and restores previous service");
+    SetWindowTextW(GetDlgItem(panel,101),restore.settings.endpoint);SetWindowTextW(GetDlgItem(panel,102),restore.settings.model);SetWindowTextW(GetDlgItem(panel,119),restore.settings.configurationId);SetWindowTextW(GetDlgItem(panel,103),L"");SendDlgItemMessageW(panel,125,CB_SETCURSEL,0,0);
+}
 static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_TEST_RESULT* result)
 {
+    _WorkspaceTestAiPrompts(panel,result);
     _WorkspaceTestAiDiagnostics(panel,result);
     _WorkspaceTestAiPresets(panel,result);
     WCHAR idA[65],idB[65],profileA[73],profileB[73],saved[65]; char* key=NULL;
@@ -236,6 +281,7 @@ static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_
         _AiToggle(); _AiToggle(); panel=FindWindowExW(Globals.hwndMain,NULL,L"NP3AiPanel",NULL);
         GetWindowTextW(GetDlgItem(panel,119),saved,COUNTOF(saved));
         _WorkspaceTestCheck(result,!wcscmp(saved,id),"reopened AI panel restores saved account identity");
+        _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,123,CB_GETCURSEL,0,0)>0,"daily account selector highlights restored active profile");
         SciCall_SetSel(0,5); SetWindowTextW(GetDlgItem(panel,120),L"");
         SendMessageW(panel,WM_COMMAND,MAKEWPARAM(110,BN_CLICKED),0);
         _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && _WorkspaceTestText("alpha\r\nA"),"selected account reaches local service without editing source");
@@ -276,6 +322,7 @@ static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_
     SetWindowTextW(GetDlgItem(panel,119),L""); SetWindowTextW(GetDlgItem(panel,103),L"");
     SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
     _WorkspaceTestCheck(result,!Settings2.AIConfigurationId[0],"clearing account ID explicitly returns to legacy service identity");
+    _WorkspaceTestAiAutomaticAccount(panel,result);
     return panel;
 }
 
