@@ -151,6 +151,27 @@ static void _WorkspaceSelfTest()
     bool const isolated = workspace && workspace->count == 1 && Path_IsEmpty(Paths.CurrentFile) && !IsSaveNeeded() && SciCall_GetLength() == 0;
     _WorkspaceTestCheck(&result, isolated, "isolated empty startup");
     if (!isolated) { CloseHandle(result.log); return; }
+    WCHAR reopenStage[32]={0};
+    if(GetEnvironmentVariableW(L"NP3_WORKSPACE_OPTION_TEST",reopenStage,COUNTOF(reopenStage))) {
+        SendMessageW(Globals.hwndMain,WM_INITMENU,(WPARAM)Globals.hMainMenu,0);
+        bool initial=Settings2.ReopenWorkspace;
+        WCHAR label[160]={0}; GetMenuStringW(Globals.hMainMenu,IDM_SET_REOPEN_WORKSPACE,label,COUNTOF(label),MF_BYCOMMAND);
+        _WorkspaceTestCheck(&result,label[0] && IsCmdEnabled(Globals.hwndMain,IDM_SET_REOPEN_WORKSPACE),"workspace reopen option is present and enabled in actual menu");
+        _WorkspaceTestCheck(&result,!!(GetMenuState(Globals.hMainMenu,IDM_SET_REOPEN_WORKSPACE,MF_BYCOMMAND)&MF_CHECKED)==initial,"workspace reopen menu check reflects loaded INI setting");
+        bool readStage=!lstrcmpW(reopenStage,L"read-on") || !lstrcmpW(reopenStage,L"read-off");
+        if(readStage) {
+            _WorkspaceTestCheck(&result,initial==!lstrcmpW(reopenStage,L"read-on"),"new process reads independently saved workspace reopen preference");
+        } else {
+            unsigned long long optionVersion=_WorkspaceVersion(); sptr_t optionHandle=SciCall_GetDocPointer();
+            SendWMCommand(Globals.hwndMain,IDM_SET_REOPEN_WORKSPACE);
+            _WorkspaceTestCheck(&result,Settings2.ReopenWorkspace!=initial && !!(GetMenuState(Globals.hMainMenu,IDM_SET_REOPEN_WORKSPACE,MF_BYCOMMAND)&MF_CHECKED)==!initial,"menu command toggles reopen preference and visible check immediately");
+            _WorkspaceTestCheck(&result,workspace->count==1 && SciCall_GetDocPointer()==optionHandle && _WorkspaceVersion()==optionVersion && !IsSaveNeeded() && SciCall_GetLength()==0,"workspace preference command preserves document identity text and saved state");
+            if(!lstrcmpW(reopenStage,L"force")) _WorkspaceTestCheck(&result,SaveAllSettings(true),"explicit settings save persists workspace preference with automatic saving disabled");
+        }
+        char summary[128]; DWORD written;
+        StringCchPrintfA(summary,COUNTOF(summary),"RESULT checks=%i failures=%i\r\n",result.checks,result.failures); WriteFile(result.log,summary,(DWORD)strlen(summary),&written,NULL); CloseHandle(result.log);
+        _WorkspaceDispose(); DestroyWindow(Globals.hwndMain); return;
+    }
     WCHAR treeStage[32]={0};
     if (GetEnvironmentVariableW(L"NP3_FILETREE_SETTINGS_TEST",treeStage,COUNTOF(treeStage))) {
         WCHAR chosen[32768]; StringCchPrintfW(chosen,COUNTOF(chosen),L"%s\\自选目录",folder);

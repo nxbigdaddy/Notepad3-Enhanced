@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Stoor Instellings op &Uitgang",       IDM_SET_SAVESETTINGS
             MENUITEM "Stoor Instellings &Nou\tF7",          IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "Maak Stellings Lêer &Oop\tCtrl+F7",   CMD_OPENINIFILE
         END
     END

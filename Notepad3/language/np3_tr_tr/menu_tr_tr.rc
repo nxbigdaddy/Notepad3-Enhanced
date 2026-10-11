@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "&Ayarlar çıkışta kaydedilsin",                  IDM_SET_SAVESETTINGS
             MENUITEM "Ayarları şimdi &kaydet\tF7",                    IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "Ayarlar &dosyasını aç\tCtrl+F7",                CMD_OPENINIFILE
         END
     END

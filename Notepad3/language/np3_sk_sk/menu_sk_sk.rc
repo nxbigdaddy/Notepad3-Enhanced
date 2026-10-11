@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Uložiť pri u&končení",                IDM_SET_SAVESETTINGS
             MENUITEM "Uložiť &teraz\tF7",                   IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "&Otvoriť súbor nastavení\tCtrl+F7",   CMD_OPENINIFILE
         END
     END

@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Guardar la configuración al &salir",              IDM_SET_SAVESETTINGS
             MENUITEM "&Guardar la configuración ahora\tF7",             IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "&Abrir el archivo de configuración\tCtrl+F7",     CMD_OPENINIFILE
         END
     END

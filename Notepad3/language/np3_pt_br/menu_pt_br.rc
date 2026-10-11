@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Salvar Configurações ao S&air",              IDM_SET_SAVESETTINGS
             MENUITEM "Salvar Configurações &Agora\tF7",            IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "&Abrir Arquivo de Configurações\tCtrl+F7",   CMD_OPENINIFILE
         END
     END

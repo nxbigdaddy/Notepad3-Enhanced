@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "종료 시 설정 저장(&X)",          IDM_SET_SAVESETTINGS
             MENUITEM "지금 설정 저장(&N)\tF7",          IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "설정 파일 열기(&O)\tCtrl+F7",    CMD_OPENINIFILE
         END
     END

@@ -2129,6 +2129,7 @@ static bool _SaveSettings(bool bForceSaveSettings)
 
     IniSectionSetInt(IniSecSettings, L"SettingsVersion", CFG_VER_CURRENT);  // new settings
     IniSectionSetInt(L"Settings2", L"FileTreeWidth", Settings2.FileTreeWidth);
+    IniSectionSetBool(L"Settings2", L"ReopenWorkspace", Settings2.ReopenWorkspace);
     IniSectionSetString(L"Settings2", L"FileTreeRoot", Settings2.FileTreeRoot);
 
     SAVE_VALUE_IF_NOT_EQ_DEFAULT(Bool, SaveSettings);

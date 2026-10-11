@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Configuratie ops&laan bij afsluiten",         IDM_SET_SAVESETTINGS
             MENUITEM "Configuratie &nu opslaan\tF7",                IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "Configuratiebestand &openen\tCtrl+F7",        CMD_OPENINIFILE
         END
     END

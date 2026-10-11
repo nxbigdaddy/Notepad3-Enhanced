@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "बाहर निकलते समय सेटिंग्स सहेजें (&X)",          IDM_SET_SAVESETTINGS
             MENUITEM "सेटिंग्स अभी सहेजें (&N)\tF7",          IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "सेटिंग्स फ़ाइल खोलें (&O)\tCtrl+F7",    CMD_OPENINIFILE
         END
     END

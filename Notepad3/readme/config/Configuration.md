@@ -500,6 +500,8 @@ Enable `#` as a line-comment character in MySQL-dialect SQL. Set to `0` to disab
 
 Controls automatic reopening of the last normally closed workspace. Set to `false` under `[Settings2]` to skip automatic normal-session loading and saving. Crash recovery remains enabled independently. This setting does not delete existing normal-session archives; enabling it again may reopen the latest retained archive. Normal sessions contain named file paths and view state, not discarded buffer text.
 
+The Settings > Advanced Settings > Reopen Workspace on Startup menu toggles this option. It follows Save Settings On Exit; with automatic settings saving disabled, the choice lasts for the current run unless Save Settings Now is used. An unwritable or locked settings file disables the menu using the existing settings policy.
+
 #### `AIEndpoint=`
 
 Full OpenAI-compatible chat-completions endpoint. HTTPS is required except for loopback HTTP services. Empty disables AI requests. Endpoint changes select a separate Windows Credential Manager entry; credentials are never stored in this INI file.

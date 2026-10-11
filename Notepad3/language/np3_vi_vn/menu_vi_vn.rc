@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Lưu cài đặt khi thoát(&X)",              IDM_SET_SAVESETTINGS
             MENUITEM "Lưu cài đặt ngay bây giờ(&N)\tF7",       IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "Mở tệp cài đặt(&O)\tCtrl+F7",          CMD_OPENINIFILE
         END
     END

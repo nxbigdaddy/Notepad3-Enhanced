@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "結束時儲存設定(&X)",                    IDM_SET_SAVESETTINGS
             MENUITEM "立即儲存設定(&N)\tF7",                  IDM_SET_SAVESETTINGSNOW
+            MENUITEM "啟動時重新開啟工作區", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "開啟設定檔案(&O)\tCtrl+F7",             CMD_OPENINIFILE
         END
     END

@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Salva impostazioni all'&uscita",         IDM_SET_SAVESETTINGS
             MENUITEM "Salva impostazioni\tF7",                 IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "&Apri file delle impostazioni\tCtrl+F7", CMD_OPENINIFILE
         END
     END

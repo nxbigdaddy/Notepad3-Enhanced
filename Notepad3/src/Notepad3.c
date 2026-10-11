@@ -8100,6 +8100,13 @@ static bool _HandleViewAndSettingsCommands(HWND hwnd, UINT umsg, WPARAM wParam, 
         break;
 
 
+    case IDM_SET_REOPEN_WORKSPACE:
+        if (IsCmdEnabled(hwnd, IDM_SET_REOPEN_WORKSPACE)) {
+            Settings2.ReopenWorkspace = !Settings2.ReopenWorkspace;
+            CheckCmd(Globals.hMainMenu, IDM_SET_REOPEN_WORKSPACE, Settings2.ReopenWorkspace);
+        }
+        break;
+
     case IDM_SET_SAVESETTINGS:
         if (IsCmdEnabled(hwnd, IDM_SET_SAVESETTINGS)) {
             Settings.SaveSettings = !Settings.SaveSettings;
@@ -12313,6 +12320,8 @@ void UpdateSaveSettingsCmds()
     HMENU const hmenu = Globals.hMainMenu;
 
     CheckCmd(hmenu, IDM_SET_SAVESETTINGS, Settings.SaveSettings && !bSoftLocked);
+    CheckCmd(hmenu, IDM_SET_REOPEN_WORKSPACE, Settings2.ReopenWorkspace);
+    EnableCmd(hmenu, IDM_SET_REOPEN_WORKSPACE, bCanSav && !bSoftLocked);
 
     EnableCmd(hmenu, IDM_SET_SAVESETTINGS, bCanSav && !bSoftLocked);
     EnableCmd(hmenu, IDM_SET_SAVESETTINGSNOW, (bHaveIniFile || bHaveFallbackIniFile) && !bSoftLocked);

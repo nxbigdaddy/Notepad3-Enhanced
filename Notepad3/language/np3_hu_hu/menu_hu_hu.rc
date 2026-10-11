@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Beállítások mentése &kilépéskor",    IDM_SET_SAVESETTINGS
             MENUITEM "Beállítások mentése &most\tF7",      IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "&Beállításfájl megnyitása\tCtrl+F7", CMD_OPENINIFILE
         END
     END

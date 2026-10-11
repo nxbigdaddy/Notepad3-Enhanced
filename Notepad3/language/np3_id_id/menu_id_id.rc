@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Simpan Pengaturan setelah &Keluar",       IDM_SET_SAVESETTINGS
             MENUITEM "Simpan Pengaturan &Sekarang\tF7",         IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "Buka &Berkas Pengaturan\tCtrl+F7",        CMD_OPENINIFILE
         END
     END

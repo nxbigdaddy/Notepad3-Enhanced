@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Sauvegarder les paramètres en q&uittant",       IDM_SET_SAVESETTINGS
             MENUITEM "Sauvegarder les paramètres mai&ntenant\tF7",    IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "&Ouvrir le fichier des paramètres\tCtrl+F7",    CMD_OPENINIFILE
         END
     END

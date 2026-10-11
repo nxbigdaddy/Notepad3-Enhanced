@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Tallenna asetukset p&oistuttaessa",          IDM_SET_SAVESETTINGS
             MENUITEM "Tallenna asetukset &nyt\tF7",          IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "Avaa asetustied&osto\tCtrl+F7",    CMD_OPENINIFILE
         END
     END

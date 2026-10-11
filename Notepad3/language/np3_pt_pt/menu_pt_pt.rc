@@ -570,6 +570,7 @@ BEGIN
         BEGIN
             MENUITEM "Guardar definições ao &Sair",               IDM_SET_SAVESETTINGS
             MENUITEM "Guardar defi&nições agora\tF7",             IDM_SET_SAVESETTINGSNOW
+            MENUITEM "Reopen Workspace on Startup", IDM_SET_REOPEN_WORKSPACE
             MENUITEM "Abrir ficheir&o de definições\tCtrl+F7",    CMD_OPENINIFILE
         END
     END
