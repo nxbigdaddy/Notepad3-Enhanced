@@ -1,9 +1,16 @@
 typedef struct OUTLINE_STATE { MD_OUTLINE_RESULT result; unsigned long long id,version,observedId,observedVersion; } OUTLINE_STATE;
 static HWND _outlineWindow=NULL;
-static void _OutlineRefresh(HWND window,OUTLINE_STATE* state)
+static void _OutlineRefresh(HWND window,OUTLINE_STATE* state,bool preserveSelection)
 {
+    DOCUMENT_WORKSPACE* workspace=_Workspace();
+    char selectedTitle[4097]={0};unsigned selectedLevel=0;size_t selectedLine=0;
+    LRESULT previous=SendDlgItemMessageW(window,101,LB_GETCURSEL,0,0);
+    if(preserveSelection && workspace && workspace->documents[workspace->active].id==state->id && previous>=0 && (size_t)previous<state->result.count){
+        const MD_OUTLINE_ITEM* item=&state->result.items[previous];
+        strcpy_s(selectedTitle,COUNTOF(selectedTitle),item->title);selectedLevel=item->level;selectedLine=item->line;
+    }
     MarkdownOutline_Free(&state->result);SendDlgItemMessageW(window,101,LB_RESETCONTENT,0,0);
-    DOCUMENT_WORKSPACE* workspace=_Workspace();DocPos length=SciCall_GetLength();
+    DocPos length=SciCall_GetLength();
     if(!workspace){SetDlgItemTextW(window,104,L"没有活动文档。");return;}
     state->id=workspace->documents[workspace->active].id;state->version=workspace->documents[workspace->active].version;
     state->observedId=state->id;state->observedVersion=state->version;
@@ -14,7 +21,15 @@ static void _OutlineRefresh(HWND window,OUTLINE_STATE* state)
     for(size_t index=0;index<state->result.count;++index){WCHAR label[4120],title[4097];MD_OUTLINE_ITEM* item=&state->result.items[index];MultiByteToWideChar(CP_UTF8,0,item->title,-1,title,COUNTOF(title));StringCchPrintfW(label,COUNTOF(label),L"%*s%u  %s",(int)((item->level-1)*2),L"",(unsigned)(item->line+1),title);if(SendDlgItemMessageW(window,101,LB_ADDSTRING,0,(LPARAM)label)<0){failed=true;break;}}
     SendMessageW(list,WM_SETREDRAW,TRUE,0);InvalidateRect(list,NULL,TRUE);
     if(failed){MarkdownOutline_Free(&state->result);SendMessageW(list,LB_RESETCONTENT,0,0);SetDlgItemTextW(window,104,L"标题列表内存不足，请减少标题数量。");return;}
-    if(state->result.count)SendMessageW(list,LB_SETCURSEL,0,0);
+    size_t selection=0,bestDistance=SIZE_MAX;
+    if(selectedLevel)for(size_t index=0;index<state->result.count;++index){
+        const MD_OUTLINE_ITEM* item=&state->result.items[index];
+        if(item->level==selectedLevel && !strcmp(item->title,selectedTitle)){
+            size_t distance=item->line>selectedLine?item->line-selectedLine:selectedLine-item->line;
+            if(distance<bestDistance){selection=index;bestDistance=distance;}
+        }
+    }
+    if(state->result.count)SendMessageW(list,LB_SETCURSEL,(WPARAM)selection,0);
     SetDlgItemTextW(window,104,L"Enter定位，F5刷新，Esc关闭；停笔后自动刷新。");
 }
 static LRESULT CALLBACK _OutlineProc(HWND window,UINT message,WPARAM wParam,LPARAM lParam)
@@ -26,13 +41,13 @@ static LRESULT CALLBACK _OutlineProc(HWND window,UINT message,WPARAM wParam,LPAR
         unsigned long long id=workspace->documents[workspace->active].id,version=workspace->documents[workspace->active].version;
         if(id==state->id && version==state->version)return 0;
         if(id!=state->observedId || version!=state->observedVersion){state->observedId=id;state->observedVersion=version;return 0;}
-        _OutlineRefresh(window,state);return 0;
+        _OutlineRefresh(window,state,true);return 0;
     }
     if(message==WM_SIZE){int width=LOWORD(lParam),height=HIWORD(lParam);int row=MulDiv(30,(int)GetDpiForWindow(window),96);MoveWindow(GetDlgItem(window,101),0,row,width,max_i(0,height-2*row),TRUE);MoveWindow(GetDlgItem(window,102),0,0,width/2,max_i(1,row-2),TRUE);MoveWindow(GetDlgItem(window,103),width/2,0,width/2,max_i(1,row-2),TRUE);MoveWindow(GetDlgItem(window,104),0,max_i(row,height-row),width,row,TRUE);return 0;}
     if(message==WM_DPICHANGED){const RECT* rect=(const RECT*)lParam;if(rect)SetWindowPos(window,NULL,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top,SWP_NOZORDER|SWP_NOACTIVATE);return 0;}
     if(message==WM_GETMINMAXINFO){MINMAXINFO* info=(MINMAXINFO*)lParam;UINT dpi=GetDpiForWindow(window);info->ptMinTrackSize.x=MulDiv(320,(int)dpi,96);info->ptMinTrackSize.y=MulDiv(240,(int)dpi,96);return 0;}
     if(message==WM_VKEYTOITEM){UINT key=LOWORD(wParam);if(key==VK_RETURN || key==VK_F5){SendMessageW(window,WM_COMMAND,MAKEWPARAM(key==VK_RETURN?103:102,BN_CLICKED),0);return -2;}if(key==VK_ESCAPE){DestroyWindow(window);return -2;}return -1;}
-    if(message==WM_COMMAND && state){int id=LOWORD(wParam);if(id==102){_OutlineRefresh(window,state);return 0;}
+    if(message==WM_COMMAND && state){int id=LOWORD(wParam);if(id==102){_OutlineRefresh(window,state,false);return 0;}
         if(id==103 || (id==101 && HIWORD(wParam)==LBN_DBLCLK)){
             DOCUMENT_WORKSPACE* workspace=_Workspace();if(!workspace || workspace->documents[workspace->active].id!=state->id || workspace->documents[workspace->active].version!=state->version){SetDlgItemTextW(window,104,L"文档已变化，请刷新大纲后定位。");return 0;}
             LRESULT selected=SendDlgItemMessageW(window,101,LB_GETCURSEL,0,0);if(selected>=0 && (size_t)selected<state->result.count){SciCall_GotoPos((DocPos)state->result.items[selected].offset);SetFocus(Globals.hwndEdit);}return 0;}}
@@ -48,5 +63,5 @@ static HWND _OutlineShow(HWND parent)
     CreateWindowExW(WS_EX_CLIENTEDGE,L"LISTBOX",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|LBS_NOTIFY|LBS_WANTKEYBOARDINPUT,0,30,400,400,window,(HMENU)101,type.hInstance,NULL);
     CreateWindowExW(0,L"BUTTON",L"刷新",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,200,28,window,(HMENU)102,type.hInstance,NULL);CreateWindowExW(0,L"BUTTON",L"定位",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,200,0,200,28,window,(HMENU)103,type.hInstance,NULL);CreateWindowExW(0,L"STATIC",L"",WS_CHILD|WS_VISIBLE,0,430,400,28,window,(HMENU)104,type.hInstance,NULL);
     for(int id=101;id<=104;++id)SendDlgItemMessageW(window,id,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
-    _OutlineRefresh(window,state);SetTimer(window,1,500,NULL);RECT rect;GetClientRect(window,&rect);SendMessageW(window,WM_SIZE,0,MAKELPARAM(rect.right,rect.bottom));ShowWindow(window,SW_SHOW);SetFocus(GetDlgItem(window,101));return window;
+    _OutlineRefresh(window,state,false);SetTimer(window,1,500,NULL);RECT rect;GetClientRect(window,&rect);SendMessageW(window,WM_SIZE,0,MAKELPARAM(rect.right,rect.bottom));ShowWindow(window,SW_SHOW);SetFocus(GetDlgItem(window,101));return window;
 }
