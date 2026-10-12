@@ -8,6 +8,8 @@ enum AI_ACTION { AI_EXPLAIN, AI_TRANSLATE, AI_REWRITE, AI_GENERATE, AI_SUMMARIZE
 enum AI_STATUS { AI_OK, AI_CONFIG, AI_LIMIT, AI_TEXT, AI_RESPONSE, AI_INCOMPLETE, AI_MEMORY };
 int AiEndpoint_Validate(const wchar_t* endpoint);
 int AiProtocol_Request(const char* model, int action, const char* input, size_t length, const char* instruction, char** output, size_t* outputLength);
+// maxTokens=0 preserves provider defaults; positive values emit max_tokens (application cap 65536).
+int AiProtocol_RequestLimit(const char* model, int action, const char* input, size_t length, const char* instruction, unsigned maxTokens, char** output, size_t* outputLength);
 int AiProtocol_Response(const char* json, size_t length, char** output, size_t* outputLength);
 // Bounded model IDs, one per line; caller owns the result via AiProtocol_Free.
 int AiProtocol_Models(const char* json, size_t length, char** output, size_t* outputLength);

@@ -139,6 +139,16 @@ int main() {
             if(action>=AI_SUMMARIZE)expect(std::string(output,length).find(addedPrompts[action-AI_SUMMARIZE])!=std::string::npos && std::string(output,length).find("Keep headings.")!=std::string::npos,"new action uses distinct instruction and retains custom constraint");
             JsonFormat_Free(compact); AiProtocol_Free(output); output = nullptr;
         }
+        for(unsigned cap : {0u,1u,4096u,65536u}) {
+            expect(AiProtocol_RequestLimit("custom-model",AI_REWRITE,input.data(),input.size(),"Keep headings.",cap,&output,&length)==AI_OK,"optional output token limit request succeeds");
+            const std::string limited(output,length);char* compact=nullptr;size_t compactSize=0,error=0;
+            expect(JsonFormat(output,length,1,"",&compact,&compactSize,&error)==0,"limited request is strict JSON");JsonFormat_Free(compact);
+            expect(cap?limited.find("\"max_tokens\":"+std::to_string(cap))!=std::string::npos:limited.find("max_tokens")==std::string::npos,"zero limit omits parameter and positive limit is numeric");
+            AiProtocol_Free(output);output=nullptr;
+        }
+        expect(AiProtocol_RequestLimit("model",AI_REWRITE,"x",1,nullptr,65537,&output,&length)==AI_LIMIT && !output && !length,"above application token cap publishes no request");
+        expect(AiProtocol_RequestLimit("model",AI_REWRITE,"x",1,nullptr,~0u,&output,&length)==AI_LIMIT,"unsigned oversized cap rejected");
+        expect(AiProtocol_RequestLimit("model",AI_REWRITE,"\xFF",1,nullptr,128,&output,&length)==AI_TEXT && !output,"limited request retains source validation");
         const char* markdownPrompts[]={"Markdown outline","five Markdown titles","Markdown table","Markdown checkboxes","Mermaid diagram"};
         for(int action=AI_MD_OUTLINE;action<=AI_MD_MERMAID;++action){
             expect(AiProtocol_Request("custom-model",action,input.data(),input.size(),"Keep headings.",&output,&length)==AI_OK,"Markdown action protocol succeeds");

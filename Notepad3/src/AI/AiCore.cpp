@@ -229,6 +229,20 @@ extern "C" int AiProtocol_Request(const char* model, int action, const char* inp
         return Copy(body, output, outputLength);
     } catch (...) { return AI_MEMORY; }
 }
+extern "C" int AiProtocol_RequestLimit(const char* model, int action, const char* input, size_t length, const char* instruction, unsigned maxTokens, char** output, size_t* outputLength) {
+    if (!output || !outputLength) return AI_CONFIG; *output = nullptr; *outputLength = 0;
+    if (maxTokens > 65536) return AI_LIMIT;
+    if (!maxTokens) return AiProtocol_Request(model, action, input, length, instruction, output, outputLength);
+    char* body = nullptr; size_t size = 0;
+    const int status = AiProtocol_Request(model, action, input, length, instruction, &body, &size);
+    std::unique_ptr<char, decltype(&AiProtocol_Free)> owner(body, AiProtocol_Free);
+    if (status != AI_OK) return status;
+    try {
+        std::string request(body, size); request.pop_back();
+        request += ",\"max_tokens\":" + std::to_string(maxTokens) + "}";
+        return Copy(request, output, outputLength);
+    } catch (...) { return AI_MEMORY; }
+}
 extern "C" int AiProtocol_Response(const char* json, size_t length, char** output, size_t* outputLength) {
     if (!output || !outputLength) return AI_CONFIG; *output = nullptr; *outputLength = 0;
     if (!json && length) return AI_RESPONSE;
