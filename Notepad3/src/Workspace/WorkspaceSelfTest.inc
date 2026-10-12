@@ -186,6 +186,7 @@ static void _WorkspaceTestAiPresets(HWND panel,WORKSPACE_TEST_RESULT* result)
         GetWindowTextW(GetDlgItem(panel,101),endpoint,COUNTOF(endpoint));
         _WorkspaceTestCheck(result,!wcscmp(endpoint,expected[index-1]),"provider preset fills exact documented endpoint or clears custom endpoint");
         _WorkspaceTestCheck(result,!GetWindowTextLengthW(GetDlgItem(panel,102)) && !GetWindowTextLengthW(GetDlgItem(panel,103)) && !GetWindowTextLengthW(GetDlgItem(panel,119)),"provider change clears prior model account and unsaved key drafts");
+        _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,134,BM_GETCHECK,0,0)==(index==3?BST_CHECKED:BST_UNCHECKED),"only Qwen preset enables native paginated discovery");
         _WorkspaceTestCheck(result,!wcscmp(Settings2.AIEndpoint,saved.endpoint) && !wcscmp(Settings2.AIModel,saved.model) && !AiPanel_IsBusy(_WorkspaceAi()) && _WorkspaceTestText("alpha\r\nA"),"address preset does not activate persist send or edit document");
     }
     SetWindowTextW(GetDlgItem(panel,101),saved.endpoint);SetWindowTextW(GetDlgItem(panel,102),saved.model);SetWindowTextW(GetDlgItem(panel,119),saved.configurationId);SetDlgItemInt(panel,104,saved.timeoutMs,FALSE);SendDlgItemMessageW(panel,125,CB_SETCURSEL,0,0);
@@ -196,6 +197,12 @@ static void _WorkspaceTestAiPresets(HWND panel,WORKSPACE_TEST_RESULT* result)
     SendDlgItemMessageW(panel,102,CB_SETCURSEL,1,0);WCHAR picked[257];GetDlgItemTextW(panel,102,picked,COUNTOF(picked));
     _WorkspaceTestCheck(result,!wcscmp(picked,L"fixture-model-two") && !IsWindowEnabled(GetDlgItem(panel,115)) && _WorkspaceTestText("alpha\r\nA"),"discovered model can be selected without applying or editing document");
     _WorkspaceTestCheck(result,!wcscmp(Settings2.AIEndpoint,saved.endpoint) && !wcscmp(Settings2.AIModel,saved.model),"model discovery does not persist draft settings");
+    SendDlgItemMessageW(panel,134,BM_SETCHECK,BST_CHECKED,0);SetWindowTextW(GetDlgItem(panel,103),L"fake-model-list-key");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(132,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && SendDlgItemMessageW(panel,102,CB_GETCOUNT,0,0)==201,"native model selector collects all three pages before publishing");
+    SendDlgItemMessageW(panel,102,CB_SETCURSEL,200,0);GetDlgItemTextW(panel,102,picked,COUNTOF(picked));
+    _WorkspaceTestCheck(result,!wcscmp(picked,L"native-model-200") && !IsWindowEnabled(GetDlgItem(panel,115)) && _WorkspaceTestText("alpha\r\nA"),"last native page is selectable without document changes");
+    SendDlgItemMessageW(panel,134,BM_SETCHECK,BST_UNCHECKED,0);
     SetWindowTextW(GetDlgItem(panel,102),saved.model);SetWindowTextW(GetDlgItem(panel,103),L"");
 
 }

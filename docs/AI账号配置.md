@@ -35,3 +35,9 @@
 列表要求 OpenAI 兼容 data 数组及字符串 id；最多 512 项，2 MiB，保留模型手动输入。列表仅表明接口返回这些 ID，不代表每个模型均支持文本对话或账号有生成权限。返回不同协议、分页或原生百炼 output.models 结构的接口尚不支持，失败会保留手动填写方式。百炼预设尝试兼容 /models，未以真实 Key 验证该接口可用性。
 
 参考：[OpenAI API](https://developers.openai.com/api/reference/overview)、[DeepSeek 模型列表](https://api-docs.deepseek.com/api/list-models/)、[Kimi 模型排查](https://www.kimi.com/help/kimi-api/api-troubleshooting)、[百炼原生模型列表与分页结构](https://help.aliyun.com/zh/model-studio/list-models)。供应商账户实测仍待提供相应凭据；本轮验收使用隔离本地服务。
+
+## 百炼原生分页（v122）
+
+Qwen 预设默认勾选“百炼分页”，其他平台使用兼容列表。原生模式把对话地址末尾 /compatible-mode/v1/chat/completions 换成 /api/v1/models，在同一主机查询；北京业务空间专属域名可直接填写自己的对话地址。可手动勾选/取消，并填写同源完整列表地址覆盖默认推导。原生模式当前不接受列表地址 query。
+
+每页100项，全部页面共用超时，最多512模型；只有完整列表才进入下拉，失败、总数变化或跨页重复则不发布部分结果。关闭面板后原生模式开关不单独保存，重新选择 Qwen 预设可启用。真实百炼账号/工作空间/地域及旧域名可用性仍待用户凭据验证，本地三页201模型仅验证实现，不代表服务验证。
