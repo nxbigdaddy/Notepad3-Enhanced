@@ -139,6 +139,12 @@ int main() {
             if(action>=AI_SUMMARIZE)expect(std::string(output,length).find(addedPrompts[action-AI_SUMMARIZE])!=std::string::npos && std::string(output,length).find("Keep headings.")!=std::string::npos,"new action uses distinct instruction and retains custom constraint");
             JsonFormat_Free(compact); AiProtocol_Free(output); output = nullptr;
         }
+        const char* markdownPrompts[]={"Markdown outline","five Markdown titles","Markdown table","Markdown checkboxes","Mermaid diagram"};
+        for(int action=AI_MD_OUTLINE;action<=AI_MD_MERMAID;++action){
+            expect(AiProtocol_Request("custom-model",action,input.data(),input.size(),"Keep headings.",&output,&length)==AI_OK,"Markdown action protocol succeeds");
+            expect(std::string(output,length).find(markdownPrompts[action-AI_MD_OUTLINE])!=std::string::npos && std::string(output,length).find("Keep headings.")!=std::string::npos,"Markdown action retains distinct instruction and custom constraint");
+            AiProtocol_Free(output);output=nullptr;
+        }
         expect(AiProtocol_Request("model", AI_ASK, input.data(), input.size(), "What is supported?", &output, &length) == AI_OK,"document question request succeeds");
         const std::string questionBody(output,length);
         expect(questionBody.find("Question:") != std::string::npos && questionBody.find("Current document:") != std::string::npos,"question and full document are labeled");

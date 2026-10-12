@@ -230,10 +230,10 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         }
         if ((id >= 110 && id <=113) || id ==117) {
             const int selected=static_cast<int>(SendDlgItemMessageW(window,116,CB_GETCURSEL,0,0));
-            if(id==117 && (selected<0 || selected>AI_ASK-AI_SUMMARIZE)) { Status(panel,AP_ERROR); return 0; }
+            if(id==117 && (selected<0 || selected>10)) { Status(panel,AP_ERROR); return 0; }
             wchar_t instruction[4097]{}; GetWindowTextW(GetDlgItem(window,120),instruction,4097); auto text=Utf8(instruction);
             if (text.size()>4096) { Status(panel,AP_ERROR); return 0; }
-            AI_PANEL_CAPTURE request{id==117?AI_SUMMARIZE+selected:id-110,text.c_str()};
+            AI_PANEL_CAPTURE request{id==117?(selected<6?AI_SUMMARIZE+selected:AI_MD_OUTLINE+selected-6):id-110,text.c_str()};
             if (!SendMessageW(panel->parent,NP3_WM_AI_CAPTURE,0,reinterpret_cast<LPARAM>(&request))) Status(panel,AP_ERROR);
         } else if (id == 114 && panel->job) panel->job->cancel=true;
         else if (id == 115 && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK && panel->job->action != AI_CONNECTION_TEST && !panel->job->models) {
@@ -276,7 +276,7 @@ extern "C" int AiPanel_Layout(void* context,int x,int y,int width,int height) {
 extern "C" BOOL AiPanel_Run(void* context,const AI_PANEL_SETTINGS* settings,const AI_PANEL_SOURCE* source,int action,const char* original,size_t length,const char* instruction) {
     auto panel=State(context); if(!panel || !panel->window || AiPanel_IsBusy(context) || !settings || !source || (!original && length) || length>256*1024) return FALSE;
     try {
-        if(action<AI_EXPLAIN || action>AI_CONNECTION_TEST || AiEndpoint_Validate(settings->endpoint)!=AI_OK || !settings->model[0] || settings->timeoutMs<100 || settings->timeoutMs>120000) return FALSE;
+        if(action<AI_EXPLAIN || action>AI_MD_MERMAID || AiEndpoint_Validate(settings->endpoint)!=AI_OK || !settings->model[0] || settings->timeoutMs<100 || settings->timeoutMs>120000) return FALSE;
         if((action==AI_GENERATE || action==AI_ASK) && (!instruction || !*instruction)) return FALSE;
         auto job=std::make_shared<Job>(); job->source=*source; job->action=action; job->endpoint=settings->endpoint; job->model=Utf8(settings->model); job->timeout=settings->timeoutMs;
         job->original.assign(original?original:"",length); job->instruction=instruction?instruction:"";
@@ -323,7 +323,7 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             control(L"BUTTON",L"百炼分页",BS_AUTOCHECKBOX|WS_TABSTOP,134);control(L"BUTTON",L"获取模型",BS_PUSHBUTTON|WS_TABSTOP,132);control(L"STATIC",L"模型列表地址",0,208);control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,133);SendDlgItemMessageW(window,133,EM_SETLIMITTEXT,2048,0);SendDlgItemMessageW(window,133,EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"留空自动推导；特殊接口可填写同源完整地址"));
             control(L"STATIC",labels[AP_INSTRUCTION],0,205); control(L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_TABSTOP,120); SendMessageW(GetDlgItem(window,120),EM_SETLIMITTEXT,4096,0);
             HWND actions=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,116);
-            for(const wchar_t* name : {L"摘要",L"润色",L"扩写",L"缩写",L"纠错",L"当前文件问答"}) SendMessageW(actions,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
+            for(const wchar_t* name : {L"摘要",L"润色",L"扩写",L"缩写",L"纠错",L"当前文件问答",L"Markdown大纲",L"标题建议",L"Markdown表格",L"待办提取",L"Mermaid图"}) SendMessageW(actions,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
             SendMessageW(actions,CB_SETCURSEL,0,0); control(L"BUTTON",L"执行",BS_PUSHBUTTON|WS_TABSTOP,117);
             control(L"STATIC",L"配置ID（空=旧账号）",0,118);
             control(L"EDIT",settings->configurationId,WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,119); SendMessageW(GetDlgItem(window,119),EM_SETLIMITTEXT,64,0);

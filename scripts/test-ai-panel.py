@@ -59,14 +59,17 @@ try:
     print(process.stdout); print(process.stderr)
     assert process.returncode == 0, 'native panel checks failed'
     assert server.model_gets == 4 and server.native_pages == [1,2,3]
-    assert not server.errors and len(server.requests) == 26, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
-    assert server.authorizations[:23] == ['Bearer fake-panel-test-key'] * 23
+    assert not server.errors and len(server.requests) == 31, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
+    assert server.authorizations[:28] == ['Bearer fake-panel-test-key'] * 28
     assert [re.search(r'fixture-http-(\d+)', request['messages'][0]['content']).group(1) for request in server.requests[14:21]] == ['401', '403', '402', '429', '404', '400', '503']
     assert 'fixture-truncated' in server.requests[21]['messages'][0]['content']
     assert server.requests[22]['messages'][1]['content'] == 'Reply with OK.'
     assert 'connection test' in server.requests[22]['messages'][0]['content']
     assert 'fixture-prompt-used' in server.requests[13]['messages'][0]['content']
-    assert server.authorizations[23:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b', 'Bearer fake-panel-test-key-a']
+    assert server.authorizations[28:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b', 'Bearer fake-panel-test-key-a']
+    for index,prompt in enumerate(('Markdown outline','five Markdown titles','Markdown table','Markdown checkboxes','Mermaid diagram'),23):
+        assert prompt in server.requests[index]['messages'][0]['content'] and 'fixture-markdown' in server.requests[index]['messages'][0]['content']
+        assert server.requests[index]['messages'][1]['content']=='alpha'
     assert server.requests[3]['messages'][1]['content'] == '生成中文'
     for index, prompt in enumerate(('Summarize', 'Polish', 'Expand', 'Shorten', 'Correct'), 4):
         assert prompt in server.requests[index]['messages'][0]['content']

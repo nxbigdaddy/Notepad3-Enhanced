@@ -271,11 +271,23 @@ static void _WorkspaceTestAiAutomaticAccount(HWND panel,WORKSPACE_TEST_RESULT* r
     _WorkspaceTestCheck(result,removed && _AiSave(&restore,false),"automatic account fixture cleans only generated profile and restores previous service");
     SetWindowTextW(GetDlgItem(panel,101),restore.settings.endpoint);SetWindowTextW(GetDlgItem(panel,102),restore.settings.model);SetWindowTextW(GetDlgItem(panel,119),restore.settings.configurationId);SetWindowTextW(GetDlgItem(panel,103),L"");SendDlgItemMessageW(panel,125,CB_SETCURSEL,0,0);
 }
+static void _WorkspaceTestAiMarkdown(HWND panel,WORKSPACE_TEST_RESULT* result)
+{
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,116,CB_GETCOUNT,0,0)==11,"AI action menu exposes five Markdown transformations");
+    for(int index=6;index<=10;++index){
+        SciCall_SetSel(0,5);SetWindowTextW(GetDlgItem(panel,120),L"fixture-markdown");SendDlgItemMessageW(panel,116,CB_SETCURSEL,index,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(117,BN_CLICKED),0);
+        _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && IsWindowEnabled(GetDlgItem(panel,115)) && _WorkspaceTestText("alpha\r\nA"),"Markdown action previews proposal without editing source");
+    }
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(115,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,_WorkspaceTestText("模拟结果\r\nA"),"Markdown proposal requires explicit apply");SciCall_Undo();
+    _WorkspaceTestCheck(result,_WorkspaceTestText("alpha\r\nA"),"Markdown apply remains one undo transaction");SetWindowTextW(GetDlgItem(panel,120),L"");SendDlgItemMessageW(panel,116,CB_SETCURSEL,0,0);
+}
 static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_TEST_RESULT* result)
 {
     _WorkspaceTestAiPrompts(panel,result);
     _WorkspaceTestAiDiagnostics(panel,result);
     _WorkspaceTestAiPresets(panel,result);
+    _WorkspaceTestAiMarkdown(panel,result);
     WCHAR idA[65],idB[65],profileA[73],profileB[73],saved[65]; char* key=NULL;
     StringCchPrintfW(idA,COUNTOF(idA),L"fixture-%lu-%llu-a",GetCurrentProcessId(),GetTickCount64());
     StringCchPrintfW(idB,COUNTOF(idB),L"fixture-%lu-%llu-b",GetCurrentProcessId(),GetTickCount64());
