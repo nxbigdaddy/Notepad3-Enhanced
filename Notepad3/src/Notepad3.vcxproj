@@ -1289,6 +1289,7 @@
     <ClCompile Include="Workspace\SessionStore.cpp" />
     <ClInclude Include="Workspace\SessionStore.h" />
     <ClInclude Include="Workspace\SessionStoreC.h" />
+    <ClCompile Include="TextTools\MarkdownOutlineCore.cpp" />
     <ClCompile Include="TextTools\JsonFormat.cpp" />
     <ClCompile Include="TextTools\BatchTransform.cpp" />
     <ClCompile Include="TextTools\BatchPanel.cpp" />

@@ -5,7 +5,7 @@ if not exist artifacts mkdir artifacts
 call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
 if errorlevel 1 exit /b 1
 pushd artifacts
-cl /nologo /utf-8 /EHsc /W4 /WX /std:c++17 /Fe:markdown_outline_test.exe ..\tests\markdown_outline_test.cpp
+cl /nologo /utf-8 /EHsc /W4 /WX /std:c++17 /Fe:markdown_outline_test.exe ..\tests\markdown_outline_test.cpp ..\Notepad3\src\TextTools\MarkdownOutlineCore.cpp
 if errorlevel 1 exit /b 1
 markdown_outline_test.exe
 set "test_result=%errorlevel%"
