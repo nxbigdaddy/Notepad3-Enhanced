@@ -69,7 +69,7 @@ extern "C" void* AiHttp_ClientCreate(const wchar_t* endpoint) {
 }
 extern "C" void AiHttp_ClientFree(void* client) { delete static_cast<Client*>(client); }
 extern "C" void AiHttp_Free(AI_HTTP_RESULT* result) { if (result) { AiProtocol_Free(result->text); *result = {}; } }
-static int Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, AI_HTTP_RESULT* result, bool models, AI_MODEL_PAGE* page = nullptr) {
+static int Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, AI_HTTP_RESULT* result, bool models, AI_MODEL_PAGE* page = nullptr, unsigned maxTokens = 0) {
     if (!result) return AI_HTTP_CONFIG; *result = {};
     if (!config || !config->client || AiEndpoint_Validate(config->endpoint) != AI_OK || config->timeoutMs < 100 || config->timeoutMs > 120000) return AI_HTTP_CONFIG;
     if (config->cancel && config->cancel(config->context)) return AI_HTTP_CANCELED;
@@ -79,7 +79,7 @@ static int Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input,
         if (!operation.owns_lock()) return AI_HTTP_BUSY;
         auto state = std::make_shared<State>(); if (!state->event) return AI_HTTP_MEMORY;
         char* body = nullptr; size_t bodyLength = 0;
-        int protocol = models ? AI_OK : AiProtocol_Request(config->model, action, input, length, instruction, &body, &bodyLength);
+        int protocol = models ? AI_OK : AiProtocol_RequestLimit(config->model, action, input, length, instruction, maxTokens, &body, &bodyLength);
         std::unique_ptr<char, decltype(&AiProtocol_Free)> bodyOwner(body, AiProtocol_Free);
         if (protocol != AI_OK) { result->protocolStatus = protocol; return protocol == AI_MEMORY ? AI_HTTP_MEMORY : protocol == AI_LIMIT ? AI_HTTP_LIMIT : AI_HTTP_CONFIG; }
         if (bodyLength) state->body.assign(body, bodyLength);
@@ -195,3 +195,5 @@ extern "C" int AiHttp_ModelPages(const AI_HTTP_CONFIG_DATA* config, AI_HTTP_RESU
         return AI_HTTP_LIMIT;
     } catch (...) {AiProtocol_Free(result->text);result->text=nullptr;result->length=0;return AI_HTTP_MEMORY;}
 }
+
+extern "C" int AiHttp_RunLimit(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, unsigned maxTokens, AI_HTTP_RESULT* result) { return Run(config, action, input, length, instruction, result, false, nullptr, maxTokens); }

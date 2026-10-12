@@ -32,6 +32,11 @@ int wmain(int argc, wchar_t** argv) {
         expect(pages(L"/native-limit")==AI_HTTP_LIMIT && !result.text,"reported model total bounded before fetching all pages");
         config.timeoutMs=250;expect(pages(L"/native-timeout")==AI_HTTP_TIMEOUT && !result.text,"one deadline applies across model pages");config.timeoutMs=5000;
         config.model="test-model";
+        auto limited=[&](const wchar_t* route,unsigned cap) {AiHttp_Free(&result);endpoint=base+route;config.endpoint=endpoint.c_str();return AiHttp_RunLimit(&config,AI_EXPLAIN,"中文 input",sizeof("中文 input")-1,nullptr,cap,&result);};
+        expect(limited(L"/limit1",1)==AI_HTTP_OK,"actual HTTP request sends one-token cap");
+        expect(limited(L"/limit4096",4096)==AI_HTTP_OK,"actual HTTP request sends larger numeric cap");
+        expect(limited(L"/limit-invalid",65537)==AI_HTTP_LIMIT && !result.text,"invalid output cap rejected before network send");
+        expect(limited(L"/limit-reject",4096)==AI_HTTP_SERVER && result.httpStatus==400 && !result.text,"unsupported parameter returns service error without silent retry");
         expect(run(L"/ok") == AI_HTTP_OK, "local HTTP completion succeeds");
         expect(result.httpStatus == 200 && std::string(result.text, result.length) == "模拟中文\n😀", "actual HTTP body decoded correctly");
         expect(run(L"/denied") == AI_HTTP_SERVER && result.httpStatus == 401 && !result.text, "authorization error retains HTTP code without fake content");

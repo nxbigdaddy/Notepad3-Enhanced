@@ -36,11 +36,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             assert body['model'] == 'test-model' and body['stream'] is False
+            if self.path in ('/limit1','/limit4096','/limit-reject'):
+                expected=1 if self.path=='/limit1' else 4096
+                assert body.get('max_tokens')==expected and type(body['max_tokens']) is int
+            else: assert 'max_tokens' not in body
+
             assert body['messages'][1] == {'role': 'user', 'content': '中文 input'}
             assert self.headers.get('Authorization') == 'Bearer fake-local-test-key'
             assert self.headers.get('Cookie') is None
             with self.server.task_lock: self.server.task_requests.append(self.path)
             if self.path == '/slow': time.sleep(3)
+            if self.path == '/limit-reject': self.send_response(400);self.end_headers();return
             if self.path == '/denied':
                 self.send_response(401); self.end_headers(); return
             if self.path == '/redirect':
@@ -83,6 +89,8 @@ try:
     print(text, end='')
     with server.task_lock:
         evidence = {'exit_code': result.returncode, 'requests': server.task_requests.copy(), 'errors': server.task_errors.copy(), 'tls_requests': tls.task_requests.copy(), 'tls_errors': tls.task_errors.copy()}
+    if '/limit-invalid' in evidence['requests'] or evidence['requests'].count('/limit-reject')!=1 or evidence['requests'].count('/limit1')!=1 or evidence['requests'].count('/limit4096')!=1:
+        evidence['errors'].append('output cap sent invalid request or silently retried parameter rejection')
     for route, pages in {'/native':[1,2,3], '/native-change':[1,2], '/native-duplicate':[1,2], '/native-fail':[1,2], '/native-limit':[1], '/native-timeout':[1,2]}.items():
         observed=[]
         for request in evidence['requests']:
