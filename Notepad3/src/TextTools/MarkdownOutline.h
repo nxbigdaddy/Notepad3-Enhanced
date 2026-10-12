@@ -9,14 +9,23 @@ struct MarkdownHeading { unsigned level; size_t line, offset; std::string text; 
 inline std::vector<MarkdownHeading> MarkdownOutline(std::string_view source) {
     if(source.size()>16*1024*1024)throw std::length_error("outline input limit");
     std::vector<MarkdownHeading> result;size_t start=0,line=0,previousOffset=0,previousLine=0;std::string previous;
-    char fence=0;size_t fenceLength=0;
+    char fence=0;size_t fenceLength=0;bool comment=false;
     auto add=[&](unsigned level,size_t number,size_t offset,std::string_view text){if(result.size()==4096)throw std::length_error("outline heading limit");result.push_back({level,number,offset,std::string(text)});};
     auto trim=[](std::string_view value){while(!value.empty() && (value.front()==' ' || value.front()=='\t'))value.remove_prefix(1);while(!value.empty() && (value.back()==' ' || value.back()=='\t'))value.remove_suffix(1);return value;};
     while(start<source.size()) {
         size_t end=start;while(end<source.size() && source[end]!='\r' && source[end]!='\n')++end;
-        auto raw=source.substr(start,end-start);auto value=raw;size_t indent=0;while(indent<value.size() && value[indent]==' ')++indent;
+        auto raw=source.substr(start,end-start);auto value=raw;
+        if(start==0 && value.size()>=3 && value.substr(0,3)=="\xef\xbb\xbf")value.remove_prefix(3);size_t indent=0;while(indent<value.size() && value[indent]==' ')++indent;
         if(indent<=3)value.remove_prefix(indent);else value={};
         bool handled=false;
+        if(!fence && (comment || value.substr(0,4)=="<!--")) {
+            comment=value.find("-->")==std::string_view::npos;value={};previous.clear();
+        }
+        // Conservative exclusion of indented code and container markers.
+        if(!value.empty() && (value.front()=='\t' || value.front()=='>'))value={};
+        if(value.size()>1 && (value.front()=='-' || value.front()=='+' || value.front()=='*') && (value[1]==' ' || value[1]=='\t'))value={};
+        size_t digits=0;while(digits<value.size() && value[digits]>='0' && value[digits]<='9')++digits;
+        if(digits && digits<=9 && digits+1<value.size() && (value[digits]=='.' || value[digits]==')') && (value[digits+1]==' ' || value[digits+1]=='\t'))value={};
         if(!value.empty() && (value.front()=='`' || value.front()=='~')) {
             const char marker=value.front();size_t count=0;while(count<value.size() && value[count]==marker)++count;
             if(fence){if(marker==fence && count>=fenceLength && trim(value.substr(count)).empty()){fence=0;handled=true;}}

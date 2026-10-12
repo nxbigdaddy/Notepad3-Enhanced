@@ -11,6 +11,13 @@ int main(){try{
  check(np3::MarkdownOutline("   ### title###\r#\r")[0].text=="title###");
  check(np3::MarkdownOutline("text\n\n---\n").empty());
  check(np3::MarkdownOutline("text\n---\n")[0].level==2);
+ auto bom=np3::MarkdownOutline("\xef\xbb\xbf# BOM\n## next");check(bom.size()==2 && bom[0].offset==0 && bom[0].text=="BOM");check(bom[1].offset==9);
+ check(np3::MarkdownOutline("<!--\n# hidden\n-->\n# visible").size()==1);
+ check(np3::MarkdownOutline("<!-- # hidden -->\n# visible").size()==1);
+ check(np3::MarkdownOutline("\tindented\n---\n").empty());
+ check(np3::MarkdownOutline("> quote\n---\n").empty());
+ check(np3::MarkdownOutline("- item\n---\n1. item\n===\n").empty());
+ check(np3::MarkdownOutline("```\n<!--\n```\n# visible").size()==1);
  bool limited=false;try{np3::MarkdownOutline(std::string(16*1024*1024+1,'x'));}catch(const std::length_error&){limited=true;}check(limited);
  std::string many;for(int i=0;i<4097;++i)many+="# heading\n";limited=false;try{np3::MarkdownOutline(many);}catch(const std::length_error&){limited=true;}check(limited);
  std::printf("PASS %d Markdown outline checks\n",checks);return 0;
