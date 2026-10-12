@@ -6,6 +6,8 @@
 
 版本变更见 [更新日志](CHANGELOG.md)，下载见 [GitHub Releases](https://github.com/nxbigdaddy/Notepad3-Enhanced/releases)。当前状态见 [迭代进展](docs/迭代进展.md)，完整方案见 [开发方案](docs/Notepad3扩展开发方案.md)。
 
+此前所有已有迭代记录见 [历史更新记录](docs/历史更新记录.md)，包含目录、每轮实现和验证限制。
+
 最新开发增量 v133 包含本地 Markdown 大纲、停笔自动刷新及标题定位；原生程序与本地模拟服务联合检查 484 项通过。测试证据和限制见迭代进展；模拟 AI 服务不代表真实供应商验收。百度网盘同步、连续流式对话及其他规划仍未全部实现。
 
 构建：`scripts/build.ps1 -SkipVersion`。测试：`scripts/test-markdown.cmd`。
