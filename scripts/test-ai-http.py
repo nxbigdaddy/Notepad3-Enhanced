@@ -1,3 +1,4 @@
+import urllib.parse
 import http.server, json, pathlib, subprocess, sys, threading, time, ssl, datetime, ipaddress
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -12,10 +13,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             assert self.headers.get('Authorization') == 'Bearer fake-local-test-key'
             assert not int(self.headers.get('Content-Length', 0))
             with self.server.task_lock: self.server.task_requests.append('GET ' + self.path)
+            route=urllib.parse.urlsplit(self.path)
+            if route.path.startswith('/native'):
+                query=urllib.parse.parse_qs(route.query); page=int(query['page_no'][0]);assert query['page_size']==['100']
+                if route.path=='/native-fail' and page==2: self.send_response(401);self.end_headers();return
+                total=600 if route.path=='/native-limit' else 201
+                if route.path=='/native-change' and page==2: total=202
+                ids=[{'model':f'model-{i}'} for i in range((page-1)*100,min(page*100,total))]
+                if route.path=='/native-duplicate' and page==2: ids[0]['model']='model-0'
+                if route.path=='/native-timeout' and page==2: time.sleep(1)
+                data=json.dumps({'success':True,'output':{'total':total,'page_no':page,'page_size':100,'models':ids}}).encode()
+                self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
             if self.path == '/models-denied': self.send_response(401); self.end_headers(); return
             assert self.path == '/models'
             data=json.dumps({'data':[{'id':'one'},{'id':'中文'}]}).encode()
             self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError): pass
         except Exception as exc:
             with self.server.task_lock: self.server.task_errors.append(str(exc))
             self.send_response(500);self.end_headers()
@@ -70,6 +83,13 @@ try:
     print(text, end='')
     with server.task_lock:
         evidence = {'exit_code': result.returncode, 'requests': server.task_requests.copy(), 'errors': server.task_errors.copy(), 'tls_requests': tls.task_requests.copy(), 'tls_errors': tls.task_errors.copy()}
+    for route, pages in {'/native':[1,2,3], '/native-change':[1,2], '/native-duplicate':[1,2], '/native-fail':[1,2], '/native-limit':[1], '/native-timeout':[1,2]}.items():
+        observed=[]
+        for request in evidence['requests']:
+            if request.startswith('GET '):
+                url=urllib.parse.urlsplit(request[4:])
+                if url.path==route: observed.append(int(urllib.parse.parse_qs(url.query)['page_no'][0]))
+        if observed!=pages: evidence['errors'].append(f'{route}: pages {observed} expected {pages}')
     (folder / 'server-verification.json').write_text(json.dumps(evidence, indent=2), encoding='utf-8')
     print('Evidence:', folder)
     if result.returncode or evidence['errors'] or evidence['tls_requests'] or evidence['tls_errors'] or '/redirect-target' in evidence['requests']: sys.exit(1)

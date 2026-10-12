@@ -13,6 +13,8 @@ void* AiHttp_ClientCreate(const wchar_t* endpoint);
 void AiHttp_ClientFree(void* client);
 // Call from a background worker. WinHTTP operations are asynchronous; cancellation is polled while waiting.
 int AiHttp_Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, AI_HTTP_RESULT* result);
+// Native DashScope pagination: one overall deadline, max 512 unique IDs, no partial output.
+int AiHttp_ModelPages(const AI_HTTP_CONFIG_DATA* config, AI_HTTP_RESULT* result);
 int AiHttp_Models(const AI_HTTP_CONFIG_DATA* config, AI_HTTP_RESULT* result);
 void AiHttp_Free(AI_HTTP_RESULT* result);
 int AiHttp_Diagnostic(int status, const AI_HTTP_RESULT* result);

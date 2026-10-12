@@ -23,6 +23,14 @@ int wmain(int argc, wchar_t** argv) {
         expect(AiHttp_Models(&config,&result)==AI_HTTP_OK && std::string(result.text,result.length)=="one\n中文\n","actual authenticated GET model list decoded without model input");
         AiHttp_Free(&result);endpoint=base+L"/models-denied";config.endpoint=endpoint.c_str();
         expect(AiHttp_Models(&config,&result)==AI_HTTP_SERVER && result.httpStatus==401 && !result.text,"model list auth failure publishes no IDs");
+        auto pages=[&](const wchar_t* route) {AiHttp_Free(&result);endpoint=base+route;config.endpoint=endpoint.c_str();return AiHttp_ModelPages(&config,&result);};
+        expect(pages(L"/native")==AI_HTTP_OK,"native three-page GET collection succeeds");
+        expect(std::string(result.text,result.length).find("model-0\n")==0 && std::string(result.text,result.length).find("model-200\n")!=std::string::npos,"native collection includes first and last page IDs");
+        expect(pages(L"/native-change")==AI_HTTP_RESPONSE && !result.text && !result.length,"changing total rejects all collected IDs");
+        expect(pages(L"/native-duplicate")==AI_HTTP_RESPONSE && !result.text,"duplicate model across pages cannot pretend completeness");
+        expect(pages(L"/native-fail")==AI_HTTP_SERVER && result.httpStatus==401 && !result.text,"second-page auth error does not publish first page");
+        expect(pages(L"/native-limit")==AI_HTTP_LIMIT && !result.text,"reported model total bounded before fetching all pages");
+        config.timeoutMs=250;expect(pages(L"/native-timeout")==AI_HTTP_TIMEOUT && !result.text,"one deadline applies across model pages");config.timeoutMs=5000;
         config.model="test-model";
         expect(run(L"/ok") == AI_HTTP_OK, "local HTTP completion succeeds");
         expect(result.httpStatus == 200 && std::string(result.text, result.length) == "模拟中文\n😀", "actual HTTP body decoded correctly");

@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <set>
 #pragma comment(lib, "winhttp.lib")
 namespace {
 struct Handle { HINTERNET value = nullptr; ~Handle() { if (value) WinHttpCloseHandle(value); } };
@@ -68,7 +69,7 @@ extern "C" void* AiHttp_ClientCreate(const wchar_t* endpoint) {
 }
 extern "C" void AiHttp_ClientFree(void* client) { delete static_cast<Client*>(client); }
 extern "C" void AiHttp_Free(AI_HTTP_RESULT* result) { if (result) { AiProtocol_Free(result->text); *result = {}; } }
-static int Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, AI_HTTP_RESULT* result, bool models) {
+static int Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, AI_HTTP_RESULT* result, bool models, AI_MODEL_PAGE* page = nullptr) {
     if (!result) return AI_HTTP_CONFIG; *result = {};
     if (!config || !config->client || AiEndpoint_Validate(config->endpoint) != AI_OK || config->timeoutMs < 100 || config->timeoutMs > 120000) return AI_HTTP_CONFIG;
     if (config->cancel && config->cancel(config->context)) return AI_HTTP_CANCELED;
@@ -124,7 +125,7 @@ static int Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input,
             response.append(state->buffer.data(), read);
         }
         if (config->cancel && config->cancel(config->context)) return AI_HTTP_CANCELED;
-        result->protocolStatus = models ? AiProtocol_Models(response.data(), response.size(), &result->text, &result->length) : AiProtocol_Response(response.data(), response.size(), &result->text, &result->length);
+        result->protocolStatus = page ? AiProtocol_ModelPage(response.data(), response.size(), &result->text, &result->length, page) : models ? AiProtocol_Models(response.data(), response.size(), &result->text, &result->length) : AiProtocol_Response(response.data(), response.size(), &result->text, &result->length);
         bool canceled = config->cancel && config->cancel(config->context);
         if (canceled || GetTickCount64() - started >= config->timeoutMs) {
             AiProtocol_Free(result->text); result->text = nullptr; result->length = 0;
@@ -164,3 +165,33 @@ extern "C" int AiHttp_Diagnostic(int status,const AI_HTTP_RESULT* result) {
 
 extern "C" int AiHttp_Models(const AI_HTTP_CONFIG_DATA* config, AI_HTTP_RESULT* result) { return Run(config, 0, nullptr, 0, nullptr, result, true); }
 extern "C" int AiHttp_Run(const AI_HTTP_CONFIG_DATA* config, int action, const char* input, size_t length, const char* instruction, AI_HTTP_RESULT* result) { return Run(config, action, input, length, instruction, result, false); }
+
+extern "C" int AiHttp_ModelPages(const AI_HTTP_CONFIG_DATA* config, AI_HTTP_RESULT* result) {
+    if (!result) return AI_HTTP_CONFIG; *result = {};
+    if (!config || !config->endpoint || wcschr(config->endpoint,L'?') || AiEndpoint_Validate(config->endpoint)!=AI_OK || config->timeoutMs<100 || config->timeoutMs>120000) return AI_HTTP_CONFIG;
+    try {
+        const ULONGLONG started=GetTickCount64();std::string all;std::set<std::string> seen;size_t total=0;
+        for(size_t index=1;index<=6;++index) {
+            if(config->cancel && config->cancel(config->context))return AI_HTTP_CANCELED;
+            const auto elapsed=GetTickCount64()-started;
+            if(elapsed>=config->timeoutMs || config->timeoutMs-elapsed<100)return AI_HTTP_TIMEOUT;
+            const std::wstring endpoint=std::wstring(config->endpoint)+L"?page_no="+std::to_wstring(index)+L"&page_size=100";
+            AI_HTTP_CONFIG_DATA request=*config;request.endpoint=endpoint.c_str();request.timeoutMs=static_cast<DWORD>(config->timeoutMs-elapsed);
+            AI_MODEL_PAGE page{};const int status=Run(&request,0,nullptr,0,nullptr,result,true,&page);
+            if(status!=AI_HTTP_OK)return status;
+            if(page.page!=index || page.pageSize!=100 || (index>1 && page.total!=total)) {AiProtocol_Free(result->text);result->text=nullptr;result->length=0;result->protocolStatus=AI_RESPONSE;return AI_HTTP_RESPONSE;}
+            total=page.total;
+            if(total>512){AiProtocol_Free(result->text);result->text=nullptr;result->length=0;return AI_HTTP_LIMIT;}
+            const std::string ids(result->text,result->length);AiProtocol_Free(result->text);result->text=nullptr;result->length=0;
+            size_t begin=0;while(begin<ids.size()) {const auto end=ids.find('\n',begin);if(end==std::string::npos || !seen.insert(ids.substr(begin,end-begin)).second){result->protocolStatus=AI_RESPONSE;return AI_HTTP_RESPONSE;}begin=end+1;}
+            all+=ids;
+            if(seen.size()==total) {
+                if(config->cancel && config->cancel(config->context))return AI_HTTP_CANCELED;
+                if(GetTickCount64()-started>=config->timeoutMs)return AI_HTTP_TIMEOUT;
+                result->text=static_cast<char*>(malloc(all.size()+1));if(!result->text)return AI_HTTP_MEMORY;
+                memcpy(result->text,all.c_str(),all.size()+1);result->length=all.size();return AI_HTTP_OK;
+            }
+        }
+        return AI_HTTP_LIMIT;
+    } catch (...) {AiProtocol_Free(result->text);result->text=nullptr;result->length=0;return AI_HTTP_MEMORY;}
+}
