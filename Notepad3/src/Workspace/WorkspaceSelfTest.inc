@@ -312,6 +312,15 @@ static void _WorkspaceTestOutline(WORKSPACE_TEST_RESULT* result)
     _WorkspaceTestCheck(result,SciCall_GetCurrentPos()==13,"outline Enter routes to guarded heading navigation");
     SendMessageW(panel,WM_VKEYTOITEM,MAKEWPARAM(VK_F5,1),(LPARAM)GetDlgItem(panel,101));
     _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,101,LB_GETCOUNT,0,0)==3 && SendDlgItemMessageW(panel,101,LB_GETCURSEL,0,0)==0,"outline F5 refresh rebuilds list and selects first heading");
+    DocPos fourthOffset=SciCall_GetLength();SciCall_SetSel(fourthOffset,fourthOffset);SciCall_BeginUndoAction();SciCall_ReplaceSel("# Four\r\n");SciCall_EndUndoAction();
+    SendMessageW(panel,WM_TIMER,1,0);
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,101,LB_GETCOUNT,0,0)==3,"outline timer defers rebuild until document version settles");
+    SendMessageW(panel,WM_TIMER,1,0);
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,101,LB_GETCOUNT,0,0)==4,"outline timer rebuilds settled unsaved document automatically");
+    SendDlgItemMessageW(panel,101,LB_SETCURSEL,3,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(103,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,SciCall_GetCurrentPos()==fourthOffset,"automatically refreshed heading retains accurate byte position");
+    SciCall_Undo();SendMessageW(panel,WM_TIMER,1,0);SendMessageW(panel,WM_TIMER,1,0);
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,101,LB_GETCOUNT,0,0)==3,"outline automatic refresh follows undo without source edits");
     SendMessageW(panel,WM_VKEYTOITEM,MAKEWPARAM(VK_ESCAPE,0),(LPARAM)GetDlgItem(panel,101));
     _WorkspaceTestCheck(result,!IsWindow(panel) && !_outlineWindow,"outline Esc closes window and clears ownership");SciCall_Undo();SciCall_Undo();
     _WorkspaceTestCheck(result,_WorkspaceTestText("alpha\r\nA"),"outline fixture restores previous source using undo");
