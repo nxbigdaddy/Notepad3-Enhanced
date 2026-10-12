@@ -52,6 +52,8 @@
 #include "Workspace/FileSearchPanel.h"
 #include "Workspace/HistoryService.h"
 #include "Workspace/HistoryPanel.h"
+#include "TextTools/MarkdownOutlinePanel.h"
+#include "TextTools/MarkdownOutlineCore.h"
 #include "TextTools/LogFilterPanel.h"
 #include "TextTools/BatchPanel.h"
 #include "UI/PanelTheme.h"
@@ -405,6 +407,7 @@ static void _AiToggle(void);
 static bool _AiRun(const AI_PANEL_CAPTURE* request);
 static bool _AiApply(const AI_PANEL_APPLY* request);
 static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey);
+static HWND _OutlineShow(HWND parent);
 static bool _AiReadProfile(int index, AI_PANEL_SETTINGS* settings);
 static bool _AiPrompt(int operation, AI_PROMPT* prompt);
 static bool _AiRemoveProfile(int index, const AI_PANEL_SETTINGS* expected);
@@ -2680,6 +2683,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
     case NP3_WM_LOGFILTER_CAPTURE: return _LogFilterRun();
     case NP3_WM_LOGFILTER_LOCATE: return _LogFilterLocate((const LOG_PANEL_LOCATION*)lParam);
     case NP3_WM_SEARCH_LOCATE: return _SearchLocate((const SEARCH_LOCATION*)lParam);
+    case NP3_WM_OUTLINE_SHOW:return (LRESULT)_OutlineShow(hwnd);
     case NP3_WM_HISTORY_SHOW: {
         WCHAR store[32768];
         return _WorkspaceHistoryStore(store,COUNTOF(store))?(LRESULT)HistoryPanel_Show(hwnd,store):0;
@@ -12804,6 +12808,7 @@ static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
     return saved;
 }
 
+#include "TextTools/MarkdownOutlinePanel.inc"
 #include "Workspace/WorkspaceSelfTest.inc"
 #include "Workspace/WorkspaceRecoveryTest.inc"
 #include "Markdown/MarkdownPdfSelfTest.inc"

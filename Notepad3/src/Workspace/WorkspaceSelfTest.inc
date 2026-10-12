@@ -293,8 +293,26 @@ static void _WorkspaceTestAiTokenLimit(HWND panel,WORKSPACE_TEST_RESULT* result)
     SetDlgItemInt(panel,135,0,FALSE);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
     _WorkspaceTestCheck(result,Settings2.AIMaxTokens==0 && IniFileGetLong(Paths.IniFile,L"Settings2",L"AIMaxTokens",-1)==0,"zero cap restores default and persists without secret");
 }
+static void _WorkspaceTestOutline(WORKSPACE_TEST_RESULT* result)
+{
+    SciCall_BeginUndoAction();SciCall_SelectAll();SciCall_ReplaceSel("# One\r\nbody\r\n## Two\r\n```\r\n# hidden\r\n```\r\n");SciCall_EndUndoAction();
+    HWND panel=(HWND)SendMessageW(Globals.hwndMain,NP3_WM_OUTLINE_SHOW,0,0);
+    _WorkspaceTestCheck(result,IsWindow(panel) && SendDlgItemMessageW(panel,101,LB_GETCOUNT,0,0)==2,"native local outline lists actual unsaved headings and skips fence");
+    _WorkspaceTestCheck(result,(HWND)SendMessageW(Globals.hwndMain,NP3_WM_OUTLINE_SHOW,0,0)==panel,"outline reuses its owned window");
+    SendDlgItemMessageW(panel,101,LB_SETCURSEL,1,0);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(103,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,SciCall_GetCurrentPos()==13,"outline navigation uses original byte offset without modifying source");
+    SciCall_SetSel(SciCall_GetLength(),SciCall_GetLength());SciCall_BeginUndoAction();SciCall_ReplaceSel("# Three\r\n");SciCall_EndUndoAction();DocPos caret=SciCall_GetCurrentPos();
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(103,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,SciCall_GetCurrentPos()==caret,"stale outline rejects navigation after document edit");
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(102,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,SendDlgItemMessageW(panel,101,LB_GETCOUNT,0,0)==3,"outline refresh rebuilds headings from modified buffer");
+    DestroyWindow(panel);panel=(HWND)SendMessageW(Globals.hwndMain,NP3_WM_OUTLINE_SHOW,0,0);
+    _WorkspaceTestCheck(result,IsWindow(panel) && SendDlgItemMessageW(panel,101,LB_GETCOUNT,0,0)==3,"outline close and reopen owns a fresh snapshot");DestroyWindow(panel);SciCall_Undo();SciCall_Undo();
+    _WorkspaceTestCheck(result,_WorkspaceTestText("alpha\r\nA"),"outline fixture restores previous source using undo");
+}
 static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_TEST_RESULT* result)
 {
+    _WorkspaceTestOutline(result);
     _WorkspaceTestAiPrompts(panel,result);
     _WorkspaceTestAiDiagnostics(panel,result);
     _WorkspaceTestAiPresets(panel,result);
