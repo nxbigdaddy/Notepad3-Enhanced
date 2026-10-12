@@ -11,6 +11,19 @@ if (Test-Path "$taskOutput\lng") {
 }
 Copy-Item -LiteralPath "$taskRoot\Notepad3\Build\Notepad3.ini" -Destination "$taskPackage\Notepad3.ini"
 Copy-Item -LiteralPath "$taskRoot\Notepad3\Build\Docs\License.txt" -Destination "$taskPackage\licenses\Notepad3.txt"
+foreach($taskLicense in @(
+    @('Notepad3/scintilla/License.txt','Scintilla.txt'),
+    @('Notepad3/lexilla/License.txt','Lexilla.txt'),
+    @('Notepad3/src/uchardet/uchardet/COPYING','uchardet-MPL.txt'),
+    @('Notepad3/src/tinyexprcpp/LICENSE','TinyExpr.txt'),
+    @('Notepad3/src/timsort/LICENSE','timsort.txt'),
+    @('Notepad3/src/uthash/License.txt','uthash.txt'),
+    @('Notepad3/src/Config/LICENCE.txt','ConvertUTF.txt'),
+    @('Notepad3/src/Markdown/vendor/render-assets/LICENSE-mermaid.txt','Mermaid.txt'),
+    @('Notepad3/src/Markdown/vendor/render-assets/LICENSE-katex.txt','KaTeX.txt')
+)) {
+    Copy-Item -LiteralPath (Join-Path $taskRoot $taskLicense[0]) -Destination (Join-Path "$taskPackage\licenses" $taskLicense[1])
+}
 Copy-Item -LiteralPath "$taskRoot\Notepad3\scintilla\pcre2\LICENCE.md" -Destination "$taskPackage\licenses\PCRE2.md"
 Copy-Item -LiteralPath "$taskRoot\Notepad3\src\Markdown\vendor\md4c\LICENSE.md" -Destination "$taskPackage\licenses\MD4C.md"
 Copy-Item -LiteralPath "$taskRoot\Notepad3\src\Markdown\vendor\webview2\LICENSE.txt" -Destination "$taskPackage\licenses\WebView2.txt"
