@@ -843,6 +843,7 @@ typedef struct SETTINGS2_T {
     WCHAR   AIModel[257];
     WCHAR   AIConfigurationId[65];
     int     AITimeoutMs;
+    int     AIMaxTokens;
     bool    DiscardOnClosingUntitledPasteBoard;
     int     ExitOnESCSkipLevel;
     int     ZoomTooltipTimeout;

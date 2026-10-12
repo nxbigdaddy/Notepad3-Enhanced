@@ -19,7 +19,7 @@ struct Job {
     std::wstring endpoint;
     std::string model, original, instruction;
     char* secret = nullptr;
-    DWORD timeout = 60000;
+    DWORD timeout = 60000; unsigned maxTokens = 0;
     std::shared_ptr<Client> client;
     std::atomic<bool> cancel{false}, done{false};
     AI_HTTP_RESULT result{};
@@ -56,7 +56,7 @@ std::wstring ChatAddress(const wchar_t* value) {
 }
 void Status(const Owner& panel, int label) { SetWindowTextW(GetDlgItem(panel->window, 130), panel->labels[label].c_str()); }
 void Busy(const Owner& panel, bool busy) {
-    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124,125,126,127,128,129,131,132,133,134}) EnableWindow(GetDlgItem(panel->window,id), !busy);
+    for (int id : {101,102,103,104,105,106,110,111,112,113,116,117,119,120,123,124,125,126,127,128,129,131,132,133,134,135}) EnableWindow(GetDlgItem(panel->window,id), !busy);
     EnableWindow(GetDlgItem(panel->window,114), busy);
     EnableWindow(GetDlgItem(panel->window,115), !busy && panel->job && panel->published && panel->job->status == AI_HTTP_OK && panel->job->action != AI_EXPLAIN && panel->job->action != AI_ASK && panel->job->action != AI_CONNECTION_TEST && !panel->job->models);
 }
@@ -148,11 +148,11 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         int width = LOWORD(lParam), height = HIWORD(lParam), row = MulDiv(28, GetDpiForWindow(window), 96);
         auto move = [&](int id, int x, int y, int w, int h) { MoveWindow(GetDlgItem(window,id), x,y,(std::max)(0,w),(std::max)(0,h),TRUE); };
         move(107,0,0,width/6-2,row-2);move(123,width/6,0,2*width/3-2,6*row);move(124,5*width/6,0,width/6-2,row-2);
-        for(int id:{101,102,103,104,105,106,118,119,125,126,132,133,134,208,201,202,203,204}) ShowWindow(GetDlgItem(window,id),panel->settingsExpanded?SW_SHOW:SW_HIDE);
+        for(int id:{101,102,103,104,105,106,118,119,125,126,132,133,134,135,209,208,201,202,203,204}) ShowWindow(GetDlgItem(window,id),panel->settingsExpanded?SW_SHOW:SW_HIDE);
         int base=1;
         if(panel->settingsExpanded){
             for(int i=0;i<4;++i){move(201+i,i*width/4,row,width/4,row);move(101+i,i*width/4,2*row,width/4-2,i==1?8*row:row-2);}
-            move(105,0,3*row,width/8-2,row-2);move(106,width/8,3*row,width/8-2,row-2);move(118,width/4,3*row,width/8,row);move(119,3*width/8,3*row,width/4-2,row-2);move(125,5*width/8,3*row,width/4-2,6*row);move(126,7*width/8,3*row,width/8-2,row-2);move(208,0,4*row,width/6,row);move(133,width/6,4*row,width/2-2,row-2);move(134,2*width/3,4*row,width/6-2,row-2);move(132,5*width/6,4*row,width/6-2,row-2);base=5;
+            move(105,0,3*row,width/8-2,row-2);move(106,width/8,3*row,width/8-2,row-2);move(118,width/4,3*row,width/8,row);move(119,3*width/8,3*row,width/4-2,row-2);move(125,5*width/8,3*row,width/4-2,6*row);move(126,7*width/8,3*row,width/8-2,row-2);move(208,0,4*row,width/6,row);move(133,width/6,4*row,width/2-2,row-2);move(134,2*width/3,4*row,width/6-2,row-2);move(132,5*width/6,4*row,width/6-2,row-2);move(209,0,5*row,width/2,row);move(135,width/2,5*row,width/2-2,row-2);base=6;
         }
         for(int i=0;i<6;++i)move(110+i,i*width/9,base*row,width/9-2,row-2);
         move(116,2*width/3,base*row,2*width/9-2,6*row);move(117,8*width/9,base*row,width/9-2,row-2);
@@ -180,7 +180,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             const LRESULT selected=SendDlgItemMessageW(window,125,CB_GETCURSEL,0,0);
             const wchar_t* endpoints[]={L"",L"https://api.moonshot.cn/v1/chat/completions",L"https://api.deepseek.com/chat/completions",L"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",L"",L"https://api.openai.com/v1/chat/completions"};
             if(selected<1 || selected>5) return 0;
-            SendDlgItemMessageW(window,134,BM_SETCHECK,selected==3?BST_CHECKED:BST_UNCHECKED,0);SetWindowTextW(GetDlgItem(window,133),L"");SendDlgItemMessageW(window,102,CB_RESETCONTENT,0,0);SetWindowTextW(GetDlgItem(window,101),endpoints[selected]);SetWindowTextW(GetDlgItem(window,102),L"");SetWindowTextW(GetDlgItem(window,103),L"");SetWindowTextW(GetDlgItem(window,119),L"");
+            SetDlgItemInt(window,135,0,FALSE);SendDlgItemMessageW(window,134,BM_SETCHECK,selected==3?BST_CHECKED:BST_UNCHECKED,0);SetWindowTextW(GetDlgItem(window,133),L"");SendDlgItemMessageW(window,102,CB_RESETCONTENT,0,0);SetWindowTextW(GetDlgItem(window,101),endpoints[selected]);SetWindowTextW(GetDlgItem(window,102),L"");SetWindowTextW(GetDlgItem(window,103),L"");SetWindowTextW(GetDlgItem(window,119),L"");
             SetWindowTextW(GetDlgItem(window,130),L"填入 Key，点击获取模型，选择模型后保存；也可手动填写模型。");return 0;
         }
         if(id==123 && HIWORD(wParam)==CBN_SELCHANGE) {
@@ -192,7 +192,7 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             if(!SendMessageW(panel->parent,NP3_WM_AI_PROFILE,index,reinterpret_cast<LPARAM>(&request.settings)) || !SendMessageW(panel->parent,NP3_WM_AI_SAVE,0,reinterpret_cast<LPARAM>(&request))) {Status(panel,AP_ERROR);return 0;}
             panel->activeId=request.settings.configurationId;panel->activeModel=request.settings.model;
             SetWindowTextW(GetDlgItem(window,101),request.settings.endpoint);SetWindowTextW(GetDlgItem(window,102),request.settings.model);
-            SetDlgItemInt(window,104,request.settings.timeoutMs,FALSE);SetWindowTextW(GetDlgItem(window,119),request.settings.configurationId);SetWindowTextW(GetDlgItem(window,103),L"");Status(panel,AP_SAVED);return 0;
+            SetDlgItemInt(window,135,request.settings.maxTokens,FALSE);SetDlgItemInt(window,104,request.settings.timeoutMs,FALSE);SetWindowTextW(GetDlgItem(window,119),request.settings.configurationId);SetWindowTextW(GetDlgItem(window,103),L"");Status(panel,AP_SAVED);return 0;
         }
         if (HIWORD(wParam) != BN_CLICKED) return 0;
         if(id==124) {
@@ -245,11 +245,12 @@ LRESULT CALLBACK Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
             AI_PANEL_SAVE request{}; wchar_t key[2049]{};
             GetWindowTextW(GetDlgItem(window,101),request.settings.endpoint,2049); GetWindowTextW(GetDlgItem(window,102),request.settings.model,257);
             const auto chat=ChatAddress(request.settings.endpoint);wcscpy_s(request.settings.endpoint,chat.c_str());SetDlgItemTextW(window,101,request.settings.endpoint);
+            BOOL capValid=FALSE;request.settings.maxTokens=GetDlgItemInt(window,135,&capValid,FALSE);
             BOOL valid=FALSE; request.settings.timeoutMs=GetDlgItemInt(window,104,&valid,FALSE);
             GetWindowTextW(GetDlgItem(window,119),request.settings.configurationId,65);
             if(id==105 && !request.settings.configurationId[0] && GetWindowTextLengthW(GetDlgItem(window,103))>0 && SendDlgItemMessageW(window,125,CB_GETCURSEL,0,0)>0){swprintf_s(request.settings.configurationId,L"account-%lu-%llu",GetCurrentProcessId(),GetTickCount64());SetWindowTextW(GetDlgItem(window,119),request.settings.configurationId);}
             GetWindowTextW(GetDlgItem(window,103),key,2049); auto secret=Utf8(key); SecureZeroMemory(key,sizeof(key)); request.secret=secret.c_str();
-            bool saved=valid && SendMessageW(panel->parent,NP3_WM_AI_SAVE,id==106,reinterpret_cast<LPARAM>(&request));
+            bool saved=valid && capValid && SendMessageW(panel->parent,NP3_WM_AI_SAVE,id==106,reinterpret_cast<LPARAM>(&request));
             SecureZeroMemory(secret.data(),secret.size());
             if (saved) { if(id==105){panel->activeId=request.settings.configurationId;panel->activeModel=request.settings.model;} SetWindowTextW(GetDlgItem(window,103),L""); Profiles(panel); } Status(panel,saved?AP_SAVED:AP_ERROR);
         }
@@ -276,9 +277,9 @@ extern "C" int AiPanel_Layout(void* context,int x,int y,int width,int height) {
 extern "C" BOOL AiPanel_Run(void* context,const AI_PANEL_SETTINGS* settings,const AI_PANEL_SOURCE* source,int action,const char* original,size_t length,const char* instruction) {
     auto panel=State(context); if(!panel || !panel->window || AiPanel_IsBusy(context) || !settings || !source || (!original && length) || length>256*1024) return FALSE;
     try {
-        if(action<AI_EXPLAIN || action>AI_MD_MERMAID || AiEndpoint_Validate(settings->endpoint)!=AI_OK || !settings->model[0] || settings->timeoutMs<100 || settings->timeoutMs>120000) return FALSE;
+        if(action<AI_EXPLAIN || action>AI_MD_MERMAID || AiEndpoint_Validate(settings->endpoint)!=AI_OK || !settings->model[0] || settings->timeoutMs<100 || settings->timeoutMs>120000 || settings->maxTokens>65536) return FALSE;
         if((action==AI_GENERATE || action==AI_ASK) && (!instruction || !*instruction)) return FALSE;
-        auto job=std::make_shared<Job>(); job->source=*source; job->action=action; job->endpoint=settings->endpoint; job->model=Utf8(settings->model); job->timeout=settings->timeoutMs;
+        auto job=std::make_shared<Job>(); job->source=*source; job->action=action; job->endpoint=settings->endpoint; job->model=Utf8(settings->model); job->timeout=settings->timeoutMs;job->maxTokens=settings->maxTokens;
         job->original.assign(original?original:"",length); job->instruction=instruction?instruction:"";
         if(job->model.size()>256 || job->instruction.size()>4096) return FALSE;
         wchar_t profile[73]{}; if((settings->configurationId[0]?AiCredential_AccountProfile(settings->endpoint,settings->configurationId,profile,73):AiCredential_ServiceProfile(settings->endpoint,profile,73))!=ERROR_SUCCESS) return FALSE;
@@ -293,7 +294,7 @@ extern "C" BOOL AiPanel_Run(void* context,const AI_PANEL_SETTINGS* settings,cons
         std::thread([job] {
             AI_HTTP_CONFIG_DATA config{job->endpoint.c_str(),job->model.c_str(),job->secret,job->timeout,Canceled,job.get(),job->client->handle};
             const auto& input=job->action==AI_GENERATE?job->instruction:job->original;
-            job->status=AiHttp_Run(&config,job->action,input.data(),input.size(),job->action==AI_GENERATE?nullptr:job->instruction.c_str(),&job->result);
+            job->status=AiHttp_RunLimit(&config,job->action,input.data(),input.size(),job->action==AI_GENERATE?nullptr:job->instruction.c_str(),job->maxTokens,&job->result);
             AiCredential_Free(job->secret); job->secret=nullptr; job->done=true;
         }).detach(); Busy(panel,true); Status(panel,AP_RUNNING); return TRUE;
     } catch(...) { panel->job.reset(); Busy(panel,false); Status(panel,AP_ERROR); return FALSE; }
@@ -320,6 +321,7 @@ extern "C" void AiPanel_Toggle(void* context,HWND parent,const AI_PANEL_SETTINGS
             const int ids[]={105,106,110,111,112,113,114,115}; const int texts[]={AP_SAVE,AP_DELETE,AP_EXPLAIN,AP_TRANSLATE,AP_REWRITE,AP_GENERATE,AP_CANCEL,AP_APPLY};
             for(int i=0;i<8;++i) control(L"BUTTON",labels[texts[i]],BS_PUSHBUTTON|WS_TABSTOP,ids[i]);
             control(L"BUTTON",L"测试（计费）",BS_PUSHBUTTON|WS_TABSTOP,126);
+            control(L"STATIC",L"输出 token 上限（0=服务默认，最大65536）",0,209);control(L"EDIT",L"0",WS_BORDER|ES_NUMBER|WS_TABSTOP,135);SendDlgItemMessageW(window,135,EM_SETLIMITTEXT,5,0);SetDlgItemInt(window,135,settings->maxTokens,FALSE);
             control(L"BUTTON",L"百炼分页",BS_AUTOCHECKBOX|WS_TABSTOP,134);control(L"BUTTON",L"获取模型",BS_PUSHBUTTON|WS_TABSTOP,132);control(L"STATIC",L"模型列表地址",0,208);control(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,133);SendDlgItemMessageW(window,133,EM_SETLIMITTEXT,2048,0);SendDlgItemMessageW(window,133,EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"留空自动推导；特殊接口可填写同源完整地址"));
             control(L"STATIC",labels[AP_INSTRUCTION],0,205); control(L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_TABSTOP,120); SendMessageW(GetDlgItem(window,120),EM_SETLIMITTEXT,4096,0);
             HWND actions=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,116);

@@ -22,6 +22,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             assert body['model'] == 'panel-test-model' and body['stream'] is False
+            if 'max_tokens' in body: assert body['max_tokens']==1024 and type(body['max_tokens']) is int and body['messages'][1]['content']=='Reply with OK.'
             authorization = self.headers.get('Authorization')
             assert authorization in ('Bearer fake-panel-test-key', 'Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b')
             assert self.headers.get('Cookie') is None
@@ -59,17 +60,18 @@ try:
     print(process.stdout); print(process.stderr)
     assert process.returncode == 0, 'native panel checks failed'
     assert server.model_gets == 4 and server.native_pages == [1,2,3]
-    assert not server.errors and len(server.requests) == 31, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
-    assert server.authorizations[:28] == ['Bearer fake-panel-test-key'] * 28
+    assert not server.errors and len(server.requests) == 32, 'expected nine actions, multi-hunk and grouped rewrites and cancel'
+    assert server.authorizations[:29] == ['Bearer fake-panel-test-key'] * 29
     assert [re.search(r'fixture-http-(\d+)', request['messages'][0]['content']).group(1) for request in server.requests[14:21]] == ['401', '403', '402', '429', '404', '400', '503']
     assert 'fixture-truncated' in server.requests[21]['messages'][0]['content']
     assert server.requests[22]['messages'][1]['content'] == 'Reply with OK.'
     assert 'connection test' in server.requests[22]['messages'][0]['content']
     assert 'fixture-prompt-used' in server.requests[13]['messages'][0]['content']
-    assert server.authorizations[28:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b', 'Bearer fake-panel-test-key-a']
+    assert server.authorizations[29:] == ['Bearer fake-panel-test-key-a', 'Bearer fake-panel-test-key-b', 'Bearer fake-panel-test-key-a']
     for index,prompt in enumerate(('Markdown outline','five Markdown titles','Markdown table','Markdown checkboxes','Mermaid diagram'),23):
         assert prompt in server.requests[index]['messages'][0]['content'] and 'fixture-markdown' in server.requests[index]['messages'][0]['content']
         assert server.requests[index]['messages'][1]['content']=='alpha'
+    assert server.requests[28]['max_tokens']==1024 and all('max_tokens' not in request for index,request in enumerate(server.requests) if index!=28)
     assert server.requests[3]['messages'][1]['content'] == '生成中文'
     for index, prompt in enumerate(('Summarize', 'Polish', 'Expand', 'Shorten', 'Correct'), 4):
         assert prompt in server.requests[index]['messages'][0]['content']

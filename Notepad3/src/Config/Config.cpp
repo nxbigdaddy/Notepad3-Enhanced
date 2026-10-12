@@ -1501,6 +1501,7 @@ void LoadSettings()
     IniSectionGetString(IniSecSettings2, L"AIEndpoint", L"", Settings2.AIEndpoint, COUNTOF(Settings2.AIEndpoint));
     IniSectionGetString(IniSecSettings2, L"AIModel", L"", Settings2.AIModel, COUNTOF(Settings2.AIModel));
     IniSectionGetString(IniSecSettings2, L"AIConfigurationId", L"", Settings2.AIConfigurationId, COUNTOF(Settings2.AIConfigurationId));
+    Settings2.AIMaxTokens = clampi(IniSectionGetInt(IniSecSettings2,L"AIMaxTokens",0),0,65536);
     Settings2.AITimeoutMs = clampi(IniSectionGetInt(IniSecSettings2, L"AITimeoutMs", 60000), 100, 120000);
 
     Settings2.ExitOnESCSkipLevel = clampi(IniSectionGetInt(IniSecSettings2, L"ExitOnESCSkipLevel", Default_ExitOnESCSkipLevel), 0, 2);

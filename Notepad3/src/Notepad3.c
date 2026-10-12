@@ -12644,7 +12644,7 @@ static AI_PANEL_SETTINGS _AiSettings(void)
     StringCchCopyW(result.endpoint, COUNTOF(result.endpoint), Settings2.AIEndpoint);
     StringCchCopyW(result.model, COUNTOF(result.model), Settings2.AIModel);
     StringCchCopyW(result.configurationId, COUNTOF(result.configurationId), Settings2.AIConfigurationId);
-    result.timeoutMs = Settings2.AITimeoutMs; return result;
+    result.maxTokens=(unsigned)Settings2.AIMaxTokens; result.timeoutMs = Settings2.AITimeoutMs; return result;
 }
 static int _AiLayout(int x, int y, int width, int height) { return AiPanel_Layout(_WorkspaceAi(), x, y, width, height); }
 static void _AiToggle(void)
@@ -12737,8 +12737,9 @@ static bool _AiReadProfile(int index, AI_PANEL_SETTINGS* settings)
     IniFileGetString(Paths.IniFile,section,L"Id",L"",result.configurationId,COUNTOF(result.configurationId));
     IniFileGetString(Paths.IniFile,section,L"Endpoint",L"",result.endpoint,COUNTOF(result.endpoint));
     IniFileGetString(Paths.IniFile,section,L"Model",L"",result.model,COUNTOF(result.model));
+    result.maxTokens=(unsigned)IniFileGetLong(Paths.IniFile,section,L"MaxTokens",0);
     result.timeoutMs=(DWORD)IniFileGetLong(Paths.IniFile,section,L"TimeoutMs",60000);
-    if(AiCredential_AccountProfile(result.endpoint,result.configurationId,identity,COUNTOF(identity))!=ERROR_SUCCESS || !result.model[0] || result.timeoutMs<100 || result.timeoutMs>120000) return false;
+    if(AiCredential_AccountProfile(result.endpoint,result.configurationId,identity,COUNTOF(identity))!=ERROR_SUCCESS || !result.model[0] || result.maxTokens>65536 || result.timeoutMs<100 || result.timeoutMs>120000) return false;
     *settings=result;return true;
 }
 static bool _AiRemoveProfile(int index, const AI_PANEL_SETTINGS* expected)
@@ -12748,7 +12749,7 @@ static bool _AiRemoveProfile(int index, const AI_PANEL_SETTINGS* expected)
     WCHAR section[32],id[65],endpoint[2049],model[257];
     StringCchPrintfW(section,COUNTOF(section),L"AIProfile%02d",index);
     IniSectionGetString(section,L"Id",L"",id,COUNTOF(id));IniSectionGetString(section,L"Endpoint",L"",endpoint,COUNTOF(endpoint));IniSectionGetString(section,L"Model",L"",model,COUNTOF(model));
-    bool matched=!wcscmp(id,expected->configurationId) && !wcscmp(endpoint,expected->endpoint) && !wcscmp(model,expected->model) && IniSectionGetInt(section,L"TimeoutMs",60000)==(int)expected->timeoutMs;
+    bool matched=!wcscmp(id,expected->configurationId) && !wcscmp(endpoint,expected->endpoint) && !wcscmp(model,expected->model) && IniSectionGetInt(section,L"TimeoutMs",60000)==(int)expected->timeoutMs && IniSectionGetInt(section,L"MaxTokens",0)==(int)expected->maxTokens;
     bool removed=Globals.bCanSaveIniFile && matched && IniSectionDelete(section,NULL,true);
     return CloseSettingsFile(__FUNCTION__,removed) && removed;
 }
@@ -12765,14 +12766,14 @@ static bool _AiWriteProfile(const AI_PANEL_SETTINGS* settings)
     if(chosen<0) chosen=available;
     if(chosen<0) return false;
     StringCchPrintfW(section,COUNTOF(section),L"AIProfile%02d",chosen);
-    return IniSectionSetString(section,L"Id",settings->configurationId) && IniSectionSetString(section,L"Endpoint",settings->endpoint) && IniSectionSetString(section,L"Model",settings->model) && IniSectionSetInt(section,L"TimeoutMs",(int)settings->timeoutMs);
+    return IniSectionSetString(section,L"Id",settings->configurationId) && IniSectionSetString(section,L"Endpoint",settings->endpoint) && IniSectionSetString(section,L"Model",settings->model) && IniSectionSetInt(section,L"TimeoutMs",(int)settings->timeoutMs) && IniSectionSetInt(section,L"MaxTokens",(int)settings->maxTokens);
 }
 static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
 {
     if (!request || AiPanel_IsBusy(_WorkspaceAi()) || AiEndpoint_Validate(request->settings.endpoint) != AI_OK) return false;
     WCHAR profile[73]; if ((request->settings.configurationId[0] ? AiCredential_AccountProfile(request->settings.endpoint, request->settings.configurationId, profile, COUNTOF(profile)) : AiCredential_ServiceProfile(request->settings.endpoint, profile, COUNTOF(profile))) != ERROR_SUCCESS) return false;
     if (removeKey) { DWORD status = AiCredential_Delete(profile); return status == ERROR_SUCCESS || status == ERROR_NOT_FOUND; }
-    if (!request->settings.model[0] || request->settings.timeoutMs < 100 || request->settings.timeoutMs > 120000) return false;
+    if (!request->settings.model[0] || request->settings.maxTokens>65536 || request->settings.timeoutMs < 100 || request->settings.timeoutMs > 120000) return false;
     int modelBytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, request->settings.model, -1, NULL, 0, NULL, NULL);
     if (modelBytes < 2 || modelBytes > 257) return false;
     char* previous = NULL; bool changedKey = request->secret && request->secret[0];
@@ -12786,6 +12787,7 @@ static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
         bool updated = Globals.bCanSaveIniFile && _AiWriteProfile(&request->settings);
         updated = updated && IniSectionSetString(L"Settings2", L"AIEndpoint", request->settings.endpoint);
         updated = updated && IniSectionSetString(L"Settings2", L"AIModel", request->settings.model);
+        updated = updated && IniSectionSetInt(L"Settings2",L"AIMaxTokens",(int)request->settings.maxTokens);
         updated = updated && IniSectionSetInt(L"Settings2", L"AITimeoutMs", (int)request->settings.timeoutMs);
         updated = updated && IniSectionSetString(L"Settings2", L"AIConfigurationId", request->settings.configurationId);
         saved = CloseSettingsFile(__FUNCTION__, updated) && updated;
@@ -12796,6 +12798,7 @@ static bool _AiSave(const AI_PANEL_SAVE* request, bool removeKey)
         StringCchCopyW(Settings2.AIEndpoint, COUNTOF(Settings2.AIEndpoint), request->settings.endpoint);
         StringCchCopyW(Settings2.AIModel, COUNTOF(Settings2.AIModel), request->settings.model);
         StringCchCopyW(Settings2.AIConfigurationId, COUNTOF(Settings2.AIConfigurationId), request->settings.configurationId);
+        Settings2.AIMaxTokens=(int)request->settings.maxTokens;
         Settings2.AITimeoutMs = request->settings.timeoutMs;
     }
     return saved;

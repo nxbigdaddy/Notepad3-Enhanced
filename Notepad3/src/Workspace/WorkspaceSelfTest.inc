@@ -282,12 +282,24 @@ static void _WorkspaceTestAiMarkdown(HWND panel,WORKSPACE_TEST_RESULT* result)
     _WorkspaceTestCheck(result,_WorkspaceTestText("模拟结果\r\nA"),"Markdown proposal requires explicit apply");SciCall_Undo();
     _WorkspaceTestCheck(result,_WorkspaceTestText("alpha\r\nA"),"Markdown apply remains one undo transaction");SetWindowTextW(GetDlgItem(panel,120),L"");SendDlgItemMessageW(panel,116,CB_SETCURSEL,0,0);
 }
+static void _WorkspaceTestAiTokenLimit(HWND panel,WORKSPACE_TEST_RESULT* result)
+{
+    SetDlgItemInt(panel,135,1024,FALSE);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,Settings2.AIMaxTokens==1024 && IniFileGetLong(Paths.IniFile,L"Settings2",L"AIMaxTokens",-1)==1024,"output token cap saved with independent disk readback");
+    SetDlgItemInt(panel,135,65537,FALSE);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,Settings2.AIMaxTokens==1024,"oversized output cap cannot change saved configuration");SetDlgItemInt(panel,135,1024,FALSE);
+    SendMessageW(panel,WM_COMMAND,MAKEWPARAM(126,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,_WorkspaceTestAiReady() && !IsWindowEnabled(GetDlgItem(panel,115)) && _WorkspaceTestText("alpha\r\nA"),"actual saved output cap reaches fixed connection request without editing source");
+    SetDlgItemInt(panel,135,0,FALSE);SendMessageW(panel,WM_COMMAND,MAKEWPARAM(105,BN_CLICKED),0);
+    _WorkspaceTestCheck(result,Settings2.AIMaxTokens==0 && IniFileGetLong(Paths.IniFile,L"Settings2",L"AIMaxTokens",-1)==0,"zero cap restores default and persists without secret");
+}
 static HWND _WorkspaceTestAiAccounts(HWND panel,const WCHAR* endpoint,WORKSPACE_TEST_RESULT* result)
 {
     _WorkspaceTestAiPrompts(panel,result);
     _WorkspaceTestAiDiagnostics(panel,result);
     _WorkspaceTestAiPresets(panel,result);
     _WorkspaceTestAiMarkdown(panel,result);
+    _WorkspaceTestAiTokenLimit(panel,result);
     WCHAR idA[65],idB[65],profileA[73],profileB[73],saved[65]; char* key=NULL;
     StringCchPrintfW(idA,COUNTOF(idA),L"fixture-%lu-%llu-a",GetCurrentProcessId(),GetTickCount64());
     StringCchPrintfW(idB,COUNTOF(idB),L"fixture-%lu-%llu-b",GetCurrentProcessId(),GetTickCount64());

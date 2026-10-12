@@ -10,7 +10,7 @@
 #define NP3_WM_AI_PROMPT_SAVE (WM_APP + 0x36d)
 #define NP3_WM_AI_PROMPT_DELETE (WM_APP + 0x36e)
 typedef struct AI_PROMPT { int index; wchar_t name[65], text[4097]; } AI_PROMPT;
-typedef struct AI_PANEL_SETTINGS { wchar_t endpoint[2049], model[257]; DWORD timeoutMs; wchar_t configurationId[65]; } AI_PANEL_SETTINGS;
+typedef struct AI_PANEL_SETTINGS { wchar_t endpoint[2049], model[257]; DWORD timeoutMs; unsigned maxTokens; wchar_t configurationId[65]; } AI_PANEL_SETTINGS;
 typedef struct AI_PANEL_SAVE { AI_PANEL_SETTINGS settings; const char* secret; } AI_PANEL_SAVE;
 typedef struct AI_PANEL_CAPTURE { int action; const char* instruction; } AI_PANEL_CAPTURE;
 typedef struct AI_PANEL_SOURCE { unsigned long long id, version; long long start, end, anchor, caret; } AI_PANEL_SOURCE;
